@@ -20,10 +20,13 @@ The app is designed for GitHub Pages on the frontend and Supabase for auth, data
 - [docs/user-flows.md](docs/user-flows.md): detailed user flows and quality-of-life map.
 - [docs/feature-atlas.md](docs/feature-atlas.md): expanded capability map.
 - [docs/ai-scaffolding.md](docs/ai-scaffolding.md): model routing, tools, safety rails, tests, and cost policy.
+- [docs/architecture.md](docs/architecture.md): module boundaries and safety architecture.
 - [docs/imports.md](docs/imports.md): bank Excel/CSV/PDF import plan.
 - [docs/testing-plan.md](docs/testing-plan.md): unit and AI eval strategy.
 - [lib/flow-catalog.mjs](lib/flow-catalog.mjs): executable flow catalog rendered by the UI and tested locally.
 - [lib/agent-core.mjs](lib/agent-core.mjs): pure duplicate, routing, cost, import, and tool validation logic.
+- [src](src): modular frontend, agent contracts, imports, analytics, duplicate handling, and UI renderers.
+- [styles](styles): layered CSS for tokens, layout, capture, dashboards, tables, nav, and responsive behavior.
 - [supabase/schema.sql](supabase/schema.sql): database skeleton.
 - [supabase/config.toml](supabase/config.toml): project/function config scaffold.
 - [supabase/functions/agent/index.ts](supabase/functions/agent/index.ts): Edge Function scaffold.
@@ -49,5 +52,8 @@ node tests/agent-core.test.mjs
 node tests/flow-catalog.test.mjs
 node tests/capture-fixtures.test.mjs
 node tests/ui-contract.test.mjs
+node tests/architecture.test.mjs
+node tests/agent-policy.test.mjs
+node tests/analytics-imports.test.mjs
 node --check app.js
 ```

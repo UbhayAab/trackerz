@@ -1,0 +1,60 @@
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.file-chip,
+.primary-button,
+.secondary-button,
+.mode-card,
+.tab,
+.nav-item,
+.icon-button,
+.quick-chip,
+.flow-filter {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.primary-button {
+  border-color: var(--charcoal);
+  background: var(--charcoal);
+  color: white;
+}
+
+.secondary-button,
+.mode-card.active,
+.tab.active {
+  border-color: rgba(28, 124, 84, 0.6);
+  background: rgba(28, 124, 84, 0.1);
+}
+
+.icon-button {
+  width: 42px;
+  min-width: 42px;
+}
+
+.status-pill,
+.metric-badge {
+  display: inline-grid;
+  min-height: 32px;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--charcoal);
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.status-pill.muted {
+  background: #eee7da;
+  color: var(--ink);
+}

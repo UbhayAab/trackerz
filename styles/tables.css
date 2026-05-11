@@ -1,0 +1,88 @@
+.data-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.table-spaced {
+  margin-top: 18px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 520px;
+  font-size: 0.82rem;
+}
+
+.data-table th {
+  color: var(--muted);
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 8px;
+  vertical-align: top;
+}
+
+.cell-strong {
+  font-weight: 900;
+}
+
+.badge {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #eee7da;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.badge-risk {
+  background: rgba(161, 59, 45, 0.12);
+  color: var(--risk);
+}
+
+.flow-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.flow-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 12px;
+}
+
+.flow-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flow-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.flow-domain {
+  border-radius: 999px;
+  background: #eee7da;
+  padding: 4px 8px;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}

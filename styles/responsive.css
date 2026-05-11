@@ -1,0 +1,27 @@
+@media (max-width: 720px) {
+  .command-grid,
+  .analysis-grid,
+  .pipeline-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-shell {
+    padding-inline: 10px;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .capture-actions,
+  .mode-grid,
+  .view-tabs {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .bar-chart {
+    gap: 5px;
+  }
+}

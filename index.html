@@ -10,8 +10,8 @@
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Ubhay</p>
-          <h1>Capture</h1>
+          <p class="eyebrow">Trackerz</p>
+          <h1>Life cockpit</h1>
         </div>
         <button class="icon-button" type="button" aria-label="Open settings">...</button>
       </header>
@@ -61,6 +61,17 @@
           <div id="reviewCount" class="metric-badge">7</div>
         </section>
 
+        <section class="pipeline-panel" aria-labelledby="pipeline-title">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Agent rails</p>
+              <h2 id="pipeline-title">Capture to database</h2>
+            </div>
+            <span class="status-pill muted">guarded</span>
+          </div>
+          <div id="pipelineList" class="pipeline-list"></div>
+        </section>
+
         <section class="dashboard-grid">
           <article class="metric-card accent-money">
             <p>Today spend</p>
@@ -76,6 +87,30 @@
             <p>Habit score</p>
             <strong id="habitScore">74</strong>
             <span>Sleep drag detected</span>
+          </article>
+        </section>
+
+        <section class="command-grid" aria-label="Operational command center">
+          <article class="command-panel" aria-labelledby="review-table-title">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">AI review</p>
+                <h2 id="review-table-title">Action queue</h2>
+              </div>
+              <span id="reviewRisk" class="metric-badge">3 risk</span>
+            </div>
+            <div id="reviewTable" class="data-table-wrap"></div>
+          </article>
+
+          <article class="command-panel" aria-labelledby="import-table-title">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">Imports</p>
+                <h2 id="import-table-title">Bank files</h2>
+              </div>
+              <span class="metric-badge">month end</span>
+            </div>
+            <div id="importTable" class="data-table-wrap"></div>
           </article>
         </section>
 
@@ -95,6 +130,7 @@
             <span id="activeViewLabel" class="status-pill muted">DOD</span>
           </div>
           <div id="chart" class="bar-chart" aria-label="Trend chart"></div>
+          <div id="ledgerTable" class="data-table-wrap table-spaced"></div>
         </section>
 
         <section class="ai-panel" aria-labelledby="ai-title">
@@ -106,6 +142,29 @@
             <button id="refreshInsights" class="icon-button" type="button" aria-label="Refresh insights">R</button>
           </div>
           <ul id="insightList" class="insight-list"></ul>
+        </section>
+
+        <section class="analysis-grid" aria-label="Advanced analysis">
+          <article class="command-panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">Budget</p>
+                <h2>Trajectory</h2>
+              </div>
+              <span class="status-pill muted">forecast</span>
+            </div>
+            <div id="budgetTable" class="data-table-wrap"></div>
+          </article>
+          <article class="command-panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">Diet</p>
+                <h2>Macro pace</h2>
+              </div>
+              <span class="status-pill muted">fat loss</span>
+            </div>
+            <div id="macroTable" class="data-table-wrap"></div>
+          </article>
         </section>
 
         <section class="cost-panel" aria-labelledby="cost-title">
