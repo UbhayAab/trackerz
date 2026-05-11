@@ -1,0 +1,144 @@
+.inbox-strip {
+  margin: 14px 0;
+  background: #fff7df;
+  border: 1px solid rgba(232, 180, 75, 0.52);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.metric-card {
+  min-height: 108px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  padding: 12px;
+  background: var(--panel);
+}
+
+.metric-card p,
+.metric-card span {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.metric-card strong {
+  display: block;
+  margin: 10px 0 8px;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.accent-money {
+  border-top: 4px solid var(--money);
+}
+
+.accent-food {
+  border-top: 4px solid var(--food);
+}
+
+.accent-wellness {
+  border-top: 4px solid var(--wellness);
+}
+
+.bar-chart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-items: end;
+  gap: 8px;
+  min-height: 188px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.bar {
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  gap: 8px;
+  min-height: 148px;
+}
+
+.bar-fill {
+  width: 100%;
+  min-height: 8px;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, var(--wellness), var(--money));
+}
+
+.bar span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.insight-list {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.insight-list li {
+  border-left: 4px solid var(--sun);
+  background: var(--panel-warm);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.cost-controls {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.cost-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+input[type="range"] {
+  accent-color: var(--money);
+}
+
+.cost-breakdown {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.pipeline-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.pipeline-step {
+  min-height: 88px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 10px;
+}
+
+.pipeline-step strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.84rem;
+}
+
+.pipeline-step span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}

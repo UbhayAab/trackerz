@@ -1,0 +1,74 @@
+.capture-panel {
+  display: grid;
+  gap: 12px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 128px;
+  border: 1px solid #cfc8bc;
+  border-radius: 8px;
+  resize: vertical;
+  padding: 14px;
+  color: var(--ink);
+  background: #fffdf8;
+  outline: none;
+}
+
+textarea:focus {
+  border-color: var(--wellness);
+  box-shadow: 0 0 0 3px rgba(44, 111, 187, 0.12);
+}
+
+.capture-actions,
+.mode-grid,
+.view-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.mode-grid,
+.view-tabs {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.file-chip {
+  display: grid;
+  place-items: center;
+}
+
+.file-chip input {
+  display: none;
+}
+
+.route-preview {
+  border: 1px dashed #cfc8bc;
+  border-radius: 8px;
+  background: var(--panel-warm);
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.quick-capture,
+.flow-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.quick-chip,
+.flow-filter {
+  min-height: 38px;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0 12px;
+}
+
+.flow-filter.active {
+  background: var(--charcoal);
+  color: white;
+}

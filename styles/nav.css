@@ -1,0 +1,26 @@
+.bottom-nav {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  width: min(100%, 860px);
+  margin: 0 auto;
+  padding: 10px 12px 14px;
+  background: rgba(251, 250, 246, 0.96);
+  border-top: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+}
+
+.nav-item {
+  min-height: 44px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.nav-item.active {
+  background: var(--charcoal);
+  color: white;
+}
