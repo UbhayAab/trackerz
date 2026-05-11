@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ubhay Life OS</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Ubhay</p>
+          <h1>Capture</h1>
+        </div>
+        <button class="icon-button" type="button" aria-label="Open settings">...</button>
+      </header>
+
+      <main>
+        <section class="capture-panel" aria-labelledby="capture-title">
+          <div class="capture-head">
+            <h2 id="capture-title">Drop today here</h2>
+            <span class="status-pill">AI ready</span>
+          </div>
+
+          <textarea id="captureText" rows="5" placeholder="paid 240 zomato, ate dal rice and curd, walked 7k, felt low after lunch"></textarea>
+
+          <div id="routePreview" class="route-preview">
+            Auto route: waiting for input
+          </div>
+
+          <div class="capture-actions">
+            <label class="file-chip">
+              <input id="fileInput" type="file" multiple accept="image/*,.csv,.xls,.xlsx,.pdf,.txt" />
+              Add files
+            </label>
+            <button id="voiceButton" class="secondary-button" type="button">Voice</button>
+            <button id="submitCapture" class="primary-button" type="button">Process</button>
+          </div>
+
+          <div class="mode-grid" aria-label="Capture modes">
+            <button class="mode-card active" type="button" data-mode="auto">Auto</button>
+            <button class="mode-card" type="button" data-mode="money">Money</button>
+            <button class="mode-card" type="button" data-mode="food">Food</button>
+            <button class="mode-card" type="button" data-mode="wellness">Wellness</button>
+          </div>
+
+          <div class="quick-capture" aria-label="Quick capture examples">
+            <button class="quick-chip" type="button" data-template="paid 240 zomato on gpay, lunch was dal rice curd, walked 7k">Messy day</button>
+            <button class="quick-chip" type="button" data-template="Uploading bank Excel for May. Need debit, credit, transfer, refund, subscription and duplicate detection.">Bank Excel</button>
+            <button class="quick-chip" type="button" data-template="EOD diet: breakfast poha chai, lunch 3 rotis dal sabzi, dinner chicken rice, protein was low">Diet voice</button>
+            <button class="quick-chip" type="button" data-template="Multiple payment screenshots from PhonePe/GPay/Paytm, dedupe against bank import later">Screenshot dump</button>
+          </div>
+        </section>
+
+        <section class="inbox-strip" aria-labelledby="inbox-title">
+          <div>
+            <p class="eyebrow">Inbox</p>
+            <h2 id="inbox-title">Review queue</h2>
+          </div>
+          <div id="reviewCount" class="metric-badge">7</div>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="metric-card accent-money">
+            <p>Today spend</p>
+            <strong id="todaySpend">Rs 1,430</strong>
+            <span>Budget pace Rs 1,100</span>
+          </article>
+          <article class="metric-card accent-food">
+            <p>Protein</p>
+            <strong id="proteinMetric">86g</strong>
+            <span>Target 130g</span>
+          </article>
+          <article class="metric-card accent-wellness">
+            <p>Habit score</p>
+            <strong id="habitScore">74</strong>
+            <span>Sleep drag detected</span>
+          </article>
+        </section>
+
+        <section class="view-tabs" aria-label="Dashboard views">
+          <button class="tab active" data-view="dod" type="button">DOD</button>
+          <button class="tab" data-view="wow" type="button">WOW</button>
+          <button class="tab" data-view="mom" type="button">MOM</button>
+          <button class="tab" data-view="trajectory" type="button">Trajectory</button>
+        </section>
+
+        <section class="analytics-panel" aria-labelledby="analytics-title">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Hard data</p>
+              <h2 id="analytics-title">Money and body trend</h2>
+            </div>
+            <span id="activeViewLabel" class="status-pill muted">DOD</span>
+          </div>
+          <div id="chart" class="bar-chart" aria-label="Trend chart"></div>
+        </section>
+
+        <section class="ai-panel" aria-labelledby="ai-title">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">AI overview</p>
+              <h2 id="ai-title">What changed</h2>
+            </div>
+            <button id="refreshInsights" class="icon-button" type="button" aria-label="Refresh insights">R</button>
+          </div>
+          <ul id="insightList" class="insight-list"></ul>
+        </section>
+
+        <section class="cost-panel" aria-labelledby="cost-title">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Meter</p>
+              <h2 id="cost-title">AI cost estimate</h2>
+            </div>
+            <span id="monthlyCost" class="metric-badge">$4.82</span>
+          </div>
+          <div class="cost-controls">
+            <label>
+              Images/day
+              <input id="imagesPerDay" type="range" min="0" max="80" value="15" />
+            </label>
+            <label>
+              Voice min/day
+              <input id="voicePerDay" type="range" min="0" max="30" value="5" />
+            </label>
+            <label>
+              Agent events/day
+              <input id="eventsPerDay" type="range" min="0" max="150" value="40" />
+            </label>
+          </div>
+          <p id="costBreakdown" class="cost-breakdown"></p>
+        </section>
+
+        <section class="flow-panel" aria-labelledby="flow-title">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Flow lab</p>
+              <h2 id="flow-title">Scenarios covered</h2>
+            </div>
+            <span id="flowCount" class="metric-badge">0</span>
+          </div>
+          <div class="flow-filters" aria-label="Flow filters">
+            <button class="flow-filter active" data-domain="all" type="button">All</button>
+            <button class="flow-filter" data-domain="money" type="button">Money</button>
+            <button class="flow-filter" data-domain="diet" type="button">Diet</button>
+            <button class="flow-filter" data-domain="dashboard" type="button">Dash</button>
+            <button class="flow-filter" data-domain="ai" type="button">AI</button>
+          </div>
+          <div id="flowList" class="flow-list"></div>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <button class="nav-item active" type="button">Capture</button>
+        <button class="nav-item" type="button">Money</button>
+        <button class="nav-item" type="button">Diet</button>
+        <button class="nav-item" type="button">Insights</button>
+      </nav>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
