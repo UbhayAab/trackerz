@@ -1,0 +1,17 @@
+import { aiStages } from "../ai/job-runner.js";
+import { $ } from "../utils/dom.js";
+
+export function renderAgentStatus(state) {
+  const job = state.activeJob;
+  $("#agentStatus").textContent = job ? `${job.label}. ETA ${job.eta}s` : "Idle. Next capture will show every AI stage here.";
+  $("#jobEta").textContent = job ? `~${job.eta}s` : "ready";
+  $("#agentDetail").textContent = job ? job.detail : "No hidden work. When you process a capture, the tables update after validation.";
+  $("#agentStageList").innerHTML = aiStages
+    .map((stage) => {
+      const active = job?.key === stage.key ? " active" : "";
+      const done = job?.stageIndex > aiStages.findIndex((item) => item.key === stage.key) ? " done" : "";
+      return `<span class="stage-dot${active}${done}">${stage.label}</span>`;
+    })
+    .join("");
+  $("#parseLog").innerHTML = state.parseLog.slice(0, 5).map((line) => `<li>${line}</li>`).join("");
+}

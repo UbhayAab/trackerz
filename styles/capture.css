@@ -52,6 +52,64 @@ textarea:focus {
   font-weight: 800;
 }
 
+.agent-console {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 12px;
+}
+
+.agent-detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.stage-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.stage-dot {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.stage-dot.active {
+  border-color: var(--wellness);
+  background: rgba(44, 111, 187, 0.12);
+  color: var(--wellness);
+}
+
+.stage-dot.done {
+  border-color: var(--money);
+  background: rgba(28, 124, 84, 0.1);
+  color: var(--money);
+}
+
+.parse-log {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parse-log li {
+  border-left: 3px solid var(--sun);
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .quick-capture,
 .flow-filters {
   display: flex;

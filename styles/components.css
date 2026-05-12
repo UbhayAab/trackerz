@@ -58,3 +58,40 @@
   background: #eee7da;
   color: var(--ink);
 }
+
+.settings-panel {
+  position: fixed;
+  right: max(12px, calc((100vw - 860px) / 2 + 12px));
+  top: 72px;
+  z-index: 10;
+  display: grid;
+  gap: 14px;
+  width: min(360px, calc(100vw - 24px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+.settings-panel[hidden] {
+  display: none;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  font-weight: 800;
+}
+
+.settings-row input[type="number"] {
+  width: 82px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+}

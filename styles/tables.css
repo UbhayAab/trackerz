@@ -49,6 +49,22 @@
   color: var(--risk);
 }
 
+.table-action {
+  min-height: 30px;
+  margin: 2px 4px 2px 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fffdf8;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.table-action:hover {
+  border-color: var(--wellness);
+  color: var(--wellness);
+}
+
 .flow-list {
   display: grid;
   gap: 10px;

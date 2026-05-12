@@ -13,20 +13,33 @@
           <p class="eyebrow">Trackerz</p>
           <h1>Life cockpit</h1>
         </div>
-        <button class="icon-button" type="button" aria-label="Open settings">...</button>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="Open settings">...</button>
       </header>
 
       <main>
         <section class="capture-panel" aria-labelledby="capture-title">
           <div class="capture-head">
             <h2 id="capture-title">Drop today here</h2>
-            <span class="status-pill">AI ready</span>
+            <span id="jobEta" class="status-pill">ready</span>
           </div>
 
           <textarea id="captureText" rows="5" placeholder="paid 240 zomato, ate dal rice and curd, walked 7k, felt low after lunch"></textarea>
 
           <div id="routePreview" class="route-preview">
             Auto route: waiting for input
+          </div>
+
+          <div class="agent-console" aria-live="polite">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">AI parser</p>
+                <h2 id="agentStatus">Idle</h2>
+              </div>
+              <span class="status-pill muted">visible</span>
+            </div>
+            <p id="agentDetail" class="agent-detail">No hidden work. When you process a capture, the tables update after validation.</p>
+            <div id="agentStageList" class="stage-list"></div>
+            <ul id="parseLog" class="parse-log"></ul>
           </div>
 
           <div class="capture-actions">
@@ -53,7 +66,7 @@
           </div>
         </section>
 
-        <section class="inbox-strip" aria-labelledby="inbox-title">
+        <section id="capture-section" class="inbox-strip" aria-labelledby="inbox-title">
           <div>
             <p class="eyebrow">Inbox</p>
             <h2 id="inbox-title">Review queue</h2>
@@ -217,6 +230,25 @@
         <button class="nav-item" type="button">Diet</button>
         <button class="nav-item" type="button">Insights</button>
       </nav>
+
+      <aside id="settingsPanel" class="settings-panel" hidden>
+        <div class="panel-title-row">
+          <div>
+            <p class="eyebrow">Controls</p>
+            <h2>Agent settings</h2>
+          </div>
+          <button id="closeSettings" class="icon-button" type="button" aria-label="Close settings">x</button>
+        </div>
+        <label class="settings-row">
+          <span>Aggressive autopilot</span>
+          <input id="autopilotToggle" type="checkbox" checked />
+        </label>
+        <label class="settings-row">
+          <span>Daily AI cap</span>
+          <input id="dailyCapInput" type="number" min="1" value="2" />
+        </label>
+        <p id="settingsStatus" class="agent-detail">Autopilot can create safe rows, but risky rows stay in review.</p>
+      </aside>
     </div>
 
     <script type="module" src="./app.js"></script>
