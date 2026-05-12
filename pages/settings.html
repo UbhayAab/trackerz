@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trackerz - Settings</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="app-shell page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Settings</p>
+          <h1>Budgets & agent</h1>
+        </div>
+        <a class="icon-link" href="../index.html" aria-label="Back to capture">Capture</a>
+      </header>
+
+      <main>
+        <section class="page-hero settings-hero">
+          <div>
+            <p class="eyebrow">Controls</p>
+            <h2>Money, calories, protein, AI caps, and midnight summary schedule.</h2>
+          </div>
+          <span class="status-pill">private</span>
+        </section>
+
+        <section class="command-grid">
+          <article class="command-panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">Money budgets</p>
+                <h2>Spend limits</h2>
+              </div>
+              <span class="status-pill muted">weekly + monthly</span>
+            </div>
+            <div class="budget-grid">
+              <label class="settings-row"><span>Monthly spend cap</span><input id="monthlyMoneyBudget" type="number" value="45000" /></label>
+              <label class="settings-row"><span>Weekly spend cap</span><input id="weeklyMoneyBudget" type="number" value="10500" /></label>
+              <label class="settings-row"><span>Food delivery cap</span><input id="foodMoneyBudget" type="number" value="6500" /></label>
+            </div>
+          </article>
+
+          <article class="command-panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">Diet budgets</p>
+                <h2>Calories and protein</h2>
+              </div>
+              <span class="status-pill muted">fat loss</span>
+            </div>
+            <div class="budget-grid">
+              <label class="settings-row"><span>Daily calories</span><input id="dailyCaloriesBudget" type="number" value="2100" /></label>
+              <label class="settings-row"><span>Daily protein</span><input id="dailyProteinBudget" type="number" value="130" /></label>
+              <label class="settings-row"><span>Weekly calories</span><input id="weeklyCaloriesBudget" type="number" value="14700" /></label>
+            </div>
+          </article>
+        </section>
+
+        <section class="command-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">AI schedule</p>
+              <h2>12 AM daily summary</h2>
+            </div>
+            <span id="scheduleStatus" class="status-pill muted">enabled</span>
+          </div>
+          <div class="budget-grid">
+            <label class="settings-row"><span>Nightly summary</span><input id="nightlySummaryToggle" type="checkbox" checked /></label>
+            <label class="settings-row"><span>Aggressive autopilot</span><input id="autopilotToggle" type="checkbox" checked /></label>
+            <label class="settings-row"><span>Daily AI cap ($)</span><input id="dailyCapInput" type="number" min="1" value="2" /></label>
+          </div>
+          <p id="settingsStatus" class="agent-detail">At 12 AM, the backend job will summarize money, calories, protein, duplicates, and tomorrow's priorities.</p>
+        </section>
+
+        <section class="cost-panel" aria-labelledby="cost-title">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Meter</p>
+              <h2 id="cost-title">AI cost estimate</h2>
+            </div>
+            <span id="monthlyCost" class="metric-badge">$4.82</span>
+          </div>
+          <div class="cost-controls">
+            <label>Images/day<input id="imagesPerDay" type="range" min="0" max="80" value="15" /></label>
+            <label>Voice min/day<input id="voicePerDay" type="range" min="0" max="30" value="5" /></label>
+            <label>Agent events/day<input id="eventsPerDay" type="range" min="0" max="150" value="40" /></label>
+          </div>
+          <p id="costBreakdown" class="cost-breakdown"></p>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <a class="nav-item" href="../index.html">Capture</a>
+        <a class="nav-item" href="./dashboard.html">Dashboard</a>
+        <a class="nav-item" href="./money.html">Money</a>
+        <a class="nav-item" href="./diet.html">Diet</a>
+        <a class="nav-item" href="./insights.html">Insights</a>
+      </nav>
+    </div>
+
+    <script type="module" src="../src/pages/settings.js"></script>
+  </body>
+</html>

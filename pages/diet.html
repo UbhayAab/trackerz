@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trackerz - Diet</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="app-shell page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Diet</p>
+          <h1>Fat-loss pace</h1>
+        </div>
+        <a class="icon-link" href="./settings.html" aria-label="Open settings">Settings</a>
+      </header>
+
+      <main>
+        <section class="page-hero diet-hero">
+          <div>
+            <p class="eyebrow">Calories + protein</p>
+            <h2>Daily eating summary, macro budget, meal evidence, and AI corrections.</h2>
+          </div>
+          <span class="status-pill">Indian food defaults</span>
+        </section>
+
+        <section class="summary-rail" aria-label="Diet summary">
+          <article class="summary-tile"><span>Calories</span><strong>1,600 / 2,100</strong></article>
+          <article class="summary-tile"><span>Protein</span><strong>86 / 130g</strong></article>
+          <article class="summary-tile"><span>Photo gaps</span><strong>1 meal</strong></article>
+          <article class="summary-tile"><span>Next move</span><strong>44g protein</strong></article>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="metric-card accent-food">
+            <p>Calories left</p>
+            <strong id="caloriesLeft">500</strong>
+            <span>Target 2,100</span>
+          </article>
+          <article class="metric-card accent-food">
+            <p>Protein</p>
+            <strong id="proteinMetric">86g</strong>
+            <span>Target 130g</span>
+          </article>
+          <article class="metric-card accent-wellness">
+            <p>Adherence</p>
+            <strong id="adherenceMetric">78</strong>
+            <span>Photo + voice evidence</span>
+          </article>
+        </section>
+
+        <section class="command-grid">
+          <article class="command-panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">Meals</p>
+                <h2>Macro table</h2>
+              </div>
+              <span class="status-pill muted">ranges</span>
+            </div>
+            <div id="macroTable" class="data-table-wrap"></div>
+          </article>
+
+          <article class="command-panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">Budgets</p>
+                <h2>Weekly and daily targets</h2>
+              </div>
+              <span class="status-pill muted">editable scaffold</span>
+            </div>
+            <div class="budget-grid">
+              <label class="settings-row"><span>Daily calories</span><input id="dailyCaloriesBudget" type="number" value="2100" /></label>
+              <label class="settings-row"><span>Daily protein</span><input id="dailyProteinBudget" type="number" value="130" /></label>
+              <label class="settings-row"><span>Weekly calorie budget</span><input id="weeklyCaloriesBudget" type="number" value="14700" /></label>
+            </div>
+            <p id="dietBudgetStatus" class="agent-detail">AI summary checks calorie/protein pace every night at 12 AM.</p>
+          </article>
+        </section>
+
+        <section class="ai-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">AI recommendations</p>
+              <h2>Protein and meal timing</h2>
+            </div>
+            <button id="refreshInsights" class="secondary-button" type="button">Refresh</button>
+          </div>
+          <ul id="insightList" class="insight-list"></ul>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <a class="nav-item" href="../index.html">Capture</a>
+        <a class="nav-item" href="./dashboard.html">Dashboard</a>
+        <a class="nav-item" href="./money.html">Money</a>
+        <a class="nav-item active" href="./diet.html">Diet</a>
+        <a class="nav-item" href="./insights.html">Insights</a>
+      </nav>
+    </div>
+
+    <script type="module" src="../src/pages/diet.js"></script>
+  </body>
+</html>

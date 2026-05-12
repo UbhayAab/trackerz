@@ -4,8 +4,8 @@
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  width: min(100%, 860px);
+  grid-template-columns: repeat(5, 1fr);
+  width: min(100%, 980px);
   margin: 0 auto;
   padding: 10px 12px 14px;
   background: rgba(251, 250, 246, 0.96);
@@ -14,10 +14,13 @@
 }
 
 .nav-item {
+  display: grid;
+  place-items: center;
   min-height: 44px;
   border-color: transparent;
   background: transparent;
   color: var(--muted);
+  text-decoration: none;
 }
 
 .nav-item.active {

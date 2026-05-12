@@ -3,6 +3,7 @@ import { usd } from "../utils/formatters.js";
 import { getCostEstimate } from "../services/cost-service.js";
 
 export function renderCostMeter() {
+  if (!document.querySelector("#imagesPerDay")) return;
   const images = Number($("#imagesPerDay").value);
   const voiceMinutes = Number($("#voicePerDay").value);
   const events = Number($("#eventsPerDay").value);
@@ -14,6 +15,7 @@ export function renderCostMeter() {
 }
 
 export function bindCostMeter() {
+  if (!document.querySelector("#imagesPerDay")) return;
   $all("#imagesPerDay, #voicePerDay, #eventsPerDay").forEach((input) => {
     input.addEventListener("input", renderCostMeter);
   });

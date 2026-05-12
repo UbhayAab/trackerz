@@ -1,1 +1,1 @@
-import "./src/main.js";
+import "./src/pages/capture.js";

@@ -38,7 +38,7 @@
   place-items: center;
   border-radius: 999px;
   padding: 4px 8px;
-  background: #eee7da;
+  background: #ecf0f5;
   color: var(--ink);
   font-size: 0.72rem;
   font-weight: 900;
@@ -54,7 +54,7 @@
   margin: 2px 4px 2px 0;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #fffdf8;
+  background: #ffffff;
   color: var(--ink);
   font-size: 0.72rem;
   font-weight: 900;
@@ -76,7 +76,7 @@
   gap: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fffdf8;
+  background: #ffffff;
   padding: 12px;
 }
 
@@ -95,7 +95,7 @@
 
 .flow-domain {
   border-radius: 999px;
-  background: #eee7da;
+  background: #ecf0f5;
   padding: 4px 8px;
   color: var(--ink);
   font-size: 0.72rem;

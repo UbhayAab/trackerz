@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trackerz - Money</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="app-shell page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Money</p>
+          <h1>Spend control</h1>
+        </div>
+        <a class="icon-link" href="./settings.html" aria-label="Open settings">Settings</a>
+      </header>
+
+      <main>
+        <section class="page-hero money-hero">
+          <div>
+            <p class="eyebrow">Budget + imports</p>
+            <h2>Statements, screenshots, subscriptions, refunds, and safe-spend pace.</h2>
+          </div>
+          <span class="status-pill">INR</span>
+        </section>
+
+        <section class="summary-rail" aria-label="Money summary">
+          <article class="summary-tile"><span>Monthly cap</span><strong>Rs 45k</strong></article>
+          <article class="summary-tile"><span>Forecast</span><strong>Rs 52.4k</strong></article>
+          <article class="summary-tile"><span>Dupes found</span><strong>96</strong></article>
+          <article class="summary-tile"><span>Safe today</span><strong>Rs 740</strong></article>
+        </section>
+
+        <section class="command-grid">
+          <article class="command-panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">Ledger</p>
+                <h2>Latest rows</h2>
+              </div>
+              <span class="status-pill muted">deduped</span>
+            </div>
+            <div id="ledgerTable" class="data-table-wrap"></div>
+          </article>
+
+          <article class="command-panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="eyebrow">Imports</p>
+                <h2>Bank files</h2>
+              </div>
+              <span class="status-pill muted">preview first</span>
+            </div>
+            <div id="importTable" class="data-table-wrap"></div>
+          </article>
+        </section>
+
+        <section class="command-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Budgets</p>
+              <h2>Weekly and monthly money plan</h2>
+            </div>
+            <span class="status-pill muted">editable scaffold</span>
+          </div>
+          <div class="budget-grid">
+            <label class="settings-row"><span>Monthly spend cap</span><input id="monthlyMoneyBudget" type="number" value="45000" /></label>
+            <label class="settings-row"><span>Weekly spend cap</span><input id="weeklyMoneyBudget" type="number" value="10500" /></label>
+            <label class="settings-row"><span>Food delivery cap</span><input id="foodMoneyBudget" type="number" value="6500" /></label>
+          </div>
+          <p id="moneyBudgetStatus" class="agent-detail">Budgets update the 12 AM summary and trajectory cards.</p>
+        </section>
+
+        <section class="command-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Trajectory</p>
+              <h2>Category burn forecast</h2>
+            </div>
+            <span class="status-pill muted">MOM</span>
+          </div>
+          <div id="budgetTable" class="data-table-wrap"></div>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <a class="nav-item" href="../index.html">Capture</a>
+        <a class="nav-item" href="./dashboard.html">Dashboard</a>
+        <a class="nav-item active" href="./money.html">Money</a>
+        <a class="nav-item" href="./diet.html">Diet</a>
+        <a class="nav-item" href="./insights.html">Insights</a>
+      </nav>
+    </div>
+
+    <script type="module" src="../src/pages/money.js"></script>
+  </body>
+</html>

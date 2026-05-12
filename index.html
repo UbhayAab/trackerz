@@ -3,31 +3,37 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ubhay Life OS</title>
+    <title>Trackerz - Capture</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <div class="app-shell page-shell">
       <header class="topbar">
         <div>
           <p class="eyebrow">Trackerz</p>
-          <h1>Life cockpit</h1>
+          <h1>Today</h1>
         </div>
-        <button id="settingsButton" class="icon-button" type="button" aria-label="Open settings">...</button>
+        <a class="icon-link" href="./pages/settings.html" aria-label="Open settings">Settings</a>
       </header>
 
       <main>
+        <section class="page-hero capture-hero">
+          <div>
+            <p class="eyebrow">First action</p>
+            <h2>Drop anything. See the parser work.</h2>
+          </div>
+          <span id="jobEta" class="status-pill">ready</span>
+        </section>
+
         <section class="capture-panel" aria-labelledby="capture-title">
           <div class="capture-head">
-            <h2 id="capture-title">Drop today here</h2>
-            <span id="jobEta" class="status-pill">ready</span>
+            <h2 id="capture-title">Universal capture</h2>
+            <span class="status-pill muted">text / image / voice / file</span>
           </div>
 
           <textarea id="captureText" rows="5" placeholder="paid 240 zomato, ate dal rice and curd, walked 7k, felt low after lunch"></textarea>
 
-          <div id="routePreview" class="route-preview">
-            Auto route: waiting for input
-          </div>
+          <div id="routePreview" class="route-preview">Auto route: waiting for input</div>
 
           <div class="agent-console" aria-live="polite">
             <div class="panel-title-row">
@@ -37,7 +43,8 @@
               </div>
               <span class="status-pill muted">visible</span>
             </div>
-            <p id="agentDetail" class="agent-detail">No hidden work. When you process a capture, the tables update after validation.</p>
+            <p id="agentDetail" class="agent-detail">No hidden work. Processing stages, ETA, and table updates appear here.</p>
+            <div id="agentProgress" class="agent-progress" aria-label="AI progress"><span></span></div>
             <div id="agentStageList" class="stage-list"></div>
             <ul id="parseLog" class="parse-log"></ul>
           </div>
@@ -66,25 +73,6 @@
           </div>
         </section>
 
-        <section id="capture-section" class="inbox-strip" aria-labelledby="inbox-title">
-          <div>
-            <p class="eyebrow">Inbox</p>
-            <h2 id="inbox-title">Review queue</h2>
-          </div>
-          <div id="reviewCount" class="metric-badge">7</div>
-        </section>
-
-        <section class="pipeline-panel" aria-labelledby="pipeline-title">
-          <div class="panel-title-row">
-            <div>
-              <p class="eyebrow">Agent rails</p>
-              <h2 id="pipeline-title">Capture to database</h2>
-            </div>
-            <span class="status-pill muted">guarded</span>
-          </div>
-          <div id="pipelineList" class="pipeline-list"></div>
-        </section>
-
         <section class="dashboard-grid">
           <article class="metric-card accent-money">
             <p>Today spend</p>
@@ -103,7 +91,7 @@
           </article>
         </section>
 
-        <section class="command-grid" aria-label="Operational command center">
+        <section class="command-grid" aria-label="Today work queue">
           <article class="command-panel" aria-labelledby="review-table-title">
             <div class="panel-title-row">
               <div>
@@ -115,142 +103,28 @@
             <div id="reviewTable" class="data-table-wrap"></div>
           </article>
 
-          <article class="command-panel" aria-labelledby="import-table-title">
+          <article class="ai-panel" aria-labelledby="ai-title">
             <div class="panel-title-row">
               <div>
-                <p class="eyebrow">Imports</p>
-                <h2 id="import-table-title">Bank files</h2>
+                <p class="eyebrow">Day summary</p>
+                <h2 id="ai-title">What changed</h2>
               </div>
-              <span class="metric-badge">month end</span>
+            <button id="refreshInsights" class="secondary-button" type="button">Refresh</button>
             </div>
-            <div id="importTable" class="data-table-wrap"></div>
+            <ul id="insightList" class="insight-list"></ul>
           </article>
-        </section>
-
-        <section class="view-tabs" aria-label="Dashboard views">
-          <button class="tab active" data-view="dod" type="button">DOD</button>
-          <button class="tab" data-view="wow" type="button">WOW</button>
-          <button class="tab" data-view="mom" type="button">MOM</button>
-          <button class="tab" data-view="trajectory" type="button">Trajectory</button>
-        </section>
-
-        <section class="analytics-panel" aria-labelledby="analytics-title">
-          <div class="panel-title-row">
-            <div>
-              <p class="eyebrow">Hard data</p>
-              <h2 id="analytics-title">Money and body trend</h2>
-            </div>
-            <span id="activeViewLabel" class="status-pill muted">DOD</span>
-          </div>
-          <div id="chart" class="bar-chart" aria-label="Trend chart"></div>
-          <div id="ledgerTable" class="data-table-wrap table-spaced"></div>
-        </section>
-
-        <section class="ai-panel" aria-labelledby="ai-title">
-          <div class="panel-title-row">
-            <div>
-              <p class="eyebrow">AI overview</p>
-              <h2 id="ai-title">What changed</h2>
-            </div>
-            <button id="refreshInsights" class="icon-button" type="button" aria-label="Refresh insights">R</button>
-          </div>
-          <ul id="insightList" class="insight-list"></ul>
-        </section>
-
-        <section class="analysis-grid" aria-label="Advanced analysis">
-          <article class="command-panel">
-            <div class="panel-title-row">
-              <div>
-                <p class="eyebrow">Budget</p>
-                <h2>Trajectory</h2>
-              </div>
-              <span class="status-pill muted">forecast</span>
-            </div>
-            <div id="budgetTable" class="data-table-wrap"></div>
-          </article>
-          <article class="command-panel">
-            <div class="panel-title-row">
-              <div>
-                <p class="eyebrow">Diet</p>
-                <h2>Macro pace</h2>
-              </div>
-              <span class="status-pill muted">fat loss</span>
-            </div>
-            <div id="macroTable" class="data-table-wrap"></div>
-          </article>
-        </section>
-
-        <section class="cost-panel" aria-labelledby="cost-title">
-          <div class="panel-title-row">
-            <div>
-              <p class="eyebrow">Meter</p>
-              <h2 id="cost-title">AI cost estimate</h2>
-            </div>
-            <span id="monthlyCost" class="metric-badge">$4.82</span>
-          </div>
-          <div class="cost-controls">
-            <label>
-              Images/day
-              <input id="imagesPerDay" type="range" min="0" max="80" value="15" />
-            </label>
-            <label>
-              Voice min/day
-              <input id="voicePerDay" type="range" min="0" max="30" value="5" />
-            </label>
-            <label>
-              Agent events/day
-              <input id="eventsPerDay" type="range" min="0" max="150" value="40" />
-            </label>
-          </div>
-          <p id="costBreakdown" class="cost-breakdown"></p>
-        </section>
-
-        <section class="flow-panel" aria-labelledby="flow-title">
-          <div class="panel-title-row">
-            <div>
-              <p class="eyebrow">Flow lab</p>
-              <h2 id="flow-title">Scenarios covered</h2>
-            </div>
-            <span id="flowCount" class="metric-badge">0</span>
-          </div>
-          <div class="flow-filters" aria-label="Flow filters">
-            <button class="flow-filter active" data-domain="all" type="button">All</button>
-            <button class="flow-filter" data-domain="money" type="button">Money</button>
-            <button class="flow-filter" data-domain="diet" type="button">Diet</button>
-            <button class="flow-filter" data-domain="dashboard" type="button">Dash</button>
-            <button class="flow-filter" data-domain="ai" type="button">AI</button>
-          </div>
-          <div id="flowList" class="flow-list"></div>
         </section>
       </main>
 
       <nav class="bottom-nav" aria-label="Main navigation">
-        <button class="nav-item active" type="button">Capture</button>
-        <button class="nav-item" type="button">Money</button>
-        <button class="nav-item" type="button">Diet</button>
-        <button class="nav-item" type="button">Insights</button>
+        <a class="nav-item active" href="./index.html">Capture</a>
+        <a class="nav-item" href="./pages/dashboard.html">Dashboard</a>
+        <a class="nav-item" href="./pages/money.html">Money</a>
+        <a class="nav-item" href="./pages/diet.html">Diet</a>
+        <a class="nav-item" href="./pages/insights.html">Insights</a>
       </nav>
-
-      <aside id="settingsPanel" class="settings-panel" hidden>
-        <div class="panel-title-row">
-          <div>
-            <p class="eyebrow">Controls</p>
-            <h2>Agent settings</h2>
-          </div>
-          <button id="closeSettings" class="icon-button" type="button" aria-label="Close settings">x</button>
-        </div>
-        <label class="settings-row">
-          <span>Aggressive autopilot</span>
-          <input id="autopilotToggle" type="checkbox" checked />
-        </label>
-        <label class="settings-row">
-          <span>Daily AI cap</span>
-          <input id="dailyCapInput" type="number" min="1" value="2" />
-        </label>
-        <p id="settingsStatus" class="agent-detail">Autopilot can create safe rows, but risky rows stay in review.</p>
-      </aside>
     </div>
 
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./src/pages/capture.js"></script>
   </body>
 </html>

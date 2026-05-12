@@ -5,8 +5,8 @@
 body {
   margin: 0;
   background:
-    linear-gradient(135deg, rgba(232, 180, 75, 0.18), transparent 34%),
-    linear-gradient(215deg, rgba(44, 111, 187, 0.16), transparent 42%),
+    linear-gradient(135deg, rgba(39, 111, 194, 0.11), transparent 34%),
+    linear-gradient(215deg, rgba(19, 138, 91, 0.1), transparent 42%),
     var(--paper);
   color: var(--ink);
 }

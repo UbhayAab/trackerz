@@ -1,17 +1,17 @@
 :root {
   --ink: #171717;
-  --muted: #6f6a60;
-  --paper: #fbfaf6;
+  --muted: #5f6875;
+  --paper: #f6f8fb;
   --panel: #ffffff;
-  --panel-warm: #fffaf0;
-  --line: #ded8cd;
-  --money: #1c7c54;
-  --food: #d14d2f;
-  --wellness: #2c6fbb;
+  --panel-warm: #fff8e7;
+  --line: #dce2ea;
+  --money: #138a5b;
+  --food: #d94d3d;
+  --wellness: #276fc2;
   --risk: #a13b2d;
-  --sun: #e8b44b;
+  --sun: #f0b83f;
   --charcoal: #141414;
-  --shadow: 0 18px 45px rgba(34, 27, 15, 0.12);
+  --shadow: 0 18px 45px rgba(15, 23, 42, 0.1);
   color-scheme: light;
   font-family: "Aptos", "Segoe UI", sans-serif;
 }

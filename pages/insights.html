@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trackerz - Insights</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="app-shell page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Insights</p>
+          <h1>AI readout</h1>
+        </div>
+        <a class="icon-link" href="./settings.html" aria-label="Open settings">Settings</a>
+      </header>
+
+      <main>
+        <section class="page-hero insights-hero">
+          <div>
+            <p class="eyebrow">Daily / weekly / monthly</p>
+            <h2>Recommendations, risks, duplicate queue, and midnight summaries.</h2>
+          </div>
+          <span class="status-pill">12 AM job</span>
+        </section>
+
+        <section class="summary-rail" aria-label="AI summary">
+          <article class="summary-tile"><span>Pending reviews</span><strong>4</strong></article>
+          <article class="summary-tile"><span>Confidence</span><strong>86%</strong></article>
+          <article class="summary-tile"><span>Night job</span><strong>00:00</strong></article>
+          <article class="summary-tile"><span>Coverage</span><strong>40+ flows</strong></article>
+        </section>
+
+        <section class="ai-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">AI recommendations</p>
+              <h2>What to do next</h2>
+            </div>
+            <button id="refreshInsights" class="secondary-button" type="button">Refresh</button>
+          </div>
+          <ul id="insightList" class="insight-list"></ul>
+        </section>
+
+        <section class="pipeline-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Automation</p>
+              <h2>Nightly summary design</h2>
+            </div>
+            <span class="status-pill muted">00:00</span>
+          </div>
+          <div id="scheduleList" class="pipeline-list"></div>
+        </section>
+
+        <section class="flow-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Flow lab</p>
+              <h2>Scenario coverage</h2>
+            </div>
+            <span id="flowCount" class="metric-badge">0</span>
+          </div>
+          <div class="flow-filters" aria-label="Flow filters">
+            <button class="flow-filter active" data-domain="all" type="button">All</button>
+            <button class="flow-filter" data-domain="money" type="button">Money</button>
+            <button class="flow-filter" data-domain="diet" type="button">Diet</button>
+            <button class="flow-filter" data-domain="dashboard" type="button">Dash</button>
+            <button class="flow-filter" data-domain="ai" type="button">AI</button>
+          </div>
+          <div id="flowList" class="flow-list"></div>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <a class="nav-item" href="../index.html">Capture</a>
+        <a class="nav-item" href="./dashboard.html">Dashboard</a>
+        <a class="nav-item" href="./money.html">Money</a>
+        <a class="nav-item" href="./diet.html">Diet</a>
+        <a class="nav-item active" href="./insights.html">Insights</a>
+      </nav>
+    </div>
+
+    <script type="module" src="../src/pages/insights.js"></script>
+  </body>
+</html>

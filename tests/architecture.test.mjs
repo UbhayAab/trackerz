@@ -10,10 +10,10 @@ function jsFiles(dir) {
 const srcFiles = jsFiles("src");
 const styleFiles = readdirSync("styles").filter((file) => file.endsWith(".css"));
 
-assert.ok(srcFiles.length >= 30, `expected at least 30 src modules, got ${srcFiles.length}`);
+assert.ok(srcFiles.length >= 45, `expected at least 45 src modules, got ${srcFiles.length}`);
 assert.ok(styleFiles.length >= 8, `expected layered CSS files, got ${styleFiles.length}`);
 
-for (const directory of ["agent", "analytics", "data", "domain/diet", "domain/money", "domain/wellness", "duplicates", "imports", "services", "ui", "utils"]) {
+for (const directory of ["agent", "ai", "analytics", "data", "domain/diet", "domain/money", "domain/wellness", "duplicates", "imports", "pages", "services", "state", "ui", "utils"]) {
   assert.ok(srcFiles.some((file) => file.startsWith(`${directory}/`)), `missing src/${directory}`);
 }
 
