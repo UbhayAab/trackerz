@@ -80,7 +80,7 @@ function buildImportRow(file) {
 }
 
 function extractAmount(text) {
-  const match = text.match(/(?:rs|inr|₹)?\s*([0-9][0-9,]{1,7})(?:\s*rupees)?/i);
+  const match = text.match(/(?:rs|inr|\u20b9)?\s*([0-9][0-9,]{1,7})(?:\s*rupees)?/i);
   return match ? Number(match[1].replaceAll(",", "")) : null;
 }
 

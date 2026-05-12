@@ -2,12 +2,18 @@ import { $ } from "../utils/dom.js";
 import { inr } from "../utils/formatters.js";
 
 export function renderMetrics(state) {
-  $("#todaySpend").textContent = inr(state.metrics.todaySpend);
-  $("#todaySpend").nextElementSibling.textContent = `Budget pace ${inr(state.metrics.budgetPace)}`;
-  $("#proteinMetric").textContent = `${state.metrics.protein}g`;
-  $("#proteinMetric").nextElementSibling.textContent = `Target ${state.metrics.proteinTarget}g`;
-  $("#habitScore").textContent = String(state.metrics.habitScore);
-  $("#habitScore").nextElementSibling.textContent = state.metrics.habitNote;
-  $("#reviewCount").textContent = String(state.reviewRows.length);
-  $("#reviewRisk").textContent = `${state.reviewRows.filter((row) => row.risk !== "none").length} risk`;
+  setText("#todaySpend", inr(state.metrics.todaySpend), `Budget pace ${inr(state.metrics.budgetPace)}`);
+  setText("#proteinMetric", `${state.metrics.protein}g`, `Target ${state.metrics.proteinTarget}g`);
+  setText("#habitScore", String(state.metrics.habitScore), state.metrics.habitNote);
+  setText("#reviewCount", String(state.reviewRows.length));
+  setText("#reviewRisk", `${state.reviewRows.filter((row) => row.risk !== "none").length} risk`);
+  setText("#caloriesLeft", "500", "Target 2,100");
+  setText("#adherenceMetric", "78", "Photo + voice evidence");
+}
+
+function setText(selector, value, siblingText = null) {
+  const element = document.querySelector(selector);
+  if (!element) return;
+  element.textContent = value;
+  if (siblingText && element.nextElementSibling) element.nextElementSibling.textContent = siblingText;
 }

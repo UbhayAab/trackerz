@@ -1,4 +1,3 @@
-import { $ } from "../utils/dom.js";
 import { updateState } from "../state/app-state.js";
 import { renderTable } from "./table-renderer.js";
 
@@ -46,11 +45,11 @@ const macroColumns = [
 ];
 
 export function renderOperationalTables(state) {
-  $("#reviewTable").innerHTML = renderTable(reviewColumns, state.reviewRows, { table: "review" });
-  $("#importTable").innerHTML = renderTable(importColumns, state.importRows, { table: "import" });
-  $("#ledgerTable").innerHTML = renderTable(ledgerColumns, state.ledgerRows);
-  $("#budgetTable").innerHTML = renderTable(budgetColumns, state.budgetRows);
-  $("#macroTable").innerHTML = renderTable(macroColumns, state.macroRows);
+  setTable("#reviewTable", reviewColumns, state.reviewRows, { table: "review" });
+  setTable("#importTable", importColumns, state.importRows, { table: "import" });
+  setTable("#ledgerTable", ledgerColumns, state.ledgerRows);
+  setTable("#budgetTable", budgetColumns, state.budgetRows);
+  setTable("#macroTable", macroColumns, state.macroRows);
 }
 
 export function bindOperationalTables() {
@@ -84,4 +83,10 @@ export function bindOperationalTables() {
       });
     }
   });
+}
+
+function setTable(selector, columns, rows, options = {}) {
+  const element = document.querySelector(selector);
+  if (!element) return;
+  element.innerHTML = renderTable(columns, rows, options);
 }

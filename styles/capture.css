@@ -6,12 +6,12 @@
 textarea {
   width: 100%;
   min-height: 128px;
-  border: 1px solid #cfc8bc;
+  border: 1px solid var(--line);
   border-radius: 8px;
   resize: vertical;
   padding: 14px;
   color: var(--ink);
-  background: #fffdf8;
+  background: #ffffff;
   outline: none;
 }
 
@@ -43,7 +43,7 @@ textarea:focus {
 }
 
 .route-preview {
-  border: 1px dashed #cfc8bc;
+  border: 1px dashed var(--line);
   border-radius: 8px;
   background: var(--panel-warm);
   padding: 10px 12px;
@@ -57,8 +57,24 @@ textarea:focus {
   gap: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fffdf8;
+  background: #ffffff;
   padding: 12px;
+}
+
+.agent-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9edf4;
+}
+
+.agent-progress span {
+  display: block;
+  width: var(--progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--wellness), var(--money), var(--sun));
+  transition: width 220ms ease;
 }
 
 .agent-detail {
@@ -85,13 +101,13 @@ textarea:focus {
 
 .stage-dot.active {
   border-color: var(--wellness);
-  background: rgba(44, 111, 187, 0.12);
+  background: rgba(39, 111, 194, 0.12);
   color: var(--wellness);
 }
 
 .stage-dot.done {
   border-color: var(--money);
-  background: rgba(28, 124, 84, 0.1);
+  background: rgba(19, 138, 91, 0.1);
   color: var(--money);
 }
 
