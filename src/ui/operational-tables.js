@@ -1,5 +1,5 @@
 import { $ } from "../utils/dom.js";
-import { budgetRows, importRows, ledgerRows, macroRows, reviewRows } from "../data/table-data.js";
+import { updateState } from "../state/app-state.js";
 import { renderTable } from "./table-renderer.js";
 
 const reviewColumns = [
@@ -8,6 +8,7 @@ const reviewColumns = [
   { key: "confidence", label: "Conf." },
   { key: "risk", label: "Risk", badge: true },
   { key: "action", label: "Action" },
+  { key: "ops", label: "Ops", actions: [{ label: "Approve", action: "approve" }, { label: "Drop", action: "drop" }] },
 ];
 
 const importColumns = [
@@ -16,6 +17,7 @@ const importColumns = [
   { key: "mapped", label: "Mapped" },
   { key: "duplicate", label: "Dupes" },
   { key: "status", label: "Status", badge: true },
+  { key: "ops", label: "Ops", actions: [{ label: "Import", action: "import" }] },
 ];
 
 const ledgerColumns = [
@@ -43,10 +45,43 @@ const macroColumns = [
   { key: "note", label: "Note" },
 ];
 
-export function renderOperationalTables() {
-  $("#reviewTable").innerHTML = renderTable(reviewColumns, reviewRows);
-  $("#importTable").innerHTML = renderTable(importColumns, importRows);
-  $("#ledgerTable").innerHTML = renderTable(ledgerColumns, ledgerRows);
-  $("#budgetTable").innerHTML = renderTable(budgetColumns, budgetRows);
-  $("#macroTable").innerHTML = renderTable(macroColumns, macroRows);
+export function renderOperationalTables(state) {
+  $("#reviewTable").innerHTML = renderTable(reviewColumns, state.reviewRows, { table: "review" });
+  $("#importTable").innerHTML = renderTable(importColumns, state.importRows, { table: "import" });
+  $("#ledgerTable").innerHTML = renderTable(ledgerColumns, state.ledgerRows);
+  $("#budgetTable").innerHTML = renderTable(budgetColumns, state.budgetRows);
+  $("#macroTable").innerHTML = renderTable(macroColumns, state.macroRows);
+}
+
+export function bindOperationalTables() {
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(".table-action");
+    if (!button) return;
+    const { table, action, rowId } = button.dataset;
+    if (table === "review") {
+      updateState((state) => {
+        const row = state.reviewRows.find((item) => item.id === rowId);
+        if (!row) return;
+        if (action === "drop") {
+          state.reviewRows = state.reviewRows.filter((item) => item.id !== rowId);
+          state.parseLog.unshift(`Dropped review item: ${row.item}`);
+          return;
+        }
+        row.risk = "approved";
+        row.action = "applied";
+        state.parseLog.unshift(`Approved AI action: ${row.item}`);
+      });
+    }
+    if (table === "import") {
+      updateState((state) => {
+        const row = state.importRows.find((item) => item.id === rowId);
+        if (!row) return;
+        row.rows = row.rows === "detecting" ? "128" : row.rows;
+        row.mapped = row.mapped === "pending" ? "93%" : row.mapped;
+        row.duplicate = row.duplicate === "pending" ? "18" : row.duplicate;
+        row.status = "imported";
+        state.parseLog.unshift(`Imported preview rows from ${row.file}`);
+      });
+    }
+  });
 }

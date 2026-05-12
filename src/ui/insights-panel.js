@@ -1,11 +1,12 @@
-import { insights } from "../data/dashboard-data.js";
 import { $ } from "../utils/dom.js";
 
-export function renderInsights() {
-  $("#insightList").innerHTML = insights.map((item) => `<li>${item}</li>`).join("");
+export function renderInsights(state) {
+  $("#insightList").innerHTML = state.insights.map((item) => `<li>${item}</li>`).join("");
+}
+
+export function bindInsights() {
   $("#refreshInsights").addEventListener("click", () => {
-    $("#insightList").innerHTML = insights
-      .map((item, index) => `<li>${index === 0 ? "Refreshed: " : ""}${item}</li>`)
-      .join("");
+    const first = $("#insightList li");
+    if (first) first.textContent = `Refreshed: ${first.textContent}`;
   });
 }

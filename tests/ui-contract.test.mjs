@@ -20,9 +20,16 @@ for (const id of [
   "voiceButton",
   "submitCapture",
   "routePreview",
+  "agentStatus",
+  "agentStageList",
+  "parseLog",
+  "jobEta",
   "flowList",
   "monthlyCost",
   "chart",
+  "settingsButton",
+  "settingsPanel",
+  "autopilotToggle",
 ]) {
   assert.ok(html.includes(`id="${id}"`), `missing #${id}`);
 }
@@ -31,7 +38,7 @@ for (const text of ["Bank Excel", "Diet voice", "Screenshot dump", "DOD", "WOW",
   assert.ok(html.includes(text), `missing UI label ${text}`);
 }
 
-for (const selector of [".capture-panel", ".route-preview", ".flow-card", ".bottom-nav"]) {
+for (const selector of [".capture-panel", ".route-preview", ".agent-console", ".stage-dot", ".table-action", ".flow-card", ".settings-panel", ".bottom-nav"]) {
   assert.ok(css.includes(selector), `missing CSS ${selector}`);
 }
 
@@ -41,7 +48,13 @@ assert.ok(srcFiles.length >= 12, `expected modular src scaffold, got ${srcFiles.
 for (const file of [
   "ui/capture-panel.js",
   "ui/operational-tables.js",
+  "ui/agent-status.js",
+  "ui/navigation.js",
+  "ui/settings-panel.js",
   "ui/flow-lab.js",
+  "state/app-state.js",
+  "ai/job-runner.js",
+  "ai/capture-parser.js",
   "services/capture-router.js",
   "data/table-data.js",
 ]) {
