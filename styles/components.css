@@ -2,7 +2,8 @@
   margin: 0 0 4px;
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
@@ -21,7 +22,7 @@
   border-radius: 8px;
   background: #ffffff;
   color: var(--ink);
-  font-weight: 800;
+  font-weight: var(--weight-semibold);
 }
 
 .primary-button {
@@ -65,7 +66,7 @@
   background: var(--charcoal);
   color: white;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: var(--weight-semibold);
 }
 
 .status-pill.muted {
@@ -100,7 +101,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px;
-  font-weight: 800;
+  font-weight: var(--weight-medium);
 }
 
 .settings-row input[type="number"] {
