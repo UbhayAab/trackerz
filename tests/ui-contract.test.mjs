@@ -34,6 +34,9 @@ for (const id of [
   "flowList",
   "monthlyCost",
   "chart",
+  "clearWorkspace",
+  "loadDemoData",
+  "dataStatus",
 ]) {
   assert.ok((html + pageHtml).includes(`id="${id}"`), `missing #${id}`);
 }
@@ -42,7 +45,7 @@ for (const id of ["monthlyMoneyBudget", "weeklyMoneyBudget", "dailyCaloriesBudge
   assert.ok(pageHtml.includes(`id="${id}"`), `missing settings/budget #${id}`);
 }
 
-for (const text of ["Bank Excel", "Diet voice", "Screenshot dump", "DOD", "WOW", "MOM", "Trajectory", "12 AM daily summary"]) {
+for (const text of ["Bank Excel", "Diet voice", "Screenshot dump", "DOD", "WOW", "MOM", "Trajectory", "12 AM daily summary", "Clear all data", "Load demo data"]) {
   assert.ok((html + pageHtml).includes(text), `missing UI label ${text}`);
 }
 
@@ -64,6 +67,7 @@ for (const file of [
   "ui/operational-tables.js",
   "ui/agent-status.js",
   "ui/budget-inputs.js",
+  "ui/data-controls.js",
   "ui/nightly-schedule.js",
   "ui/settings-panel.js",
   "ui/flow-lab.js",

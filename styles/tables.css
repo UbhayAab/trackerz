@@ -29,6 +29,11 @@
   vertical-align: top;
 }
 
+.empty-cell {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .cell-strong {
   font-weight: 900;
 }

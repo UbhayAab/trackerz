@@ -7,8 +7,8 @@ export function renderMetrics(state) {
   setText("#habitScore", String(state.metrics.habitScore), state.metrics.habitNote);
   setText("#reviewCount", String(state.reviewRows.length));
   setText("#reviewRisk", `${state.reviewRows.filter((row) => row.risk !== "none").length} risk`);
-  setText("#caloriesLeft", "500", "Target 2,100");
-  setText("#adherenceMetric", "78", "Photo + voice evidence");
+  setText("#caloriesLeft", String(state.metrics.caloriesLeft), "Target 2,100");
+  setText("#adherenceMetric", String(state.metrics.adherence), "Photo + voice evidence");
 }
 
 function setText(selector, value, siblingText = null) {

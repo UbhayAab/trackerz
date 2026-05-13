@@ -46,7 +46,9 @@ export function bindCapturePanel() {
             state.insights = [...updates.insights, ...state.insights].slice(0, 8);
             state.metrics.todaySpend += updates.metricsDelta.spend;
             state.metrics.protein = Math.min(state.metrics.proteinTarget + 35, state.metrics.protein + updates.metricsDelta.protein);
+            state.metrics.caloriesLeft = Math.max(0, state.metrics.caloriesLeft - updates.metricsDelta.calories);
             state.metrics.habitScore = Math.max(0, Math.min(100, state.metrics.habitScore + updates.metricsDelta.habit));
+            state.metrics.adherence = Math.max(0, Math.min(100, state.metrics.adherence + updates.metricsDelta.adherence));
             state.metrics.habitNote = updates.metricsDelta.habit < 0 ? "Sleep recovery needs attention" : "Fresh capture applied";
             state.activeJob = null;
             state.parseLog.unshift("Tables updated. Review queue, ledger, macros, and insights refreshed.");

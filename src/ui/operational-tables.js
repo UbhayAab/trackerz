@@ -45,11 +45,11 @@ const macroColumns = [
 ];
 
 export function renderOperationalTables(state) {
-  setTable("#reviewTable", reviewColumns, state.reviewRows, { table: "review" });
-  setTable("#importTable", importColumns, state.importRows, { table: "import" });
-  setTable("#ledgerTable", ledgerColumns, state.ledgerRows);
-  setTable("#budgetTable", budgetColumns, state.budgetRows);
-  setTable("#macroTable", macroColumns, state.macroRows);
+  setTable("#reviewTable", reviewColumns, state.reviewRows, { table: "review", emptyMessage: "No review items yet. Process a capture to create AI-reviewed rows." });
+  setTable("#importTable", importColumns, state.importRows, { table: "import", emptyMessage: "No bank files yet. Upload CSV, Excel, PDF, or screenshots from Capture." });
+  setTable("#ledgerTable", ledgerColumns, state.ledgerRows, { emptyMessage: "No expenses yet. Add a payment, statement, or screenshot dump." });
+  setTable("#budgetTable", budgetColumns, state.budgetRows, { emptyMessage: "No budget burn yet. Add spends or load demo data." });
+  setTable("#macroTable", macroColumns, state.macroRows, { emptyMessage: "No meals yet. Add food text, photo, or EOD voice note." });
 }
 
 export function bindOperationalTables() {
