@@ -49,7 +49,7 @@ textarea:focus {
   padding: 10px 12px;
   color: var(--muted);
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: var(--weight-medium);
 }
 
 .agent-console {
@@ -95,7 +95,7 @@ textarea:focus {
   padding: 6px 10px;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: var(--weight-semibold);
   white-space: nowrap;
 }
 

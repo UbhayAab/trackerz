@@ -19,6 +19,7 @@
   color: var(--muted);
   text-align: left;
   font-size: 0.72rem;
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
 }
 
@@ -31,11 +32,11 @@
 
 .empty-cell {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: var(--weight-medium);
 }
 
 .cell-strong {
-  font-weight: 900;
+  font-weight: var(--weight-semibold);
 }
 
 .badge {
@@ -46,7 +47,7 @@
   background: #ecf0f5;
   color: var(--ink);
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: var(--weight-semibold);
 }
 
 .badge-risk {
@@ -62,7 +63,7 @@
   background: #ffffff;
   color: var(--ink);
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: var(--weight-semibold);
 }
 
 .table-action:hover {
@@ -104,6 +105,6 @@
   padding: 4px 8px;
   color: var(--ink);
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
 }

@@ -75,6 +75,7 @@
 .page-hero h2 {
   max-width: 680px;
   font-size: 1.45rem;
+  font-weight: var(--weight-semibold);
   line-height: 1.12;
 }
 
@@ -130,7 +131,7 @@
   display: block;
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 900;
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
 }
 
@@ -138,4 +139,5 @@
   display: block;
   margin-top: 8px;
   font-size: 1.2rem;
+  font-weight: var(--weight-bold);
 }
