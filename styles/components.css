@@ -30,6 +30,11 @@
   color: white;
 }
 
+.primary-button.danger {
+  border-color: var(--risk);
+  background: var(--risk);
+}
+
 .secondary-button,
 .mode-card.active,
 .tab.active {
@@ -103,4 +108,11 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px;
+}
+
+.data-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 10px;
 }

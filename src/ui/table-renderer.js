@@ -1,19 +1,23 @@
 export function renderTable(columns, rows, options = {}) {
+  const body = rows.length
+    ? rows
+      .map(
+        (row) => `
+          <tr>
+            ${columns.map((column) => renderCell(column, row, options)).join("")}
+          </tr>
+        `,
+      )
+      .join("")
+    : `<tr><td class="empty-cell" colspan="${columns.length}">${escapeHtml(options.emptyMessage || "No rows yet. Add a capture to populate this table.")}</td></tr>`;
+
   return `
     <table class="data-table">
       <thead>
         <tr>${columns.map((column) => `<th>${column.label}</th>`).join("")}</tr>
       </thead>
       <tbody>
-        ${rows
-          .map(
-            (row) => `
-              <tr>
-                ${columns.map((column) => renderCell(column, row, options)).join("")}
-              </tr>
-            `,
-          )
-          .join("")}
+        ${body}
       </tbody>
     </table>
   `;

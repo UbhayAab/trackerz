@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { parseCapture } from "../src/ai/capture-parser.js";
+import { createDemoState, createEmptyState } from "../src/state/app-state.js";
 import { aiStages } from "../src/ai/job-runner.js";
 import { renderTable } from "../src/ui/table-renderer.js";
 
@@ -36,5 +37,17 @@ const table = renderTable(
 
 assert.ok(table.includes("&lt;script&gt;bad&lt;/script&gt;"));
 assert.ok(table.includes('data-action="approve"'));
+
+const emptyTable = renderTable([{ key: "item", label: "Item" }], [], { emptyMessage: "Clean database" });
+assert.ok(emptyTable.includes("Clean database"));
+
+const emptyState = createEmptyState();
+assert.equal(emptyState.ledgerRows.length, 0);
+assert.equal(emptyState.reviewRows.length, 0);
+assert.equal(emptyState.metrics.todaySpend, 0);
+
+const demoState = createDemoState();
+assert.ok(demoState.ledgerRows.length > 0);
+assert.ok(demoState.insights.length > 0);
 
 console.log("interaction contract tests passed");

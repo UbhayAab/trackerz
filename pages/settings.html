@@ -73,6 +73,21 @@
           <p id="settingsStatus" class="agent-detail">At 12 AM, the backend job will summarize money, calories, protein, duplicates, and tomorrow's priorities.</p>
         </section>
 
+        <section class="command-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Data controls</p>
+              <h2>Workspace database</h2>
+            </div>
+            <span id="dataStatus" class="status-pill muted">empty-first</span>
+          </div>
+          <div class="data-actions">
+            <button id="clearWorkspace" class="primary-button danger" type="button">Clear all data</button>
+            <button id="loadDemoData" class="secondary-button" type="button">Load demo data</button>
+          </div>
+          <p class="agent-detail">Clear all wipes the local prototype database for this browser. Load demo brings back sample rows for UI testing.</p>
+        </section>
+
         <section class="cost-panel" aria-labelledby="cost-title">
           <div class="panel-title-row">
             <div>

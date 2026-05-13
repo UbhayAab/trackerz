@@ -8,7 +8,7 @@ export function parseCapture({ text = "", files = [], captureType }) {
     importRows: [],
     macroRows: [],
     insights: [],
-    metricsDelta: { spend: 0, protein: 0, habit: 0 },
+    metricsDelta: { spend: 0, protein: 0, habit: 0, calories: 0, adherence: 0 },
   };
 
   if (captureType === "file_import" || files.some((file) => /\.(csv|xls|xlsx|pdf)$/i.test(file.name))) {
@@ -37,16 +37,19 @@ export function parseCapture({ text = "", files = [], captureType }) {
   if (isDietText(lower, captureType)) {
     const meal = lower.includes("breakfast") ? "Breakfast" : lower.includes("dinner") ? "Dinner" : "Meal";
     const protein = lower.includes("chicken") ? 42 : lower.includes("egg") ? 18 : lower.includes("paneer") ? 28 : 16;
+    const calories = lower.includes("dinner") ? 760 : 520;
     updates.macroRows.push({
       id: nextId("macro"),
       meal,
-      calories: String(lower.includes("dinner") ? 760 : 520),
+      calories: String(calories),
       protein: `${protein}g`,
       confidence: files.length ? "review" : "medium",
       note: summarizeFood(text),
     });
     updates.reviewRows.push(buildReviewRow(`${meal} macro estimate`, "Diet", files.length ? "79%" : "84%", files.length ? "portion" : "range", "keep evidence"));
     updates.metricsDelta.protein += protein;
+    updates.metricsDelta.calories += calories;
+    updates.metricsDelta.adherence += files.length ? 8 : 5;
     updates.insights.push(`${meal} was logged with a macro range instead of fake precision.`);
   }
 
