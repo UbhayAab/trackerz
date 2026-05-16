@@ -36,3 +36,4 @@ $uri = "https://api.supabase.com/v1/projects/$ProjectRef/secrets"
 
 Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -Body $body | Out-Null
 Write-Output "Pushed $($secrets.Count) secret(s) to Supabase project $ProjectRef."
+Write-Output "Never commit these keys. They should only live in Supabase secrets or local environment variables."

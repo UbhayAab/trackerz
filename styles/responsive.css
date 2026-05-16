@@ -34,4 +34,14 @@
   .bar-chart {
     gap: 5px;
   }
+
+  .data-table {
+    min-width: 620px;
+  }
+
+  .data-table th,
+  .data-table td {
+    max-width: 180px;
+    padding: 11px 9px;
+  }
 }

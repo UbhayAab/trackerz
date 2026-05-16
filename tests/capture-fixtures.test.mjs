@@ -21,6 +21,8 @@ const captureCases = [
   ["uploading May bank statement excel", "file_import"],
   ["credit card pdf statement import", "file_import"],
   ["csv bank export from hdfc", "file_import"],
+  ["weekly log: paid zomato and fuel, lunch dal rice", "money"],
+  ["monthly dump from notes app: bank rows and diet summary", "file_import"],
   ["random thought about life", "general_note"],
 ];
 
@@ -32,6 +34,7 @@ const fileCases = [
   [[{ name: "hdfc-may.xlsx" }], "file_import"],
   [[{ name: "icici-card.pdf" }], "file_import"],
   [[{ name: "phonepe.png", kind: "image" }], "media_review"],
+  [[{ name: "voice-note.webm", kind: "audio" }], "media_review"],
 ];
 
 for (const [files, expected] of fileCases) {
@@ -83,7 +86,7 @@ for (const pair of duplicatePairs) {
 }
 
 assert.equal(routeModelForCapture({ captureType: "file_import" }).brainModel, "deepseek-ai/deepseek-v4-pro");
-assert.equal(routeModelForCapture({ captureType: "media_review" }).mediaModel, "gemini-3.1-flash-lite");
+assert.equal(routeModelForCapture({ captureType: "media_review" }).mediaModel, "gemini-2.5-flash");
 
 assert.equal(
   validateToolAction({

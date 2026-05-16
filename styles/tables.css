@@ -11,8 +11,10 @@
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 520px;
-  font-size: 0.82rem;
+  table-layout: auto;
+  min-width: 680px;
+  font-size: 0.84rem;
+  line-height: 1.35;
 }
 
 .data-table th {
@@ -26,8 +28,12 @@
 .data-table th,
 .data-table td {
   border-bottom: 1px solid var(--line);
-  padding: 9px 8px;
+  max-width: 240px;
+  padding: 12px 10px;
   vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .empty-cell {
@@ -43,11 +49,12 @@
   display: inline-grid;
   place-items: center;
   border-radius: 999px;
-  padding: 4px 8px;
+  padding: 5px 8px;
   background: #ecf0f5;
   color: var(--ink);
   font-size: 0.72rem;
   font-weight: var(--weight-semibold);
+  white-space: normal;
 }
 
 .badge-risk {
@@ -56,14 +63,15 @@
 }
 
 .table-action {
-  min-height: 30px;
-  margin: 2px 4px 2px 0;
+  min-height: 34px;
+  margin: 3px 5px 3px 0;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #ffffff;
   color: var(--ink);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: var(--weight-semibold);
+  padding: 0 10px;
 }
 
 .table-action:hover {

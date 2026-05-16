@@ -28,7 +28,7 @@
         <section class="capture-panel" aria-labelledby="capture-title">
           <div class="capture-head">
             <h2 id="capture-title">Universal capture</h2>
-            <span class="status-pill muted">text / image / voice / file</span>
+            <span class="status-pill muted">text / image / audio / file</span>
           </div>
 
           <textarea id="captureText" rows="5" placeholder="paid 240 zomato, ate dal rice and curd, walked 7k, felt low after lunch"></textarea>
@@ -51,10 +51,10 @@
 
           <div class="capture-actions">
             <label class="file-chip">
-              <input id="fileInput" type="file" multiple accept="image/*,.csv,.xls,.xlsx,.pdf,.txt" />
+              <input id="fileInput" type="file" multiple accept="image/*,audio/*,.csv,.xls,.xlsx,.pdf,.txt" />
               Add files
             </label>
-            <button id="voiceButton" class="secondary-button" type="button">Voice</button>
+            <button id="voiceButton" class="secondary-button" type="button">Record voice</button>
             <button id="submitCapture" class="primary-button" type="button">Process</button>
           </div>
 
@@ -76,18 +76,18 @@
         <section class="dashboard-grid">
           <article class="metric-card accent-money">
             <p>Today spend</p>
-            <strong id="todaySpend">Rs 1,430</strong>
-            <span>Budget pace Rs 1,100</span>
+            <strong id="todaySpend">Rs 0</strong>
+            <span>Budget pace Rs 0</span>
           </article>
           <article class="metric-card accent-food">
             <p>Protein</p>
-            <strong id="proteinMetric">86g</strong>
+            <strong id="proteinMetric">0g</strong>
             <span>Target 130g</span>
           </article>
           <article class="metric-card accent-wellness">
             <p>Habit score</p>
-            <strong id="habitScore">74</strong>
-            <span>Sleep drag detected</span>
+            <strong id="habitScore">0</strong>
+            <span>No wellness data yet</span>
           </article>
         </section>
 
