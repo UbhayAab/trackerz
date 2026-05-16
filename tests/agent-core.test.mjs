@@ -89,8 +89,8 @@ assert.equal(classifyCaptureInput({ text: "ate 3 rotis dal rice and curd" }), "d
 assert.equal(classifyCaptureInput({ text: "paid 500 fuel on gpay" }), "money");
 assert.equal(classifyCaptureInput({ text: "slept 5h and walked 8000 steps" }), "wellness");
 
-assert.equal(routeModelForCapture({ captureType: "media_review" }).mediaModel, "gemini-3.1-flash-lite");
-assert.equal(routeModelForCapture({ captureType: "media_review", risk: "high" }).mediaModel, "gemini-3.1-pro-preview");
+assert.equal(routeModelForCapture({ captureType: "media_review" }).mediaModel, "gemini-2.5-flash");
+assert.equal(routeModelForCapture({ captureType: "media_review", risk: "high" }).mediaModel, "gemini-2.5-pro");
 assert.equal(routeModelForCapture({ captureType: "money" }).brainModel, "deepseek-ai/deepseek-v4-pro");
 
 assert.equal(

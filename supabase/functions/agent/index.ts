@@ -6,6 +6,7 @@ type AgentRequest = {
   userId: string;
   sourceType: SourceType;
   text?: string;
+  media?: Array<{ mimeType: string; base64: string; name?: string }>;
   mediaAssetIds?: string[];
   mode?: "auto" | Domain;
 };
@@ -17,7 +18,7 @@ type ToolCall = {
 };
 
 const DEEPSEEK_MODEL = "deepseek-ai/deepseek-v4-pro";
-const GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite";
+const GEMINI_MEDIA_MODEL = "gemini-2.5-flash";
 
 const toolNames = [
   "create_expense_candidate",
@@ -92,13 +93,58 @@ async function callDeepSeekAgent(request: AgentRequest): Promise<ToolCall[]> {
   return parsed.map(validateToolCall);
 }
 
-async function callGeminiMediaExtraction(_request: AgentRequest) {
-  requireSecret("GEMINI_API_KEY");
+async function callGeminiMediaExtraction(request: AgentRequest) {
+  const apiKey = requireSecret("GEMINI_API_KEY");
+  if (!request.media?.length) {
+    return {
+      model: GEMINI_MEDIA_MODEL,
+      extractedText: "",
+      labels: [],
+      confidence: 0,
+    };
+  }
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MEDIA_MODEL}:generateContent`, {
+    method: "POST",
+    headers: {
+      "x-goog-api-key": apiKey,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text:
+                "Extract only factual evidence for a personal tracker. Return concise JSON with text, dates, amounts, merchants, foods, quantities, confidence, and uncertainty. Never invent missing values.",
+            },
+            ...request.media.map((item) => ({
+              inlineData: {
+                mimeType: item.mimeType,
+                data: item.base64,
+              },
+            })),
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: "application/json",
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gemini media extraction failed: ${response.status}`);
+  }
+
+  const json = await response.json();
   return {
-    model: GEMINI_IMAGE_MODEL,
-    extractedText: "",
+    model: GEMINI_MEDIA_MODEL,
+    extractedText: json.candidates?.[0]?.content?.parts?.[0]?.text ?? "",
     labels: [],
-    confidence: 0,
+    confidence: 0.7,
   };
 }
 

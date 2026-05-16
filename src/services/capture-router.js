@@ -4,7 +4,7 @@ export function buildFileDescriptors(fileList) {
   return Array.from(fileList || []).map((file) => ({
     name: file.name,
     type: file.type,
-    kind: file.type?.startsWith("image/") ? "image" : file.name,
+    kind: inferKind(file),
   }));
 }
 
@@ -21,4 +21,13 @@ export function previewCaptureRoute({ text, files }) {
     route,
     descriptors,
   };
+}
+
+function inferKind(file) {
+  if (file.kind) return file.kind;
+  if (file.type?.startsWith("image/")) return "image";
+  if (file.type?.startsWith("audio/")) return "audio";
+  if (/\.(png|jpg|jpeg|webp|heic|gif)$/i.test(file.name || "")) return "image";
+  if (/\.(webm|mp3|m4a|wav|ogg|aac)$/i.test(file.name || "")) return "audio";
+  return "file";
 }

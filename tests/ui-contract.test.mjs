@@ -49,6 +49,10 @@ for (const text of ["Bank Excel", "Diet voice", "Screenshot dump", "DOD", "WOW",
   assert.ok((html + pageHtml).includes(text), `missing UI label ${text}`);
 }
 
+for (const hardcoded of ["live mock", "Rs 1,430", "Rs 52.4k", "86 / 130g", "40+ flows"]) {
+  assert.ok(!(html + pageHtml).includes(hardcoded), `hardcoded page data still present: ${hardcoded}`);
+}
+
 for (const selector of [".capture-panel", ".route-preview", ".agent-console", ".stage-dot", ".table-action", ".flow-card", ".settings-panel", ".bottom-nav"]) {
   assert.ok(css.includes(selector), `missing CSS ${selector}`);
 }
@@ -65,6 +69,7 @@ for (const file of [
   "pages/settings.js",
   "ui/capture-panel.js",
   "ui/operational-tables.js",
+  "ui/summary-rail.js",
   "ui/agent-status.js",
   "ui/budget-inputs.js",
   "ui/data-controls.js",

@@ -3,10 +3,14 @@ import { runAiJob } from "../ai/job-runner.js";
 import { previewCaptureRoute } from "../services/capture-router.js";
 import { updateState } from "../state/app-state.js";
 
+let recorder = null;
+let chunks = [];
+let pendingAudioFiles = [];
+
 export function renderRoutePreview() {
   const { captureType, route } = previewCaptureRoute({
     text: $("#captureText").value,
-    files: $("#fileInput").files,
+    files: getCaptureFiles(),
   });
   const media = route.mediaModel ? `${route.mediaModel} -> ` : "";
   $("#routePreview").textContent = `Auto route: ${captureType}. ${media}${route.brainModel}. ${route.reason}`;
@@ -18,11 +22,11 @@ export function bindCapturePanel() {
 
   $("#submitCapture").addEventListener("click", () => {
     const text = $("#captureText").value.trim();
-    const files = Array.from($("#fileInput").files).map((file) => ({ name: file.name, type: file.type }));
+    const files = getCaptureFiles().map((file) => ({ name: file.name, type: file.type, kind: file.kind }));
     const hasText = text.length > 0;
     const hasFiles = files.length > 0;
     if (!hasText && !hasFiles) return;
-    const { captureType } = previewCaptureRoute({ text, files: $("#fileInput").files });
+    const { captureType } = previewCaptureRoute({ text, files });
     $("#submitCapture").disabled = true;
     updateState((state) => {
       state.parseLog.unshift(`Capture received: ${text || `${files.length} file(s)`}`);
@@ -59,16 +63,11 @@ export function bindCapturePanel() {
     );
     $("#captureText").value = "";
     $("#fileInput").value = "";
+    pendingAudioFiles = [];
     renderRoutePreview();
   });
 
-  $("#voiceButton").addEventListener("click", () => {
-    $("#captureText").value = "Voice note: spent 500 fuel, lunch was dal rice curd, slept 6 hours and walked 7000 steps";
-    updateState((state) => {
-      state.parseLog.unshift("Voice placeholder inserted. Real mic capture will route through Gemini/audio extraction.");
-    });
-    renderRoutePreview();
-  });
+  $("#voiceButton").addEventListener("click", handleVoiceClick);
 
   $all(".mode-card").forEach((card) => {
     card.addEventListener("click", () => {
@@ -84,4 +83,58 @@ export function bindCapturePanel() {
       renderRoutePreview();
     });
   });
+}
+
+function getCaptureFiles() {
+  return [...Array.from($("#fileInput").files || []), ...pendingAudioFiles];
+}
+
+async function handleVoiceClick() {
+  const button = $("#voiceButton");
+  if (recorder && recorder.state === "recording") {
+    recorder.stop();
+    button.textContent = "Record voice";
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) {
+    pendingAudioFiles.push({ name: `voice-note-${Date.now()}.webm`, type: "audio/webm", kind: "audio" });
+    updateState((state) => {
+      state.parseLog.unshift("Audio capture queued. Browser recording is unavailable here, so Gemini transcription will run on uploaded audio in Supabase.");
+    });
+    renderRoutePreview();
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    chunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    });
+    recorder.addEventListener("stop", () => {
+      stream.getTracks().forEach((track) => track.stop());
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      pendingAudioFiles.push({
+        name: `voice-note-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`,
+        type: blob.type,
+        kind: "audio",
+        size: blob.size,
+      });
+      updateState((state) => {
+        state.parseLog.unshift("Voice recording attached. Process will queue it for Gemini audio extraction.");
+      });
+      renderRoutePreview();
+    });
+    recorder.start();
+    button.textContent = "Stop voice";
+    updateState((state) => {
+      state.parseLog.unshift("Recording voice. Tap Stop voice when done.");
+    });
+  } catch {
+    updateState((state) => {
+      state.parseLog.unshift("Microphone permission was blocked. Use Add files with an audio recording instead.");
+    });
+  }
 }

@@ -29,6 +29,18 @@ const statement = parseCapture({
 assert.equal(statement.importRows.length, 1);
 assert.equal(statement.importRows[0].status, "AI previewing");
 
+const complex = parseCapture({
+  text: "weekly log: paid 240 zomato, spent 500 fuel, amazon refund 1299, breakfast poha, lunch dal rice curd, dinner chicken rice, slept 5 hours and walked 8500 steps",
+  files: [{ name: "voice-note.webm", type: "audio/webm", kind: "audio" }, { name: "phonepe.png", type: "image/png", kind: "image" }],
+  captureType: "money",
+});
+
+assert.ok(complex.ledgerRows.length >= 3, "complex money input should create multiple ledger rows");
+assert.ok(complex.macroRows.length >= 3, "complex diet input should split meals");
+assert.ok(complex.reviewRows.some((row) => /audio/i.test(row.item)), "audio file should create a review row");
+assert.ok(complex.reviewRows.some((row) => /image/i.test(row.item)), "image file should create a review row");
+assert.ok(complex.reviewRows.some((row) => /duplicate/i.test(row.risk)), "multi-source upload should flag duplicates");
+
 const table = renderTable(
   [{ key: "item", label: "Item" }, { key: "ops", label: "Ops", actions: [{ label: "Approve", action: "approve" }] }],
   [{ id: "row_1", item: "<script>bad</script>" }],
