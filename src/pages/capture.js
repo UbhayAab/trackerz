@@ -5,8 +5,10 @@ import { renderAgentStatus } from "../ui/agent-status.js";
 import { renderMetrics } from "../ui/metrics.js";
 import { renderSummaryRail } from "../ui/summary-rail.js";
 import { subscribe } from "../state/app-state.js";
+import { bootWithAuth } from "./bootstrap.js";
+import { hydrateStateFromSupabase } from "../state/sync.js";
 
-function bootCapturePage() {
+bootWithAuth(async () => {
   renderRoutePreview();
   subscribe((state) => {
     renderAgentStatus(state);
@@ -18,6 +20,5 @@ function bootCapturePage() {
   bindCapturePanel();
   bindInsights();
   bindOperationalTables();
-}
-
-bootCapturePage();
+  await hydrateStateFromSupabase();
+});

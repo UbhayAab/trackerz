@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trackerz - Diagnostics</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="app-shell page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Diagnostics</p>
+          <h1>System status</h1>
+        </div>
+        <a class="icon-link" href="./settings.html" aria-label="Open settings">Settings</a>
+      </header>
+
+      <main>
+        <section class="page-hero">
+          <div>
+            <p class="eyebrow">Smoke test from your phone</p>
+            <h2>Each row should be green. Tap "Run check" to retest.</h2>
+          </div>
+          <button id="diagRunBtn" class="primary-button" type="button">Run check</button>
+        </section>
+
+        <section class="command-panel">
+          <div id="diagList" class="diagnostics-list"></div>
+        </section>
+
+        <section class="command-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Quick capture</p>
+              <h2>End-to-end test</h2>
+            </div>
+          </div>
+          <p class="muted small">Click below to write a real test expense via the edge function and read it back.</p>
+          <button id="diagE2EBtn" class="primary-button" type="button">Run end-to-end capture</button>
+          <pre id="diagE2EOutput" class="agent-detail"></pre>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <a class="nav-item" href="../index.html">Capture</a>
+        <a class="nav-item" href="./dashboard.html">Dashboard</a>
+        <a class="nav-item" href="./money.html">Money</a>
+        <a class="nav-item" href="./diet.html">Diet</a>
+        <a class="nav-item" href="./insights.html">Insights</a>
+      </nav>
+    </div>
+
+    <script type="module" src="../src/pages/diagnostics.js"></script>
+  </body>
+</html>

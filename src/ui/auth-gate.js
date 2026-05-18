@@ -1,0 +1,118 @@
+import { hasSupabaseConfig, saveConfig } from "../config.js";
+import { initAuth, onAuthChange, signInWithEmail, signOut, ensureProfileRow, getCurrentSession } from "../services/auth.js";
+import { resetSupabaseClient } from "../services/supabase-client.js";
+
+const SETUP_ID = "trackerz-setup-card";
+const SIGNIN_ID = "trackerz-signin-card";
+const PILL_ID = "trackerz-auth-pill";
+
+export async function mountAuthGate({ onReady } = {}) {
+  if (!hasSupabaseConfig()) {
+    showSetupCard(() => mountAuthGate({ onReady }));
+    return;
+  }
+  removeCard(SETUP_ID);
+
+  await initAuth();
+  onAuthChange(async (session) => {
+    renderAuthPill(session);
+    if (session) {
+      removeCard(SIGNIN_ID);
+      try { await ensureProfileRow(); } catch {}
+      onReady?.(session);
+    } else {
+      showSignInCard();
+    }
+  });
+}
+
+function showSetupCard(onSaved) {
+  removeCard(SIGNIN_ID);
+  let card = document.getElementById(SETUP_ID);
+  if (!card) {
+    card = document.createElement("section");
+    card.id = SETUP_ID;
+    card.className = "auth-card setup-card";
+    document.body.appendChild(card);
+  }
+  card.innerHTML = `
+    <h2>One-time setup</h2>
+    <p>Paste your Supabase project URL and anon (publishable) key. Stored only in this browser.</p>
+    <label>Supabase URL
+      <input type="url" id="setupUrl" placeholder="https://your-project.supabase.co" value="https://qmlenovxatoyxxqlvzlo.supabase.co" />
+    </label>
+    <label>Supabase anon key
+      <input type="password" id="setupKey" placeholder="eyJhbGciOi..." />
+    </label>
+    <button type="button" id="setupSave" class="primary-button">Save</button>
+    <p class="muted small">Get these from Supabase dashboard → Project Settings → API.</p>
+  `;
+  card.querySelector("#setupSave").addEventListener("click", () => {
+    const url = card.querySelector("#setupUrl").value.trim();
+    const key = card.querySelector("#setupKey").value.trim();
+    if (!url || !key) return;
+    saveConfig(url, key);
+    resetSupabaseClient();
+    onSaved?.();
+  });
+}
+
+function showSignInCard() {
+  let card = document.getElementById(SIGNIN_ID);
+  if (!card) {
+    card = document.createElement("section");
+    card.id = SIGNIN_ID;
+    card.className = "auth-card signin-card";
+    document.body.appendChild(card);
+  }
+  card.innerHTML = `
+    <h2>Sign in</h2>
+    <p>Get a magic link by email. No password.</p>
+    <label>Email
+      <input type="email" id="signinEmail" placeholder="you@example.com" autocomplete="email" />
+    </label>
+    <button type="button" id="signinSend" class="primary-button">Send magic link</button>
+    <p id="signinMessage" class="muted small"></p>
+  `;
+  const message = card.querySelector("#signinMessage");
+  card.querySelector("#signinSend").addEventListener("click", async () => {
+    const email = card.querySelector("#signinEmail").value.trim();
+    if (!email) return;
+    message.textContent = "Sending...";
+    try {
+      await signInWithEmail(email);
+      message.textContent = `Check ${email} for a sign-in link.`;
+    } catch (err) {
+      message.textContent = `Error: ${err.message || err}`;
+    }
+  });
+}
+
+function renderAuthPill(session) {
+  const topbar = document.querySelector(".topbar");
+  if (!topbar) return;
+  let pill = document.getElementById(PILL_ID);
+  if (!pill) {
+    pill = document.createElement("button");
+    pill.id = PILL_ID;
+    pill.type = "button";
+    pill.className = "status-pill auth-pill";
+    topbar.appendChild(pill);
+  }
+  if (session?.user) {
+    pill.textContent = session.user.email || "signed in";
+    pill.title = "Click to sign out";
+    pill.onclick = () => signOut();
+  } else {
+    pill.textContent = "signed out";
+    pill.onclick = null;
+  }
+}
+
+function removeCard(id) {
+  document.getElementById(id)?.remove();
+}
+
+export function isAuthed() {
+  return Boolean(getCurrentSession());
+}

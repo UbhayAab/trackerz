@@ -1,72 +1,32 @@
 import { $, $all } from "../utils/dom.js";
-import { runAiJob } from "../ai/job-runner.js";
 import { previewCaptureRoute } from "../services/capture-router.js";
 import { updateState } from "../state/app-state.js";
+import { runCapture } from "../services/agent-runner.js";
+import { hydrateStateFromSupabase } from "../state/sync.js";
+import { startLiveTranscription, stopLiveTranscription, isLiveTranscriptionSupported } from "../services/speech.js";
 
 let recorder = null;
 let chunks = [];
 let pendingAudioFiles = [];
+let liveTranscript = "";
+let recognitionHandle = null;
 
 export function renderRoutePreview() {
-  const { captureType, route } = previewCaptureRoute({
-    text: $("#captureText").value,
-    files: getCaptureFiles(),
-  });
+  const captureTextEl = $("#captureText");
+  if (!captureTextEl) return;
+  const text = captureTextEl.value;
+  const filesMeta = getCaptureFilesMeta();
+  const { captureType, route } = previewCaptureRoute({ text, files: filesMeta });
   const media = route.mediaModel ? `${route.mediaModel} -> ` : "";
-  $("#routePreview").textContent = `Auto route: ${captureType}. ${media}${route.brainModel}. ${route.reason}`;
+  const speech = isLiveTranscriptionSupported() ? "" : " (live transcription unavailable in this browser)";
+  $("#routePreview").textContent = `Auto route: ${captureType}. ${media}${route.brainModel}. ${route.reason}${speech}`;
 }
 
 export function bindCapturePanel() {
+  if (!$("#captureText")) return;
   $("#captureText").addEventListener("input", renderRoutePreview);
   $("#fileInput").addEventListener("change", renderRoutePreview);
-
-  $("#submitCapture").addEventListener("click", () => {
-    const text = $("#captureText").value.trim();
-    const files = getCaptureFiles().map((file) => ({ name: file.name, type: file.type, kind: file.kind }));
-    const hasText = text.length > 0;
-    const hasFiles = files.length > 0;
-    if (!hasText && !hasFiles) return;
-    const { captureType } = previewCaptureRoute({ text, files });
-    $("#submitCapture").disabled = true;
-    updateState((state) => {
-      state.parseLog.unshift(`Capture received: ${text || `${files.length} file(s)`}`);
-      state.activeJob = { key: "queued", label: "Queued", eta: 4, detail: "Capture received.", stageIndex: 0 };
-    });
-    runAiJob(
-      { text, files, captureType },
-      {
-        onStage(stage, stageIndex) {
-          updateState((state) => {
-            state.activeJob = { ...stage, stageIndex };
-            state.parseLog.unshift(`${stage.label}: ${stage.detail}`);
-          });
-        },
-        onComplete(updates) {
-          updateState((state) => {
-            state.reviewRows = [...updates.reviewRows, ...state.reviewRows];
-            state.ledgerRows = [...updates.ledgerRows, ...state.ledgerRows];
-            state.importRows = [...updates.importRows, ...state.importRows];
-            state.macroRows = [...updates.macroRows, ...state.macroRows];
-            state.insights = [...updates.insights, ...state.insights].slice(0, 8);
-            state.metrics.todaySpend += updates.metricsDelta.spend;
-            state.metrics.protein = Math.min(state.metrics.proteinTarget + 35, state.metrics.protein + updates.metricsDelta.protein);
-            state.metrics.caloriesLeft = Math.max(0, state.metrics.caloriesLeft - updates.metricsDelta.calories);
-            state.metrics.habitScore = Math.max(0, Math.min(100, state.metrics.habitScore + updates.metricsDelta.habit));
-            state.metrics.adherence = Math.max(0, Math.min(100, state.metrics.adherence + updates.metricsDelta.adherence));
-            state.metrics.habitNote = updates.metricsDelta.habit < 0 ? "Sleep recovery needs attention" : "Fresh capture applied";
-            state.activeJob = null;
-            state.parseLog.unshift("Tables updated. Review queue, ledger, macros, and insights refreshed.");
-          });
-          $("#submitCapture").disabled = false;
-        },
-      },
-    );
-    $("#captureText").value = "";
-    $("#fileInput").value = "";
-    pendingAudioFiles = [];
-    renderRoutePreview();
-  });
-
+  $("#submitCapture").addEventListener("click", handleSubmit);
   $("#voiceButton").addEventListener("click", handleVoiceClick);
 
   $all(".mode-card").forEach((card) => {
@@ -85,52 +45,137 @@ export function bindCapturePanel() {
   });
 }
 
+async function handleSubmit() {
+  const text = $("#captureText").value.trim();
+  const allFiles = getCaptureFiles();
+  if (!text && allFiles.length === 0 && !liveTranscript) return;
+
+  const captureType = activeMode();
+  const submitBtn = $("#submitCapture");
+  submitBtn.disabled = true;
+
+  updateState((state) => {
+    state.parseLog.unshift(`Capture: ${text || `${allFiles.length} file(s)`}${liveTranscript ? ` + voice` : ""}`);
+    state.activeJob = { key: "queued", label: "Queued", eta: 5, detail: "Capture received.", stageIndex: 0 };
+  });
+
+  try {
+    await runCapture(
+      { text, files: allFiles, captureType, transcript: liveTranscript },
+      {
+        onStage(s, idx) {
+          updateState((state) => {
+            state.activeJob = { ...s, stageIndex: idx };
+            state.parseLog.unshift(`${s.label}: ${s.detail}`);
+          });
+        },
+      },
+    );
+    await hydrateStateFromSupabase();
+    updateState((state) => {
+      state.activeJob = null;
+      state.parseLog.unshift("Tables updated. Review queue and metrics refreshed.");
+    });
+  } catch (err) {
+    updateState((state) => {
+      state.activeJob = null;
+      state.parseLog.unshift(`Capture failed: ${err.message || err}`);
+    });
+  } finally {
+    $("#captureText").value = "";
+    $("#fileInput").value = "";
+    pendingAudioFiles = [];
+    liveTranscript = "";
+    submitBtn.disabled = false;
+    renderRoutePreview();
+  }
+}
+
+function activeMode() {
+  const active = document.querySelector(".mode-card.active");
+  return active?.dataset.mode || "auto";
+}
+
 function getCaptureFiles() {
   return [...Array.from($("#fileInput").files || []), ...pendingAudioFiles];
+}
+
+function getCaptureFilesMeta() {
+  return getCaptureFiles().map((f) => ({ name: f.name, type: f.type, kind: inferKind(f) }));
+}
+
+function inferKind(f) {
+  const mime = f.type || "";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime === "application/pdf" || mime.includes("excel") || mime.includes("spreadsheet") || mime === "text/csv") return "file";
+  return "file";
 }
 
 async function handleVoiceClick() {
   const button = $("#voiceButton");
   if (recorder && recorder.state === "recording") {
     recorder.stop();
+    stopLiveTranscription(recognitionHandle);
+    recognitionHandle = null;
     button.textContent = "Record voice";
     return;
   }
 
   if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) {
-    pendingAudioFiles.push({ name: `voice-note-${Date.now()}.webm`, type: "audio/webm", kind: "audio" });
     updateState((state) => {
-      state.parseLog.unshift("Audio capture queued. Browser recording is unavailable here, so Gemini transcription will run on uploaded audio in Supabase.");
+      state.parseLog.unshift("Browser recording unavailable. Upload an audio file with Add files instead.");
     });
-    renderRoutePreview();
     return;
   }
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     chunks = [];
+    liveTranscript = "";
     recorder = new MediaRecorder(stream);
+
+    if (isLiveTranscriptionSupported()) {
+      recognitionHandle = startLiveTranscription({
+        onPartial(text) {
+          liveTranscript = text;
+          updateState((state) => {
+            state.activeJob = { key: "transcribing", label: "Transcribing", detail: text || "Listening...", stageIndex: 0 };
+          });
+        },
+        onError(err) {
+          updateState((state) => {
+            state.parseLog.unshift(`Speech recognition error: ${err}`);
+          });
+        },
+      });
+    }
+
     recorder.addEventListener("dataavailable", (event) => {
       if (event.data.size > 0) chunks.push(event.data);
     });
+
     recorder.addEventListener("stop", () => {
       stream.getTracks().forEach((track) => track.stop());
       const blob = new Blob(chunks, { type: "audio/webm" });
-      pendingAudioFiles.push({
-        name: `voice-note-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`,
-        type: blob.type,
-        kind: "audio",
-        size: blob.size,
-      });
+      const fileName = `voice-note-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
+      const file = new File([blob], fileName, { type: "audio/webm" });
+      pendingAudioFiles.push(file);
       updateState((state) => {
-        state.parseLog.unshift("Voice recording attached. Process will queue it for Gemini audio extraction.");
+        state.activeJob = null;
+        state.parseLog.unshift(liveTranscript
+          ? `Voice transcript captured: "${liveTranscript.slice(0, 80)}"`
+          : "Voice recording attached. Will be transcribed by Gemini on submit.");
       });
       renderRoutePreview();
     });
+
     recorder.start();
     button.textContent = "Stop voice";
     updateState((state) => {
-      state.parseLog.unshift("Recording voice. Tap Stop voice when done.");
+      state.parseLog.unshift(isLiveTranscriptionSupported()
+        ? "Recording with live transcription. Tap Stop voice when done."
+        : "Recording voice. Tap Stop voice when done.");
     });
   } catch {
     updateState((state) => {
