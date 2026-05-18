@@ -4,8 +4,10 @@ import { renderOperationalTables } from "../ui/operational-tables.js";
 import { renderSummaryRail } from "../ui/summary-rail.js";
 import { bindBudgetInputs } from "../ui/budget-inputs.js";
 import { subscribe } from "../state/app-state.js";
+import { bootWithAuth } from "./bootstrap.js";
+import { hydrateStateFromSupabase } from "../state/sync.js";
 
-function bootDietPage() {
+bootWithAuth(async () => {
   subscribe((state) => {
     renderMetrics(state);
     renderOperationalTables(state);
@@ -14,6 +16,5 @@ function bootDietPage() {
   });
   bindInsights();
   bindBudgetInputs("dietBudgetStatus");
-}
-
-bootDietPage();
+  await hydrateStateFromSupabase();
+});

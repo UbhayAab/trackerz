@@ -82,10 +82,10 @@
             <span id="dataStatus" class="status-pill muted">empty-first</span>
           </div>
           <div class="data-actions">
-            <button id="clearWorkspace" class="primary-button danger" type="button">Clear all data</button>
-            <button id="loadDemoData" class="secondary-button" type="button">Load demo data</button>
+            <button id="clearWorkspace" class="primary-button danger" type="button">Clear local cache</button>
+            <a class="primary-button" href="./diagnostics.html">Run diagnostics</a>
           </div>
-          <p class="agent-detail">Clear all wipes the local prototype database for this browser. Load demo brings back sample rows for UI testing.</p>
+          <p class="agent-detail">Clear local cache wipes the in-browser preview state. Diagnostics tests Supabase, auth, storage, and the agent edge function.</p>
         </section>
 
         <section class="cost-panel" aria-labelledby="cost-title">

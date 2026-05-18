@@ -52,6 +52,14 @@
               </div>
               <span class="status-pill muted">preview first</span>
             </div>
+            <div class="import-actions">
+              <label class="file-chip">
+                <input id="statementInput" type="file" accept=".csv,.xls,.xlsx,.txt" />
+                Upload CSV / XLS / XLSX
+              </label>
+              <button id="statementImportBtn" class="primary-button" type="button" disabled>Import preview</button>
+            </div>
+            <div id="statementPreview" class="statement-preview"></div>
             <div id="importTable" class="data-table-wrap"></div>
           </article>
         </section>

@@ -16,7 +16,6 @@ const css =
     .filter((file) => file.endsWith(".css"))
     .map((file) => readFileSync(join("styles", file), "utf8"))
     .join("\n");
-const app = readFileSync("app.js", "utf8");
 const srcFiles = readdirSync("src", { recursive: true })
   .map((file) => String(file).replaceAll("\\", "/"))
   .filter((file) => file.endsWith(".js"));
@@ -35,7 +34,6 @@ for (const id of [
   "monthlyCost",
   "chart",
   "clearWorkspace",
-  "loadDemoData",
   "dataStatus",
 ]) {
   assert.ok((html + pageHtml).includes(`id="${id}"`), `missing #${id}`);
@@ -45,7 +43,7 @@ for (const id of ["monthlyMoneyBudget", "weeklyMoneyBudget", "dailyCaloriesBudge
   assert.ok(pageHtml.includes(`id="${id}"`), `missing settings/budget #${id}`);
 }
 
-for (const text of ["Bank Excel", "Diet voice", "Screenshot dump", "DOD", "WOW", "MOM", "Trajectory", "12 AM daily summary", "Clear all data", "Load demo data"]) {
+for (const text of ["Bank Excel", "Diet voice", "Screenshot dump", "DOD", "WOW", "MOM", "Trajectory", "12 AM daily summary"]) {
   assert.ok((html + pageHtml).includes(text), `missing UI label ${text}`);
 }
 
@@ -57,7 +55,7 @@ for (const selector of [".capture-panel", ".route-preview", ".agent-console", ".
   assert.ok(css.includes(selector), `missing CSS ${selector}`);
 }
 
-assert.ok(app.includes("./src/pages/capture.js"), "app.js should delegate to capture page boot");
+assert.ok(html.includes("./src/pages/capture.js"), "index.html should load capture page module");
 assert.ok(srcFiles.length >= 12, `expected modular src scaffold, got ${srcFiles.length} files`);
 
 for (const file of [

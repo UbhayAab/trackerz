@@ -1,59 +1,97 @@
-# Ubhay Life OS
+# Trackerz
 
-A private, phone-first life logger for money, diet, fitness, and wellness.
+A capture-first life tracker: voice notes, screenshots, bank statements → unified spend/diet/wellness ledger with smart dedupe and Nifty 50 opportunity-cost insights.
 
-The app is designed for GitHub Pages on the frontend and Supabase for auth, data, storage, and Edge Functions. DeepSeek v4 Pro is the main reasoning agent. Gemini handles image/audio understanding when media is uploaded.
+Hosted on GitHub Pages. Auth + DB on Supabase. AI brain via Gemini 2.5 Flash (in the Supabase Edge Function).
 
-## First Principles
+## First-time setup on your phone
 
-- Open the app and capture immediately: text, images, files, voice, or end-of-day dumps.
-- Store raw inputs, parsed candidates, AI actions, and final records separately.
-- Let AI move fast, but only through typed tools, validation, audit logs, dedupe checks, and undo.
-- Support one user first, but keep every table multi-user ready.
-- Make insights available all the time: hard charts plus AI summaries for day, week, month, and trajectory.
+1. Open the GitHub Pages URL (printed in the Actions workflow).
+2. You'll see a one-time setup card. Paste:
+   - **Supabase URL**: `https://qmlenovxatoyxxqlvzlo.supabase.co` (pre-filled)
+   - **Supabase anon key**: grab from Supabase dashboard → Project Settings → API → `anon public`
+3. Tap **Save**. The setup card disappears.
+4. A sign-in card appears. Enter your email, tap **Send magic link**.
+5. Check your email on the phone, tap the link. You're in.
+6. Open **Settings → Run diagnostics** to confirm every layer (auth, storage, edge function) is green.
 
-## Local Files
+If something says FAIL on the diagnostics page, that row tells you exactly what is wrong.
 
-- [index.html](index.html): GitHub Pages-ready static app shell.
-- [styles.css](styles.css): mobile-first operational UI.
-- [app.js](app.js): mock capture, charts, cost calculator, and dashboard state.
-- [docs/user-flows.md](docs/user-flows.md): detailed user flows and quality-of-life map.
-- [docs/feature-atlas.md](docs/feature-atlas.md): expanded capability map.
-- [docs/ai-scaffolding.md](docs/ai-scaffolding.md): model routing, tools, safety rails, tests, and cost policy.
-- [docs/architecture.md](docs/architecture.md): module boundaries and safety architecture.
-- [docs/imports.md](docs/imports.md): bank Excel/CSV/PDF import plan.
-- [docs/testing-plan.md](docs/testing-plan.md): unit and AI eval strategy.
-- [lib/flow-catalog.mjs](lib/flow-catalog.mjs): executable flow catalog rendered by the UI and tested locally.
-- [lib/agent-core.mjs](lib/agent-core.mjs): pure duplicate, routing, cost, import, and tool validation logic.
-- [src](src): modular frontend, agent contracts, imports, analytics, duplicate handling, and UI renderers.
-- [styles](styles): layered CSS for tokens, layout, capture, dashboards, tables, nav, and responsive behavior.
-- [supabase/schema.sql](supabase/schema.sql): database skeleton.
-- [supabase/config.toml](supabase/config.toml): project/function config scaffold.
-- [supabase/functions/agent/index.ts](supabase/functions/agent/index.ts): Edge Function scaffold.
-- [scripts/set-supabase-secrets.ps1](scripts/set-supabase-secrets.ps1): pushes model keys to Supabase Edge Function secrets from environment variables.
-- [scripts/smoke-deepseek.ps1](scripts/smoke-deepseek.ps1): verifies the NVIDIA-hosted DeepSeek endpoint from an environment variable.
+## Daily use
 
-## Key Policy
+- **Capture tab**: type, paste, upload images, upload bank statement files, or hold the Record voice button.
+- **Money tab**: see ledger, upload CSV/XLS/XLSX statement files (parsed in-browser), set monthly/weekly caps.
+- **Diet tab**: meal log with macro estimates.
+- **Insights tab**: AI summary + **Nifty 50 opportunity cost** ("what if you'd invested your discretionary spend instead").
+- **Settings tab**: AI cap, nightly summary toggle, run diagnostics.
 
-Never put DeepSeek, Gemini, NVIDIA, Supabase secret, or service-role keys in the frontend or repository. GitHub Pages gets only the Supabase publishable key. All model keys live as Supabase Edge Function secrets.
+## Architecture
 
-## Current Status
+- **Frontend**: vanilla JS modules under `src/`, static HTML pages under `pages/` + `index.html`.
+- **Auth**: Supabase magic link.
+- **Storage**: Supabase Storage buckets `raw-media` (images/audio) and `statements` (CSV/XLS/PDF), per-user folder isolation via RLS.
+- **DB**: Postgres schema in `supabase/schema.sql` with RLS on every user table.
+- **Agent**: Supabase Edge Function `agent` calls Gemini 2.5 Flash with a strict JSON tool-call schema, persists `ai_runs` + `ai_actions`, and auto-applies high-confidence writes.
+- **Dedupe**: client-side cross-source scanner that handles "Rs 250 said in voice vs Rs 252 in bank" with time-bucket + amount-tolerance matching.
 
-This is a static scaffold and decision base. It does not yet connect to Supabase or live AI services. The next implementation step is wiring Supabase auth, migrations, storage buckets, Edge Function secrets, and the ingestion pipeline.
+## Free input fallbacks
 
-Supabase Edge Function secrets require a Supabase personal access token with secret-write permission. The project publishable/secret API keys are not enough to create Edge Function secrets through the Management API.
+- **Voice → text**: Web Speech API live in Chrome/Edge (zero cost). Audio file fallback transcribed by Gemini.
+- **Image → text**: Gemini 2.5 Flash vision (generous free tier). Tesseract.js can be plugged in if you hit limits.
+- **Statements**: parsed entirely in browser with SheetJS (`xlsx`), no server roundtrip.
 
-## Tests
+## Key safety
 
-Run:
+- **Never** commit Gemini, NVIDIA, Supabase service-role keys. They live only in Supabase Edge Function secrets.
+- The Supabase **anon key** is safe in the browser as long as RLS is enabled (it is).
+- `src/config.local.js` is gitignored; alternatively the runtime setup card stores keys in localStorage.
+
+## Local development
+
+Serve the folder as static:
+
+```powershell
+node scripts/static-server.mjs
+```
+
+Run tests:
 
 ```powershell
 node tests/agent-core.test.mjs
-node tests/flow-catalog.test.mjs
-node tests/capture-fixtures.test.mjs
-node tests/ui-contract.test.mjs
-node tests/architecture.test.mjs
 node tests/agent-policy.test.mjs
 node tests/analytics-imports.test.mjs
-node --check app.js
+node tests/architecture.test.mjs
+node tests/capture-fixtures.test.mjs
+node tests/dedupe-scan.test.mjs
+node tests/flow-catalog.test.mjs
+node tests/interaction-contract.test.mjs
+node tests/opportunity-cost.test.mjs
+node tests/ui-contract.test.mjs
 ```
+
+## Supabase migrations
+
+If you need to re-apply schema:
+
+```powershell
+# Initial schema
+supabase db push --file supabase/schema.sql
+# Or apply incremental migrations
+supabase db push --file supabase/migrations/20260518000001_rls_and_buckets.sql
+supabase db push --file supabase/migrations/20260518000002_discretionary_and_nifty.sql
+```
+
+## Edge function
+
+The function lives at `supabase/functions/agent/index.ts`. To redeploy:
+
+```powershell
+supabase functions deploy agent
+```
+
+The function expects these secrets in Supabase:
+- `GEMINI_API_KEY` (you set this)
+- `SUPABASE_URL` (auto-injected)
+- `SUPABASE_SERVICE_ROLE_KEY` (auto-injected)
+
+`NVIDIA_API_KEY` from the old version is no longer needed.
