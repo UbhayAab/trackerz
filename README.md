@@ -4,18 +4,39 @@ A capture-first life tracker: voice notes, screenshots, bank statements → unif
 
 Hosted on GitHub Pages. Auth + DB on Supabase. AI brain via Gemini 2.5 Flash (in the Supabase Edge Function).
 
-## First-time setup on your phone
+## Live URL
 
-1. Open the GitHub Pages URL (printed in the Actions workflow).
-2. You'll see a one-time setup card. Paste:
+**https://ubhayaab.github.io/trackerz/**
+
+## First-time setup (do these IN ORDER, all from your phone)
+
+### Step 1 — Apply database setup (one time)
+
+Open the Supabase dashboard SQL Editor on your phone:
+`https://supabase.com/dashboard/project/qmlenovxatoyxxqlvzlo/sql/new`
+
+Open `supabase/setup.sql` from the repo on GitHub mobile (or just copy from below), paste it into the SQL Editor, run it. It applies RLS policies, storage buckets, the discretionary/tags columns, and the Nifty reference table. Safe to re-run.
+
+### Step 2 — Redeploy the edge function (one time)
+
+The deployed version still uses the old NVIDIA/DeepSeek path. The new one uses Gemini 2.5 Flash for everything and writes ai_actions/ledger directly. Redeploy from a laptop later:
+
+```powershell
+supabase functions deploy agent
+```
+
+Until you redeploy, captures still save as review items so nothing is lost — you'll see "Agent unavailable; capture queued for review" in the log.
+
+### Step 3 — Open the app on your phone
+
+1. Open https://ubhayaab.github.io/trackerz/
+2. The one-time setup card appears. Paste:
    - **Supabase URL**: `https://qmlenovxatoyxxqlvzlo.supabase.co` (pre-filled)
-   - **Supabase anon key**: grab from Supabase dashboard → Project Settings → API → `anon public`
-3. Tap **Save**. The setup card disappears.
-4. A sign-in card appears. Enter your email, tap **Send magic link**.
+   - **Supabase anon key**: from Supabase dashboard → Project Settings → API → "anon public"
+3. Tap **Save**.
+4. The sign-in card appears. Enter your email, tap **Send magic link**.
 5. Check your email on the phone, tap the link. You're in.
-6. Open **Settings → Run diagnostics** to confirm every layer (auth, storage, edge function) is green.
-
-If something says FAIL on the diagnostics page, that row tells you exactly what is wrong.
+6. Open **Settings → Run diagnostics**. Every row should turn green except possibly "Edge function" until step 2 is done.
 
 ## Daily use
 
