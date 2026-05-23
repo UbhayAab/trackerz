@@ -2,78 +2,92 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Trackerz - Capture</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon-192.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.svg" />
+    <meta name="theme-color" content="#138a5b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Trackerz" />
   </head>
   <body>
     <div class="app-shell page-shell">
-      <header class="topbar">
+      <header class="topbar topbar-tight">
         <div>
           <p class="eyebrow">Trackerz</p>
-          <h1>Today</h1>
+          <h1 class="topbar-title">Capture</h1>
         </div>
-        <a class="icon-link" href="./pages/settings.html" aria-label="Open settings">Settings</a>
+        <span id="jobEta" class="status-pill muted">ready</span>
+        <a class="icon-link" href="./pages/settings.html" aria-label="Settings">⚙</a>
       </header>
 
       <main>
-        <section class="page-hero capture-hero">
-          <div>
-            <p class="eyebrow">First action</p>
-            <h2>Drop anything. See the parser work.</h2>
-          </div>
-          <span id="jobEta" class="status-pill">ready</span>
-        </section>
+        <section class="capture-panel capture-panel-hero" aria-labelledby="capture-title">
+          <h2 id="capture-title" class="visually-hidden">Drop anything</h2>
 
-        <section class="capture-panel" aria-labelledby="capture-title">
-          <div class="capture-head">
-            <h2 id="capture-title">Universal capture</h2>
-            <span class="status-pill muted">text / image / audio / file</span>
-          </div>
+          <textarea
+            id="captureText"
+            rows="6"
+            autofocus
+            placeholder="paid 240 zomato · 3 rotis dal sabzi · slept 7h walked 8k · or paste anything"
+          ></textarea>
 
-          <textarea id="captureText" rows="5" placeholder="paid 240 zomato, ate dal rice and curd, walked 7k, felt low after lunch"></textarea>
-
-          <div id="routePreview" class="route-preview">Auto route: waiting for input</div>
-
-          <div class="agent-console" aria-live="polite">
-            <div class="panel-title-row">
-              <div>
-                <p class="eyebrow">AI parser</p>
-                <h2 id="agentStatus">Idle</h2>
-              </div>
-              <span class="status-pill muted">visible</span>
-            </div>
-            <p id="agentDetail" class="agent-detail">No hidden work. Processing stages, ETA, and table updates appear here.</p>
-            <div id="agentProgress" class="agent-progress" aria-label="AI progress"><span></span></div>
-            <div id="agentStageList" class="stage-list"></div>
-            <ul id="parseLog" class="parse-log"></ul>
-          </div>
-
-          <div class="capture-actions">
-            <label class="file-chip">
-              <input id="fileInput" type="file" multiple accept="image/*,audio/*,.csv,.xls,.xlsx,.pdf,.txt" />
-              Add files
+          <div class="capture-actions capture-actions-big">
+            <label class="file-chip file-chip-icon" aria-label="Camera">
+              <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
+              <span aria-hidden="true">📷</span>
             </label>
-            <button id="voiceButton" class="secondary-button" type="button">Record voice</button>
-            <button id="submitCapture" class="primary-button" type="button">Process</button>
+            <label class="file-chip file-chip-icon" aria-label="Files">
+              <input id="fileInput" type="file" multiple accept="image/*,audio/*,.csv,.xls,.xlsx,.pdf,.txt" hidden />
+              <span aria-hidden="true">📎</span>
+            </label>
+            <button id="voiceButton" class="secondary-button voice-button" type="button">
+              <span aria-hidden="true">🎤</span> Voice
+            </button>
+            <button id="submitCapture" class="primary-button submit-button" type="button">Process</button>
           </div>
 
-          <div class="mode-grid" aria-label="Capture modes">
-            <button class="mode-card active" type="button" data-mode="auto">Auto</button>
-            <button class="mode-card" type="button" data-mode="money">Money</button>
-            <button class="mode-card" type="button" data-mode="food">Food</button>
-            <button class="mode-card" type="button" data-mode="wellness">Wellness</button>
-          </div>
+          <canvas id="voiceWaveform" class="voice-waveform" width="600" height="56" aria-hidden="true" hidden></canvas>
+          <div id="optimisticQueue" class="optimistic-queue" aria-live="polite"></div>
+          <div id="routePreview" class="route-preview route-preview-thin">Auto route: waiting for input</div>
 
-          <div class="quick-capture" aria-label="Quick capture examples">
-            <button class="quick-chip" type="button" data-template="paid 240 zomato on gpay, lunch was dal rice curd, walked 7k">Messy day</button>
-            <button class="quick-chip" type="button" data-template="Uploading bank Excel for May. Need debit, credit, transfer, refund, subscription and duplicate detection.">Bank Excel</button>
-            <button class="quick-chip" type="button" data-template="EOD diet: breakfast poha chai, lunch 3 rotis dal sabzi, dinner chicken rice, protein was low">Diet voice</button>
-            <button class="quick-chip" type="button" data-template="Multiple payment screenshots from PhonePe/GPay/Paytm, dedupe against bank import later">Screenshot dump</button>
-          </div>
+          <details class="capture-meta">
+            <summary>Mode &amp; quick captures</summary>
+            <div class="mode-grid" aria-label="Capture modes">
+              <button class="mode-card active" type="button" data-mode="auto">Auto</button>
+              <button class="mode-card" type="button" data-mode="money">Money</button>
+              <button class="mode-card" type="button" data-mode="food">Food</button>
+              <button class="mode-card" type="button" data-mode="wellness">Wellness</button>
+            </div>
+            <div class="quick-capture" aria-label="Quick capture examples">
+              <button class="quick-chip" type="button" data-template="paid 240 zomato on gpay, lunch was dal rice curd, walked 7k">Messy day</button>
+              <button class="quick-chip" type="button" data-template="Uploading bank Excel for May. Need debit, credit, transfer, refund, subscription and duplicate detection.">Bank Excel</button>
+              <button class="quick-chip" type="button" data-template="EOD diet: breakfast poha chai, lunch 3 rotis dal sabzi, dinner chicken rice, protein was low">Diet voice</button>
+              <button class="quick-chip" type="button" data-template="Multiple payment screenshots from PhonePe/GPay/Paytm, dedupe against bank import later">Screenshot dump</button>
+            </div>
+          </details>
+
+          <details class="capture-meta">
+            <summary>AI activity</summary>
+            <div class="agent-console" aria-live="polite" data-state="idle">
+              <div class="panel-title-row">
+                <div>
+                  <p class="eyebrow">AI parser</p>
+                  <h2 id="agentStatus">Idle</h2>
+                </div>
+              </div>
+              <p id="agentDetail" class="agent-detail">Drop anything above. Stages and tables update here when running.</p>
+              <div id="agentProgress" class="agent-progress" aria-label="AI progress"><span></span></div>
+              <div id="agentStageList" class="stage-list"></div>
+              <ul id="parseLog" class="parse-log"></ul>
+            </div>
+          </details>
         </section>
 
-        <section class="dashboard-grid">
+        <section class="dashboard-grid dashboard-grid-tight">
           <article class="metric-card accent-money">
             <p>Today spend</p>
             <strong id="todaySpend">Rs 0</strong>
@@ -98,9 +112,9 @@
                 <p class="eyebrow">AI review</p>
                 <h2 id="review-table-title">Action queue</h2>
               </div>
-              <span id="reviewRisk" class="metric-badge">3 risk</span>
+              <span id="reviewRisk" class="metric-badge">0 risk</span>
             </div>
-            <div id="reviewTable" class="data-table-wrap"></div>
+            <div id="reviewTable" class="data-table-wrap" data-mode="auto"></div>
           </article>
 
           <article class="ai-panel" aria-labelledby="ai-title">

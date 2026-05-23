@@ -17,18 +17,27 @@
 .icon-link,
 .quick-chip,
 .flow-filter {
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: #ffffff;
   color: var(--ink);
   font-weight: var(--weight-semibold);
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
 }
 
 .primary-button {
-  border-color: var(--charcoal);
-  background: var(--charcoal);
+  border-color: var(--money);
+  background: var(--money);
   color: white;
+}
+
+.primary-button:hover {
+  filter: brightness(1.06);
+}
+
+.primary-button:active {
+  transform: scale(0.98);
 }
 
 .primary-button.danger {
@@ -36,42 +45,53 @@
   background: var(--risk);
 }
 
-.secondary-button,
+.secondary-button {
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.secondary-button:hover {
+  border-color: var(--ink-soft);
+  background: #fafaf6;
+}
+
 .mode-card.active,
 .tab.active {
-  border-color: rgba(19, 138, 91, 0.6);
-  background: rgba(19, 138, 91, 0.1);
+  border-color: rgba(26, 141, 98, 0.6);
+  background: var(--money-soft);
 }
 
 .icon-button {
-  width: 42px;
-  min-width: 42px;
+  width: 44px;
+  min-width: 44px;
 }
 
 .icon-link {
   display: grid;
-  min-width: 42px;
+  min-width: 44px;
   place-items: center;
-  padding: 0 12px;
+  padding: 0 14px;
   text-decoration: none;
 }
 
 .status-pill,
 .metric-badge {
   display: inline-grid;
-  min-height: 32px;
+  min-height: 30px;
   place-items: center;
   border-radius: 999px;
   padding: 0 12px;
   background: var(--charcoal);
   color: white;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: var(--weight-semibold);
+  letter-spacing: 0.01em;
 }
 
 .status-pill.muted {
-  background: #ecf0f5;
-  color: var(--ink);
+  background: var(--chip);
+  color: var(--ink-soft);
 }
 
 .settings-panel {
@@ -165,6 +185,91 @@
 
 .auth-card .small {
   font-size: 0.78rem;
+}
+
+.oauth-row {
+  display: grid;
+  gap: 10px;
+  margin: 6px 0 4px;
+}
+
+.oauth-button {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+
+.oauth-button:hover {
+  background: #f6f6f7;
+  border-color: var(--ink);
+}
+
+.oauth-button:active {
+  transform: scale(0.99);
+}
+
+.oauth-glyph {
+  width: 20px;
+  height: 20px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.oauth-google {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><path fill='%234285F4' d='M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z'/><path fill='%2334A853' d='M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z'/><path fill='%23FBBC05' d='M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24c0 3.55.85 6.91 2.34 9.88l7.35-5.7z'/><path fill='%23EA4335' d='M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z'/></svg>");
+}
+
+.oauth-github {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23181717'><path d='M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2c-3.2.7-3.87-1.36-3.87-1.36-.52-1.34-1.28-1.7-1.28-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.27-5.23-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.18 1.17a11.05 11.05 0 0 1 5.79 0c2.21-1.48 3.18-1.17 3.18-1.17.63 1.59.24 2.76.12 3.05.74.8 1.18 1.82 1.18 3.07 0 4.4-2.69 5.36-5.25 5.65.41.36.78 1.06.78 2.14v3.17c0 .3.21.66.8.55C20.21 21.38 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z'/></svg>");
+}
+
+.auth-divider {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  background: var(--line);
+}
+
+.account-grid {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 12px;
+}
+
+.account-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.account-row code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.84rem;
+  color: var(--ink);
 }
 
 .auth-pill {

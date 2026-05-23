@@ -4,12 +4,15 @@ import { updateState } from "../state/app-state.js";
 import { runCapture } from "../services/agent-runner.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { startLiveTranscription, stopLiveTranscription, isLiveTranscriptionSupported } from "../services/speech.js";
+import { enqueueCapture } from "../services/offline-queue.js";
 
 let recorder = null;
 let chunks = [];
-let pendingAudioFiles = [];
+let pendingMediaFiles = [];
 let liveTranscript = "";
 let recognitionHandle = null;
+let waveformHandle = null;
+let optimisticCounter = 0;
 
 export function renderRoutePreview() {
   const captureTextEl = $("#captureText");
@@ -25,7 +28,9 @@ export function renderRoutePreview() {
 export function bindCapturePanel() {
   if (!$("#captureText")) return;
   $("#captureText").addEventListener("input", renderRoutePreview);
-  $("#fileInput").addEventListener("change", renderRoutePreview);
+  $("#captureText").addEventListener("paste", handlePaste);
+  $("#fileInput").addEventListener("change", handleFileInputChange);
+  $("#cameraInput")?.addEventListener("change", handleCameraInputChange);
   $("#submitCapture").addEventListener("click", handleSubmit);
   $("#voiceButton").addEventListener("click", handleVoiceClick);
 
@@ -45,6 +50,42 @@ export function bindCapturePanel() {
   });
 }
 
+function handleFileInputChange() {
+  const input = $("#fileInput");
+  if (!input) return;
+  const count = input.files?.length || 0;
+  if (count) updateState((state) => state.parseLog.unshift(`${count} file(s) attached.`));
+  renderRoutePreview();
+}
+
+function handleCameraInputChange() {
+  const input = $("#cameraInput");
+  const file = input.files?.[0];
+  if (!file) return;
+  pendingMediaFiles.push(file);
+  updateState((state) => state.parseLog.unshift(`Camera capture attached: ${file.name}`));
+  input.value = "";
+  renderRoutePreview();
+}
+
+function handlePaste(event) {
+  const items = event.clipboardData?.items || [];
+  let added = 0;
+  for (const item of items) {
+    if (item.kind === "file") {
+      const file = item.getAsFile();
+      if (file) {
+        pendingMediaFiles.push(file);
+        added += 1;
+      }
+    }
+  }
+  if (added > 0) {
+    updateState((state) => state.parseLog.unshift(`${added} pasted file(s) attached.`));
+    renderRoutePreview();
+  }
+}
+
 async function handleSubmit() {
   const text = $("#captureText").value.trim();
   const allFiles = getCaptureFiles();
@@ -53,11 +94,24 @@ async function handleSubmit() {
   const captureType = activeMode();
   const submitBtn = $("#submitCapture");
   submitBtn.disabled = true;
+  const optimisticId = pushOptimistic({ text, transcript: liveTranscript, fileCount: allFiles.length, captureType });
 
   updateState((state) => {
     state.parseLog.unshift(`Capture: ${text || `${allFiles.length} file(s)`}${liveTranscript ? ` + voice` : ""}`);
     state.activeJob = { key: "queued", label: "Queued", eta: 5, detail: "Capture received.", stageIndex: 0 };
   });
+
+  if (!navigator.onLine) {
+    await enqueueCapture({ text: [text, liveTranscript].filter(Boolean).join("\n"), files: allFiles, captureType });
+    updateOptimistic(optimisticId, { status: "queued", detail: "Offline — saved locally, will sync when online." });
+    updateState((state) => {
+      state.activeJob = null;
+      state.parseLog.unshift("Offline: capture stored in IndexedDB queue.");
+    });
+    resetForm();
+    submitBtn.disabled = false;
+    return;
+  }
 
   try {
     await runCapture(
@@ -68,27 +122,65 @@ async function handleSubmit() {
             state.activeJob = { ...s, stageIndex: idx };
             state.parseLog.unshift(`${s.label}: ${s.detail}`);
           });
+          updateOptimistic(optimisticId, { status: s.key, detail: s.detail });
         },
       },
     );
     await hydrateStateFromSupabase();
+    updateOptimistic(optimisticId, { status: "done", detail: "Saved. Review the action queue." });
     updateState((state) => {
       state.activeJob = null;
       state.parseLog.unshift("Tables updated. Review queue and metrics refreshed.");
     });
   } catch (err) {
+    updateOptimistic(optimisticId, { status: "error", detail: err.message || String(err) });
     updateState((state) => {
       state.activeJob = null;
       state.parseLog.unshift(`Capture failed: ${err.message || err}`);
     });
   } finally {
-    $("#captureText").value = "";
-    $("#fileInput").value = "";
-    pendingAudioFiles = [];
-    liveTranscript = "";
+    resetForm();
     submitBtn.disabled = false;
-    renderRoutePreview();
   }
+}
+
+function resetForm() {
+  if ($("#captureText")) $("#captureText").value = "";
+  if ($("#fileInput")) $("#fileInput").value = "";
+  pendingMediaFiles = [];
+  liveTranscript = "";
+  renderRoutePreview();
+}
+
+function pushOptimistic({ text, transcript, fileCount, captureType }) {
+  const wrap = $("#optimisticQueue");
+  if (!wrap) return null;
+  optimisticCounter += 1;
+  const id = `opt-${optimisticCounter}`;
+  const row = document.createElement("div");
+  row.className = "optimistic-row status-queued";
+  row.id = id;
+  const summary = text || transcript || `${fileCount} file(s)`;
+  row.innerHTML = `
+    <span class="optimistic-dot" aria-hidden="true"></span>
+    <div class="optimistic-body">
+      <strong>${summary.slice(0, 80)}</strong>
+      <span class="optimistic-status">${captureType} • queued</span>
+    </div>
+  `;
+  wrap.prepend(row);
+  setTimeout(() => row.classList.add("ready"), 20);
+  return id;
+}
+
+function updateOptimistic(id, { status, detail }) {
+  if (!id) return;
+  const row = document.getElementById(id);
+  if (!row) return;
+  row.className = `optimistic-row status-${status || "running"} ready`;
+  const label = row.querySelector(".optimistic-status");
+  if (label) label.textContent = `${status} • ${detail || ""}`;
+  if (status === "done") setTimeout(() => row.remove(), 6000);
 }
 
 function activeMode() {
@@ -97,7 +189,7 @@ function activeMode() {
 }
 
 function getCaptureFiles() {
-  return [...Array.from($("#fileInput").files || []), ...pendingAudioFiles];
+  return [...Array.from($("#fileInput").files || []), ...pendingMediaFiles];
 }
 
 function getCaptureFilesMeta() {
@@ -118,6 +210,7 @@ async function handleVoiceClick() {
     recorder.stop();
     stopLiveTranscription(recognitionHandle);
     recognitionHandle = null;
+    stopWaveform();
     button.textContent = "Record voice";
     return;
   }
@@ -134,6 +227,7 @@ async function handleVoiceClick() {
     chunks = [];
     liveTranscript = "";
     recorder = new MediaRecorder(stream);
+    startWaveform(stream);
 
     if (isLiveTranscriptionSupported()) {
       recognitionHandle = startLiveTranscription({
@@ -157,10 +251,11 @@ async function handleVoiceClick() {
 
     recorder.addEventListener("stop", () => {
       stream.getTracks().forEach((track) => track.stop());
+      stopWaveform();
       const blob = new Blob(chunks, { type: "audio/webm" });
       const fileName = `voice-note-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
       const file = new File([blob], fileName, { type: "audio/webm" });
-      pendingAudioFiles.push(file);
+      pendingMediaFiles.push(file);
       updateState((state) => {
         state.activeJob = null;
         state.parseLog.unshift(liveTranscript
@@ -182,4 +277,53 @@ async function handleVoiceClick() {
       state.parseLog.unshift("Microphone permission was blocked. Use Add files with an audio recording instead.");
     });
   }
+}
+
+function startWaveform(stream) {
+  const canvas = $("#voiceWaveform");
+  if (!canvas || !globalThis.AudioContext) return;
+  canvas.hidden = false;
+  const ctx = canvas.getContext("2d");
+  const audioCtx = new AudioContext();
+  const source = audioCtx.createMediaStreamSource(stream);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 128;
+  source.connect(analyser);
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  let stopped = false;
+
+  function draw() {
+    if (stopped) return;
+    analyser.getByteFrequencyData(data);
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const barCount = data.length;
+    const barWidth = w / barCount;
+    for (let i = 0; i < barCount; i++) {
+      const v = data[i] / 255;
+      const barHeight = Math.max(2, v * h);
+      const x = i * barWidth;
+      const y = (h - barHeight) / 2;
+      ctx.fillStyle = `rgba(19, 138, 91, ${0.45 + v * 0.55})`;
+      ctx.fillRect(x + 1, y, barWidth - 2, barHeight);
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+
+  waveformHandle = {
+    stop() {
+      stopped = true;
+      source.disconnect();
+      audioCtx.close().catch(() => null);
+      canvas.hidden = true;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    },
+  };
+}
+
+function stopWaveform() {
+  try { waveformHandle?.stop(); } catch {}
+  waveformHandle = null;
 }

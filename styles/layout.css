@@ -2,7 +2,7 @@
   width: min(100%, 860px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: 16px 14px 92px;
+  padding: 16px 14px calc(env(safe-area-inset-bottom, 0px) + 100px);
 }
 
 .topbar,
@@ -19,18 +19,17 @@
   padding: 6px 2px 14px;
 }
 
-.capture-panel,
 .analytics-panel,
 .ai-panel,
 .cost-panel,
 .flow-panel,
 .pipeline-panel,
 .command-panel {
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  padding: 14px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
 }
 
 .view-tabs,
@@ -60,16 +59,16 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 18px;
-  min-height: 148px;
-  margin-bottom: 14px;
+  min-height: 140px;
+  margin-bottom: 16px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background:
-    linear-gradient(135deg, rgba(19, 138, 91, 0.14), transparent 42%),
-    linear-gradient(215deg, rgba(217, 77, 61, 0.12), transparent 44%),
+    linear-gradient(135deg, rgba(26, 141, 98, 0.14), transparent 42%),
+    linear-gradient(215deg, rgba(208, 71, 51, 0.1), transparent 44%),
     #ffffff;
-  box-shadow: var(--shadow);
-  padding: 18px;
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
 }
 
 .page-hero h2 {

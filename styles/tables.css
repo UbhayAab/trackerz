@@ -1,20 +1,32 @@
+/* Tables: dense, readable, no truncation. Mobile collapses to card rows. */
+
 .data-table-wrap {
   width: 100%;
   overflow-x: auto;
   margin-top: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
-.table-spaced {
-  margin-top: 18px;
-}
+.table-spaced { margin-top: 18px; }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: auto;
-  min-width: 680px;
-  font-size: 0.84rem;
-  line-height: 1.35;
+  min-width: 720px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.data-table thead {
+  background: var(--chip);
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .data-table th {
@@ -22,43 +34,73 @@
   text-align: left;
   font-size: 0.72rem;
   font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
 }
 
-.data-table th,
 .data-table td {
   border-bottom: 1px solid var(--line);
-  max-width: 240px;
-  padding: 12px 10px;
+  padding: 14px;
   vertical-align: top;
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: normal;
+  min-height: 48px;
 }
+
+.data-table tbody tr:hover {
+  background: rgba(26, 141, 98, 0.04);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Per-column widths so amount/date never share space with note */
+.data-table td[data-col="date"],
+.data-table th[data-col="date"] { min-width: 96px; white-space: nowrap; }
+.data-table td[data-col="amount"],
+.data-table th[data-col="amount"] { min-width: 110px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.data-table td[data-col="merchant"],
+.data-table th[data-col="merchant"] { min-width: 180px; }
+.data-table td[data-col="category"],
+.data-table th[data-col="category"] { min-width: 130px; }
+.data-table td[data-col="note"],
+.data-table th[data-col="note"] { min-width: 220px; }
+.data-table td[data-col="evidence"],
+.data-table th[data-col="evidence"] { min-width: 110px; }
+.data-table td[data-col="ops"],
+.data-table th[data-col="ops"] { min-width: 160px; white-space: nowrap; }
 
 .empty-cell {
   color: var(--muted);
   font-weight: var(--weight-medium);
+  text-align: center;
+  padding: 24px !important;
 }
 
 .cell-strong {
   font-weight: var(--weight-semibold);
+  color: var(--ink);
 }
 
 .badge {
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
   border-radius: 999px;
-  padding: 5px 8px;
-  background: #ecf0f5;
-  color: var(--ink);
+  padding: 4px 10px;
+  background: var(--chip);
+  color: var(--ink-soft);
   font-size: 0.72rem;
   font-weight: var(--weight-semibold);
-  white-space: normal;
+  white-space: nowrap;
 }
 
 .badge-risk {
-  background: rgba(161, 59, 45, 0.12);
+  background: rgba(168, 49, 32, 0.12);
   color: var(--risk);
 }
 
@@ -71,12 +113,14 @@
   color: var(--ink);
   font-size: 0.76rem;
   font-weight: var(--weight-semibold);
-  padding: 0 10px;
+  padding: 0 12px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
 }
 
 .table-action:hover {
-  border-color: var(--wellness);
-  color: var(--wellness);
+  border-color: var(--money);
+  color: var(--money);
 }
 
 .flow-list {
@@ -89,9 +133,9 @@
   display: grid;
   gap: 8px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: #ffffff;
-  padding: 12px;
+  padding: 14px;
 }
 
 .flow-card header {
@@ -109,10 +153,54 @@
 
 .flow-domain {
   border-radius: 999px;
-  background: #ecf0f5;
-  padding: 4px 8px;
-  color: var(--ink);
-  font-size: 0.72rem;
+  background: var(--chip);
+  padding: 4px 10px;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
+}
+
+/* Mobile: collapse table into stacked card rows.
+   Each <tr> becomes a card; <td>s become label/value pairs.
+   Triggered under 540px and only on tables with data-mode="cards" set on the wrap. */
+@media (max-width: 540px) {
+  .data-table-wrap[data-mode="auto"] .data-table,
+  .data-table-wrap[data-mode="cards"] .data-table {
+    min-width: 0;
+  }
+  .data-table-wrap[data-mode="auto"] .data-table thead,
+  .data-table-wrap[data-mode="cards"] .data-table thead {
+    display: none;
+  }
+  .data-table-wrap[data-mode="auto"] .data-table tbody tr,
+  .data-table-wrap[data-mode="cards"] .data-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 90px) minmax(0, 1fr);
+    gap: 4px 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .data-table-wrap[data-mode="auto"] .data-table tbody td,
+  .data-table-wrap[data-mode="cards"] .data-table tbody td {
+    display: contents;
+    border: 0;
+    padding: 0;
+    min-height: 0;
+  }
+  .data-table-wrap[data-mode="auto"] .data-table tbody td::before,
+  .data-table-wrap[data-mode="cards"] .data-table tbody td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: var(--weight-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding-top: 4px;
+  }
+  .data-table-wrap[data-mode="auto"] .data-table tbody td > *,
+  .data-table-wrap[data-mode="auto"] .data-table tbody td,
+  .data-table-wrap[data-mode="cards"] .data-table tbody td > * {
+    grid-column: 2;
+  }
 }

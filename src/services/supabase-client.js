@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.74.0";
 import { getSupabaseConfig } from "../config.js";
 
 let clientPromise = null;

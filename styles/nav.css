@@ -5,22 +5,34 @@
   left: 0;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
   width: min(100%, 980px);
   margin: 0 auto;
-  padding: 10px 12px 14px;
-  background: rgba(251, 250, 246, 0.96);
+  padding: 8px 10px calc(env(safe-area-inset-bottom, 0px) + 10px);
+  background: rgba(247, 246, 241, 0.92);
   border-top: 1px solid var(--line);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  z-index: 5;
 }
 
 .nav-item {
   display: grid;
   place-items: center;
-  min-height: 44px;
-  border-color: transparent;
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: var(--weight-semibold);
   text-decoration: none;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.nav-item:hover {
+  color: var(--ink-soft);
+  background: var(--chip);
 }
 
 .nav-item.active {
