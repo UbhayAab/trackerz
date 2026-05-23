@@ -1,12 +1,17 @@
 // Runtime config loader.
 //
 // Resolution order:
-//   1. `src/config.local.js` (gitignored) if present at build/serve time.
-//   2. `localStorage` keys SUPABASE_URL + SUPABASE_ANON_KEY.
-//   3. Prompt the user once via the on-screen setup card.
+//   1. `src/config.local.js` (gitignored) if present.
+//   2. `localStorage` overrides for testing other projects.
+//   3. Hard-coded production defaults below.
 //
-// This lets the same static bundle work for any deployment without
-// committing keys to the repo.
+// The publishable (anon) key is safe to embed in client code BECAUSE every
+// user-owned table has Row Level Security enabled and policies that only
+// allow auth.uid() = row.user_id. The setup card stays as a fallback for
+// people forking the repo to point at their own Supabase project.
+
+const PROD_URL = "https://yyoewdcijplkhxleejtm.supabase.co";
+const PROD_ANON_KEY = "sb_publishable_0AfWy1NnROvjW0P0Cj3KVA_m286sLXT";
 
 const LS_URL = "trackerz.supabase_url";
 const LS_KEY = "trackerz.supabase_anon_key";
@@ -48,9 +53,14 @@ export function clearConfig() {
   cached = null;
 }
 
+function loadProdDefault() {
+  if (PROD_URL && PROD_ANON_KEY) return { url: PROD_URL, key: PROD_ANON_KEY };
+  return null;
+}
+
 export async function getSupabaseConfig() {
   if (cached) return cached;
-  cached = (await loadLocalFile()) || loadLocalStorage();
+  cached = (await loadLocalFile()) || loadLocalStorage() || loadProdDefault();
   return cached;
 }
 
@@ -62,5 +72,5 @@ export function primeSupabaseConfig() {
 }
 
 export function hasSupabaseConfig() {
-  return Boolean(cached || loadLocalStorage());
+  return Boolean(cached || loadLocalStorage() || loadProdDefault());
 }
