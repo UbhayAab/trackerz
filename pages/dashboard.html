@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Trackerz - Dashboard</title>
     <link rel="stylesheet" href="../styles.css" />
+    <link rel="manifest" href="../manifest.webmanifest" />
+    <link rel="icon" href="../icons/icon-192.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="../icons/icon-192.svg" />
+    <meta name="theme-color" content="#138a5b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
   </head>
   <body>
     <div class="app-shell page-shell">
@@ -31,6 +36,8 @@
           <article class="summary-tile"><span>Protein</span><strong id="summaryProtein">0g</strong></article>
           <article class="summary-tile"><span>Habit score</span><strong id="summaryHabitScore">0</strong></article>
         </section>
+
+        <section id="dashboardViews" class="dashboard-views" aria-label="Day/Week/Month views"></section>
 
         <section class="view-tabs" aria-label="Dashboard views">
           <button class="tab active" data-view="dod" type="button">DOD</button>
@@ -59,7 +66,7 @@
               </div>
               <span class="status-pill muted">forecast</span>
             </div>
-            <div id="budgetTable" class="data-table-wrap"></div>
+            <div id="budgetTable" class="data-table-wrap" data-mode="auto"></div>
           </article>
 
           <article class="command-panel">
@@ -70,7 +77,7 @@
               </div>
               <span class="status-pill muted">fat loss</span>
             </div>
-            <div id="macroTable" class="data-table-wrap"></div>
+            <div id="macroTable" class="data-table-wrap" data-mode="auto"></div>
           </article>
         </section>
 

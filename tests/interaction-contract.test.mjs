@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { parseCapture } from "../src/ai/capture-parser.js";
-import { createDemoState, createEmptyState } from "../src/state/app-state.js";
+import { createEmptyState } from "../src/state/app-state.js";
 import { aiStages } from "../src/ai/job-runner.js";
 import { renderTable } from "../src/ui/table-renderer.js";
 
@@ -57,9 +57,7 @@ const emptyState = createEmptyState();
 assert.equal(emptyState.ledgerRows.length, 0);
 assert.equal(emptyState.reviewRows.length, 0);
 assert.equal(emptyState.metrics.todaySpend, 0);
-
-const demoState = createDemoState();
-assert.ok(demoState.ledgerRows.length > 0);
-assert.ok(demoState.insights.length > 0);
+assert.equal(emptyState.insights.length, 0, "no hardcoded insights leak into empty state");
+assert.equal(emptyState.parseLog.length, 0, "parse log starts empty");
 
 console.log("interaction contract tests passed");

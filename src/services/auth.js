@@ -43,6 +43,23 @@ export async function signInWithEmail(email) {
   if (error) throw error;
 }
 
+const SUPPORTED_PROVIDERS = new Set(["google", "github", "apple", "facebook", "azure", "discord", "linkedin", "slack", "spotify", "twitter", "notion", "kakao", "workos", "zoom"]);
+
+export async function signInWithProvider(provider) {
+  if (!SUPPORTED_PROVIDERS.has(provider)) {
+    throw new Error(`Unsupported provider: ${provider}`);
+  }
+  const supabase = await getSupabaseClient();
+  const redirect = globalThis.location?.origin
+    ? `${globalThis.location.origin}${globalThis.location.pathname.replace(/[^/]*$/, "")}`
+    : undefined;
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: redirect ? { redirectTo: redirect } : undefined,
+  });
+  if (error) throw error;
+}
+
 export async function signOut() {
   const supabase = await getSupabaseClient();
   await supabase.auth.signOut();

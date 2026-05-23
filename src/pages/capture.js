@@ -7,6 +7,11 @@ import { renderSummaryRail } from "../ui/summary-rail.js";
 import { subscribe } from "../state/app-state.js";
 import { bootWithAuth } from "./bootstrap.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { registerServiceWorker, bindInstallPrompt, bindOnlineDrain } from "../services/pwa.js";
+import { runCapture } from "../services/agent-runner.js";
+
+registerServiceWorker();
+bindInstallPrompt("installAppBtn");
 
 bootWithAuth(async () => {
   renderRoutePreview();
@@ -20,5 +25,6 @@ bootWithAuth(async () => {
   bindCapturePanel();
   bindInsights();
   bindOperationalTables();
+  bindOnlineDrain(runCapture);
   await hydrateStateFromSupabase();
 });

@@ -14,7 +14,7 @@ export function renderTable(columns, rows, options = {}) {
   return `
     <table class="data-table">
       <thead>
-        <tr>${columns.map((column) => `<th>${column.label}</th>`).join("")}</tr>
+        <tr>${columns.map((column) => `<th data-col="${column.key}">${escapeHtml(column.label)}</th>`).join("")}</tr>
       </thead>
       <tbody>
         ${body}
@@ -25,16 +25,18 @@ export function renderTable(columns, rows, options = {}) {
 
 function renderCell(column, row, options) {
   const value = row[column.key] ?? "";
-  const className = column.strong ? "cell-strong" : "";
+  const classes = ["cell"];
+  if (column.strong) classes.push("cell-strong");
+  const colAttrs = `data-col="${column.key}" data-label="${escapeHtml(column.label)}"`;
   if (column.actions) {
-    return `<td>${column.actions
+    return `<td ${colAttrs} class="${classes.join(" ")}">${column.actions
       .map(
         (action) =>
           `<button class="table-action" type="button" data-table="${options.table || ""}" data-action="${action.action}" data-row-id="${escapeHtml(row.id)}">${escapeHtml(action.label)}</button>`,
       )
       .join("")}</td>`;
   }
-  return `<td class="${className}">${formatCell(column, value)}</td>`;
+  return `<td ${colAttrs} class="${classes.join(" ")}">${formatCell(column, value)}</td>`;
 }
 
 function formatCell(column, value) {

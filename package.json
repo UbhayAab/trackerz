@@ -1,0 +1,16 @@
+{
+  "name": "trackerz",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node scripts/static-server.mjs",
+    "test": "node tests/agent-core.test.mjs && node tests/agent-policy.test.mjs && node tests/analytics-imports.test.mjs && node tests/architecture.test.mjs && node tests/capture-fixtures.test.mjs && node tests/dedupe-scan.test.mjs && node tests/flow-catalog.test.mjs && node tests/interaction-contract.test.mjs && node tests/opportunity-cost.test.mjs && node tests/ui-contract.test.mjs",
+    "db:push": "node scripts/db-push.mjs",
+    "screenshot": "node scripts/screenshot.mjs"
+  },
+  "devDependencies": {
+    "pg": "^8.13.1",
+    "playwright": "^1.60.0",
+    "dotenv": "^16.4.5"
+  }
+}

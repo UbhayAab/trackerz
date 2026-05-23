@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Trackerz - Settings</title>
     <link rel="stylesheet" href="../styles.css" />
+    <link rel="manifest" href="../manifest.webmanifest" />
+    <link rel="icon" href="../icons/icon-192.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="../icons/icon-192.svg" />
+    <meta name="theme-color" content="#138a5b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
   </head>
   <body>
     <div class="app-shell page-shell">
@@ -23,6 +28,36 @@
             <h2>Money, calories, protein, AI caps, and midnight summary schedule.</h2>
           </div>
           <span class="status-pill">private</span>
+        </section>
+
+        <section class="command-panel" id="accountPanel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Account</p>
+              <h2>Sign-in & providers</h2>
+            </div>
+            <span id="accountStatus" class="status-pill muted">loading</span>
+          </div>
+          <div class="account-grid">
+            <div class="account-row">
+              <span class="muted small">Signed in as</span>
+              <strong id="accountEmail">—</strong>
+            </div>
+            <div class="account-row">
+              <span class="muted small">User id</span>
+              <code id="accountUid">—</code>
+            </div>
+            <div class="account-row">
+              <span class="muted small">Linked providers</span>
+              <span id="accountProviders">—</span>
+            </div>
+          </div>
+          <div class="data-actions">
+            <button id="linkGoogle" class="secondary-button" type="button">Link Google</button>
+            <button id="linkGithub" class="secondary-button" type="button">Link GitHub</button>
+            <button id="signOutBtn" class="primary-button danger" type="button">Sign out</button>
+          </div>
+          <p class="agent-detail">Trackerz keeps every user's data RLS-isolated. Linking more providers gives you alternate sign-in paths without splitting your data.</p>
         </section>
 
         <section class="command-grid">

@@ -51,6 +51,22 @@ for (const hardcoded of ["live mock", "Rs 1,430", "Rs 52.4k", "86 / 130g", "40+ 
   assert.ok(!(html + pageHtml).includes(hardcoded), `hardcoded page data still present: ${hardcoded}`);
 }
 
+const srcCodeFiles = readdirSync("src", { recursive: true })
+  .map((file) => String(file).replaceAll("\\", "/"))
+  .filter((file) => file.endsWith(".js"))
+  .map((file) => readFileSync(join("src", file), "utf8"))
+  .join("\n");
+const hardcodedDataPatterns = [
+  /Rs\s*1[,.]?430/,
+  /Rs\s*52[,.]?4/,
+  /poha\s*\+\s*chai/,
+  /\bzomato\s+rs\s+240\b/i,
+  /HDFC-May\.xlsx/,
+];
+for (const pat of hardcodedDataPatterns) {
+  assert.ok(!pat.test(srcCodeFiles), `hardcoded sample data still present in src/: ${pat}`);
+}
+
 for (const selector of [".capture-panel", ".route-preview", ".agent-console", ".stage-dot", ".table-action", ".flow-card", ".settings-panel", ".bottom-nav"]) {
   assert.ok(css.includes(selector), `missing CSS ${selector}`);
 }
@@ -78,7 +94,7 @@ for (const file of [
   "ai/job-runner.js",
   "ai/capture-parser.js",
   "services/capture-router.js",
-  "data/table-data.js",
+  "ui/pipeline.js",
 ]) {
   assert.ok(srcFiles.includes(file), `missing src/${file}`);
 }

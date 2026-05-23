@@ -12,6 +12,7 @@ const LS_URL = "trackerz.supabase_url";
 const LS_KEY = "trackerz.supabase_anon_key";
 
 let cached = null;
+let primePromise = null;
 
 async function loadLocalFile() {
   try {
@@ -51,6 +52,13 @@ export async function getSupabaseConfig() {
   if (cached) return cached;
   cached = (await loadLocalFile()) || loadLocalStorage();
   return cached;
+}
+
+// Call once at app boot. Awaits the local file lookup so subsequent sync
+// hasSupabaseConfig() checks see config.local.js too.
+export function primeSupabaseConfig() {
+  if (!primePromise) primePromise = getSupabaseConfig();
+  return primePromise;
 }
 
 export function hasSupabaseConfig() {

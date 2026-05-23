@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trackerz – Share to capture</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#138a5b" />
+  </head>
+  <body>
+    <div class="app-shell page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Share to Trackerz</p>
+          <h1>Received</h1>
+        </div>
+        <a class="icon-link" href="./index.html">Open</a>
+      </header>
+      <main>
+        <section class="command-panel">
+          <p id="shareStatus" class="agent-detail">Reading shared content...</p>
+          <ul id="shareList" class="parse-log"></ul>
+          <div class="capture-actions">
+            <button id="shareProcess" class="primary-button" type="button" disabled>Process now</button>
+            <a class="secondary-button" href="./index.html">Open capture page</a>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./src/pages/share-target.js"></script>
+  </body>
+</html>

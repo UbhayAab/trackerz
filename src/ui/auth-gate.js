@@ -1,5 +1,5 @@
-import { hasSupabaseConfig, saveConfig } from "../config.js";
-import { initAuth, onAuthChange, signInWithEmail, signOut, ensureProfileRow, getCurrentSession } from "../services/auth.js";
+import { hasSupabaseConfig, primeSupabaseConfig, saveConfig } from "../config.js";
+import { initAuth, onAuthChange, signInWithEmail, signInWithProvider, signOut, ensureProfileRow, getCurrentSession } from "../services/auth.js";
 import { resetSupabaseClient } from "../services/supabase-client.js";
 
 const SETUP_ID = "trackerz-setup-card";
@@ -7,6 +7,9 @@ const SIGNIN_ID = "trackerz-signin-card";
 const PILL_ID = "trackerz-auth-pill";
 
 export async function mountAuthGate({ onReady } = {}) {
+  // Wait for config.local.js (if present) before deciding to show setup.
+  await primeSupabaseConfig();
+
   if (!hasSupabaseConfig()) {
     showSetupCard(() => mountAuthGate({ onReady }));
     return;
@@ -39,7 +42,7 @@ function showSetupCard(onSaved) {
     <h2>One-time setup</h2>
     <p>Paste your Supabase project URL and anon (publishable) key. Stored only in this browser.</p>
     <label>Supabase URL
-      <input type="url" id="setupUrl" placeholder="https://your-project.supabase.co" value="https://qmlenovxatoyxxqlvzlo.supabase.co" />
+      <input type="url" id="setupUrl" placeholder="https://your-project.supabase.co" value="https://yyoewdcijplkhxleejtm.supabase.co" />
     </label>
     <label>Supabase anon key
       <input type="password" id="setupKey" placeholder="eyJhbGciOi..." />
@@ -66,8 +69,19 @@ function showSignInCard() {
     document.body.appendChild(card);
   }
   card.innerHTML = `
-    <h2>Sign in</h2>
-    <p>Get a magic link by email. No password.</p>
+    <h2>Sign in to Trackerz</h2>
+    <p class="muted small">Private to you. Your data is RLS-isolated by user id.</p>
+    <div class="oauth-row">
+      <button type="button" class="oauth-button" data-provider="google">
+        <span class="oauth-glyph oauth-google" aria-hidden="true"></span>
+        Continue with Google
+      </button>
+      <button type="button" class="oauth-button" data-provider="github">
+        <span class="oauth-glyph oauth-github" aria-hidden="true"></span>
+        Continue with GitHub
+      </button>
+    </div>
+    <div class="auth-divider"><span>or magic link</span></div>
     <label>Email
       <input type="email" id="signinEmail" placeholder="you@example.com" autocomplete="email" />
     </label>
@@ -75,6 +89,17 @@ function showSignInCard() {
     <p id="signinMessage" class="muted small"></p>
   `;
   const message = card.querySelector("#signinMessage");
+  card.querySelectorAll(".oauth-button").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const provider = btn.dataset.provider;
+      message.textContent = `Opening ${provider}...`;
+      try {
+        await signInWithProvider(provider);
+      } catch (err) {
+        message.textContent = `Error: ${err.message || err}`;
+      }
+    });
+  });
   card.querySelector("#signinSend").addEventListener("click", async () => {
     const email = card.querySelector("#signinEmail").value.trim();
     if (!email) return;
