@@ -1,4 +1,5 @@
 import { fetchLedger, fetchFoodLogs, fetchOpenAiActions, fetchOpenImports, fetchBudgets } from "../services/supabase-data.js";
+import { isLocalSession } from "../services/auth.js";
 import { updateState } from "./app-state.js";
 
 const INR = new Intl.NumberFormat("en-IN");
@@ -15,6 +16,7 @@ function shortDate(iso) {
 }
 
 export async function hydrateStateFromSupabase() {
+  if (isLocalSession()) return;
   try {
     const [ledger, foods, actions, imports, budgets] = await Promise.all([
       fetchLedger().catch(() => []),

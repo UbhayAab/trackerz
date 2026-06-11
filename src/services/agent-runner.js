@@ -1,6 +1,9 @@
 import { getSupabaseClient } from "./supabase-client.js";
 import { insertRawIngestion, uploadMediaFile } from "./supabase-data.js";
 import { runCrossSourceDedupe } from "./dedupe-scan.js";
+import { parseCapture } from "../ai/capture-parser.js";
+import { updateState } from "../state/app-state.js";
+import { isLocalSession } from "./auth.js";
 
 const STAGES = [
   { key: "queued",     label: "Queued",          detail: "Capture received." },
@@ -20,6 +23,10 @@ function stage(key, overrides = {}) {
 export async function runCapture({ text = "", files = [], captureType = "auto", transcript = "" }, { onStage } = {}) {
   const sourceType = inferSourceType(text, files, transcript);
   const mode = captureType === "food" ? "diet" : captureType === "money" ? "money" : captureType === "wellness" ? "wellness" : "auto";
+
+  if (isLocalSession()) {
+    return runLocalCapture({ text, files, captureType, transcript, sourceType }, { onStage });
+  }
 
   onStage?.(stage("queued"), 0);
 
@@ -91,6 +98,50 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
   onStage?.(stage("done"), 6);
 
   return { ingestion, mediaAssets, agentResp, dedupe: dedupeResult };
+}
+
+async function runLocalCapture({ text, files, captureType, transcript, sourceType }, { onStage } = {}) {
+  const combinedText = [text, transcript].filter(Boolean).join("\n").trim();
+  const localStages = [
+    stage("queued", { detail: "Local capture received." }),
+    stage("uploading", { detail: "Saved in this browser session." }),
+    stage("extracting", { detail: files.length ? `${files.length} file hint(s) prepared.` : "Text input only." }),
+    stage("reasoning", { detail: "Running local parser fallback." }),
+    stage("dedupe", { detail: "Flagging possible duplicates for review." }),
+    stage("writing", { detail: "Writing local rows." }),
+    stage("done", { detail: "Local tables refreshed." }),
+  ];
+
+  for (const [index, item] of localStages.entries()) {
+    onStage?.(item, index);
+    await delay(index === 0 ? 0 : 180);
+  }
+
+  const updates = parseCapture({
+    text: combinedText,
+    files: files.map((file) => ({ name: file.name, type: file.type, kind: pickKind(file) })),
+    captureType,
+  });
+
+  updateState((state) => {
+    state.reviewRows = [...updates.reviewRows, ...state.reviewRows];
+    state.ledgerRows = [...updates.ledgerRows, ...state.ledgerRows];
+    state.importRows = [...updates.importRows, ...state.importRows];
+    state.macroRows = [...updates.macroRows, ...state.macroRows];
+    state.insights = [...updates.insights, ...state.insights].slice(0, 12);
+    state.metrics.todaySpend += updates.metricsDelta.spend;
+    state.metrics.protein = Math.min(state.metrics.proteinTarget + 35, state.metrics.protein + updates.metricsDelta.protein);
+    state.metrics.caloriesLeft = Math.max(0, state.metrics.caloriesLeft - updates.metricsDelta.calories);
+    state.metrics.habitScore = Math.max(0, Math.min(100, state.metrics.habitScore + updates.metricsDelta.habit));
+    state.metrics.adherence = Math.max(0, Math.min(100, state.metrics.adherence + updates.metricsDelta.adherence));
+    state.metrics.habitNote = updates.metricsDelta.habit < 0 ? "Sleep recovery needs attention" : "Fresh local capture applied";
+  });
+
+  return { local: true, sourceType, updates };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
 function inferSourceType(text, files, transcript) {
