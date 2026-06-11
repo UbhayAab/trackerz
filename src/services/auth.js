@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "./supabase-client.js";
 
+const LOCAL_SESSION_KEY = "trackerz_local_auth_session_v1";
 const sessionListeners = new Set();
 let currentSession = null;
 let initPromise = null;
@@ -17,20 +18,67 @@ function notify() {
 export async function initAuth() {
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    const supabase = await getSupabaseClient();
-    const { data } = await supabase.auth.getSession();
-    currentSession = data.session;
-    notify();
-    supabase.auth.onAuthStateChange((_event, session) => {
-      currentSession = session;
+    const local = getStoredLocalSession();
+    if (local) {
+      currentSession = local;
       notify();
-    });
+      return currentSession;
+    }
+
+    try {
+      const supabase = await getSupabaseClient();
+      const { data } = await supabase.auth.getSession();
+      currentSession = data.session;
+      notify();
+      supabase.auth.onAuthStateChange((_event, session) => {
+        currentSession = session;
+        notify();
+      });
+    } catch {
+      currentSession = null;
+      notify();
+    }
     return currentSession;
   })();
   return initPromise;
 }
 
 export function getCurrentSession() {
+  return currentSession;
+}
+
+export function getStorageUserId() {
+  return currentSession?.user?.id || getStoredLocalSession()?.user?.id || "anonymous";
+}
+
+export function isLocalSession(session = currentSession) {
+  return session?.trackerzMode === "local";
+}
+
+export function getStoredLocalSession() {
+  try {
+    const raw = globalThis.localStorage?.getItem(LOCAL_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function signInLocal({ email, name } = {}) {
+  const cleanedEmail = normalizeEmail(email) || "ubhay@test.local";
+  currentSession = {
+    trackerzMode: "local",
+    access_token: "local-dev-session",
+    user: {
+      id: `local:${cleanedEmail}`,
+      email: cleanedEmail,
+      user_metadata: {
+        name: name?.trim() || cleanedEmail.split("@")[0] || "Trackerz user",
+      },
+    },
+  };
+  globalThis.localStorage?.setItem(LOCAL_SESSION_KEY, JSON.stringify(currentSession));
+  notify();
   return currentSession;
 }
 
@@ -61,17 +109,28 @@ export async function signInWithProvider(provider) {
 }
 
 export async function signOut() {
-  const supabase = await getSupabaseClient();
-  await supabase.auth.signOut();
+  globalThis.localStorage?.removeItem(LOCAL_SESSION_KEY);
+  if (!isLocalSession()) {
+    try {
+      const supabase = await getSupabaseClient();
+      await supabase.auth.signOut();
+    } catch {
+      // A local sign-out should still clear the UI if the network is down.
+    }
+  }
   currentSession = null;
   notify();
 }
 
 export async function ensureProfileRow() {
-  if (!currentSession?.user) return;
+  if (!currentSession?.user || isLocalSession()) return;
   const supabase = await getSupabaseClient();
   const userId = currentSession.user.id;
   await supabase
     .from("profiles")
     .upsert({ id: userId }, { onConflict: "id", ignoreDuplicates: true });
+}
+
+function normalizeEmail(email = "") {
+  return String(email).trim().toLowerCase();
 }

@@ -193,6 +193,16 @@
   margin: 6px 0 4px;
 }
 
+.local-auth-box {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfa;
+  padding: 12px;
+}
+
 .oauth-button {
   display: grid;
   grid-template-columns: 20px 1fr;

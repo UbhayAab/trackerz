@@ -67,8 +67,12 @@ for (const pat of hardcodedDataPatterns) {
   assert.ok(!pat.test(srcCodeFiles), `hardcoded sample data still present in src/: ${pat}`);
 }
 
-for (const selector of [".capture-panel", ".route-preview", ".agent-console", ".stage-dot", ".table-action", ".flow-card", ".settings-panel", ".bottom-nav"]) {
+for (const selector of [".capture-panel", ".route-preview", ".agent-console", ".stage-dot", ".table-action", ".flow-card", ".settings-panel", ".bottom-nav", ".local-auth-box", ".auth-card"]) {
   assert.ok(css.includes(selector), `missing CSS ${selector}`);
+}
+
+for (const sourceText of ["Continue locally", "signInLocal", "qmlenovxatoyxxqlvzlo.supabase.co"]) {
+  assert.ok(srcCodeFiles.includes(sourceText), `missing auth/config source text ${sourceText}`);
 }
 
 assert.ok(html.includes("./src/pages/capture.js"), "index.html should load capture page module");
@@ -90,10 +94,12 @@ for (const file of [
   "ui/nightly-schedule.js",
   "ui/settings-panel.js",
   "ui/flow-lab.js",
+  "ui/auth-gate.js",
   "state/app-state.js",
   "ai/job-runner.js",
   "ai/capture-parser.js",
   "services/capture-router.js",
+  "services/auth.js",
   "ui/pipeline.js",
 ]) {
   assert.ok(srcFiles.includes(file), `missing src/${file}`);

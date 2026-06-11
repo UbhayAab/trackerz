@@ -10,8 +10,9 @@
 // allow auth.uid() = row.user_id. The setup card stays as a fallback for
 // people forking the repo to point at their own Supabase project.
 
-const PROD_URL = "https://yyoewdcijplkhxleejtm.supabase.co";
+const PROD_URL = "https://qmlenovxatoyxxqlvzlo.supabase.co";
 const PROD_ANON_KEY = "sb_publishable_0AfWy1NnROvjW0P0Cj3KVA_m286sLXT";
+const OLD_MISMATCHED_URL = "https://yyoewdcijplkhxleejtm.supabase.co";
 
 const LS_URL = "trackerz.supabase_url";
 const LS_KEY = "trackerz.supabase_anon_key";
@@ -35,6 +36,11 @@ function loadLocalStorage() {
   try {
     const url = globalThis.localStorage?.getItem(LS_URL);
     const key = globalThis.localStorage?.getItem(LS_KEY);
+    if (url === OLD_MISMATCHED_URL && key === PROD_ANON_KEY) {
+      globalThis.localStorage?.removeItem(LS_URL);
+      globalThis.localStorage?.removeItem(LS_KEY);
+      return null;
+    }
     return url && key ? { url, key } : null;
   } catch {
     return null;
