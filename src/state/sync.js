@@ -1,6 +1,12 @@
-import { fetchLedger, fetchFoodLogs, fetchOpenAiActions, fetchOpenImports, fetchBudgets } from "../services/supabase-data.js";
+import {
+  fetchLedger, fetchFoodLogs, fetchOpenAiActions, fetchOpenImports, fetchBudgets,
+  fetchBodyMetrics, fetchWellnessLogs, fetchSubscriptions, persistDetectedSubscriptions,
+  fetchMealTemplates,
+} from "../services/supabase-data.js";
 import { isLocalSession } from "../services/auth.js";
 import { updateState } from "./app-state.js";
+import { detectSubscriptions } from "../domain/money/subscription-detector.js";
+import { buildInsightFeed } from "../analytics/insights-engine.js";
 
 const INR = new Intl.NumberFormat("en-IN");
 
@@ -18,13 +24,31 @@ function shortDate(iso) {
 export async function hydrateStateFromSupabase() {
   if (isLocalSession()) return;
   try {
-    const [ledger, foods, actions, imports, budgets] = await Promise.all([
-      fetchLedger().catch(() => []),
-      fetchFoodLogs().catch(() => []),
+    const [ledger, foods, actions, imports, budgets, bodyMetrics, wellnessLogs, knownSubs] = await Promise.all([
+      fetchLedger({ limit: 500 }).catch(() => []),
+      fetchFoodLogs({ limit: 300 }).catch(() => []),
       fetchOpenAiActions().catch(() => []),
       fetchOpenImports().catch(() => []),
       fetchBudgets().catch(() => []),
+      fetchBodyMetrics().catch(() => []),
+      fetchWellnessLogs().catch(() => []),
+      fetchSubscriptions().catch(() => []),
     ]);
+    const mealTemplates = await fetchMealTemplates().catch(() => []);
+
+    // Detect subscriptions from the ledger and persist them (best-effort), then
+    // use the freshest view for insights + dashboards.
+    const detectedSubs = detectSubscriptions(ledger);
+    if (detectedSubs.length) {
+      await persistDetectedSubscriptions(detectedSubs).catch(() => {});
+    }
+    const subscriptions = detectedSubs.length ? detectedSubs : knownSubs;
+
+    // Run every detector into one ranked insight feed (strings for the list UI).
+    const feed = buildInsightFeed({
+      ledger, foodLogs: foods, wellnessLogs, bodyMetrics, budgets, subscriptions,
+      today: new Date(),
+    });
 
     const ledgerRows = ledger.map((row) => ({
       id: row.id,
@@ -76,16 +100,31 @@ export async function hydrateStateFromSupabase() {
     const protein = sumTodayProtein(foods);
 
     updateState((state) => {
+      // Formatted rows for the tables.
       state.ledgerRows = ledgerRows;
       state.macroRows = macroRows;
       state.reviewRows = reviewRows;
+      state.aiActions = actions; // raw actions (tool_name + arguments) for approve/apply
       state.importRows = importRows;
       state.budgetRows = budgetRows;
+      // Raw arrays for the dashboards + insight engine.
+      state.ledger = ledger;
+      state.foodLogs = foods;
+      state.wellnessLogs = wellnessLogs;
+      state.bodyMetrics = bodyMetrics;
+      state.budgets = budgets;
+      state.subscriptions = subscriptions;
+      state.mealTemplates = mealTemplates;
+      // Detector-driven insight feed.
+      state.insights = feed.lines;
       state.metrics.todaySpend = todaySpend;
       state.metrics.protein = protein;
+      state.syncError = null;
     });
   } catch (err) {
     console.warn("hydrateStateFromSupabase failed", err);
+    // Surface the failure instead of silently leaving a blank dashboard.
+    updateState((state) => { state.syncError = err?.message || "Sync failed"; });
   }
 }
 

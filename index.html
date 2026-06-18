@@ -53,6 +53,7 @@
           <canvas id="voiceWaveform" class="voice-waveform" width="600" height="56" aria-hidden="true" hidden></canvas>
           <div id="optimisticQueue" class="optimistic-queue" aria-live="polite"></div>
           <div id="routePreview" class="route-preview route-preview-thin">Auto route: waiting for input</div>
+          <div id="quickLog" class="quick-log-bar" aria-label="One-tap quick log"></div>
 
           <details class="capture-meta">
             <summary>Mode &amp; quick captures</summary>
@@ -112,7 +113,10 @@
                 <p class="eyebrow">AI review</p>
                 <h2 id="review-table-title">Action queue</h2>
               </div>
-              <span id="reviewRisk" class="metric-badge">0 risk</span>
+              <div class="panel-title-actions">
+                <button id="approveAllReview" class="secondary-button" type="button">Approve all</button>
+                <span id="reviewRisk" class="metric-badge">0 risk</span>
+              </div>
             </div>
             <div id="reviewTable" class="data-table-wrap" data-mode="auto"></div>
           </article>

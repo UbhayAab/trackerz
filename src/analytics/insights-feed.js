@@ -29,8 +29,8 @@ export function composeInsights({ aggregates, budgets = [], subscriptions = [], 
     else if (deltas?.wow_spend < -0.15) out.push({ kind: "money", severity: "good", text: `Week-over-week spend down ${pct(-deltas.wow_spend)}.` });
   }
 
-  // Month
-  if (month && pm && deltas?.mom_spend !== undefined) {
+  // Month — skip the meaningless zero-vs-zero case for brand-new users.
+  if (month && pm && deltas?.mom_spend !== undefined && (month.spend > 0 || pm.spend > 0)) {
     out.push({ kind: "money", severity: deltas.mom_spend > 0.1 ? "warning" : "info", text: `MoM spend ${deltas.mom_spend >= 0 ? "up" : "down"} ${pct(Math.abs(deltas.mom_spend))} (${fmtRupees(month.spend)} vs ${fmtRupees(pm.spend)}).` });
   }
 

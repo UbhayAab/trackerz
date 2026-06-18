@@ -117,10 +117,15 @@
             <span id="dataStatus" class="status-pill muted">empty-first</span>
           </div>
           <div class="data-actions">
+            <button id="exportAllJson" class="secondary-button" type="button">Export all (JSON)</button>
+            <button id="exportLedgerCsv" class="secondary-button" type="button">Export expenses (CSV)</button>
+            <button id="exportFoodCsv" class="secondary-button" type="button">Export food (CSV)</button>
             <button id="clearWorkspace" class="primary-button danger" type="button">Clear local cache</button>
+            <button id="deleteAllData" class="primary-button danger" type="button">Delete all my data</button>
             <a class="primary-button" href="./diagnostics.html">Run diagnostics</a>
           </div>
-          <p class="agent-detail">Clear local cache wipes the in-browser preview state. Diagnostics tests Supabase, auth, storage, and the agent edge function.</p>
+          <label class="settings-row"><span>Privacy mode (blur amounts on screen)</span><input id="privacyToggle" type="checkbox" /></label>
+          <p class="agent-detail">Export downloads your real rows as CSV/JSON. Privacy mode blurs figures so you can show the app to someone. Clear local cache wipes only the in-browser preview state.</p>
         </section>
 
         <section class="cost-panel" aria-labelledby="cost-title">
