@@ -1,5 +1,6 @@
 import { getState } from "../state/app-state.js";
 import { $, $all } from "../utils/dom.js";
+import { dailySeries } from "../analytics/period-aggregator.js";
 
 let currentView = "dod";
 
@@ -31,46 +32,28 @@ export function bindViewTabs() {
   });
 }
 
-function buildTrendData(state) {
-  const spend = state.metrics.todaySpend;
-  const protein = state.metrics.protein;
-  const caloriesUsed = Math.max(0, 2100 - state.metrics.caloriesLeft);
-  const reviews = state.reviewRows.length;
-  const imports = state.importRows.length;
-  const meals = state.macroRows.length;
-  const habit = state.metrics.habitScore;
-  const insights = state.insights.length;
-  const foodRows = state.ledgerRows.filter((row) => /food|zomato|swiggy/i.test(`${row.category} ${row.merchant}`)).length;
+// Real daily series straight from the ledger/food rows in state (no more
+// fabricated scaling). dod/mom = daily spend over 7/30 days, wow = daily
+// protein over 14 days, trajectory = cumulative month-to-date spend.
+export function buildTrendData(state) {
+  const ledger = state.ledger || [];
+  const foods = state.foodLogs || [];
+  const today = new Date();
+  const expenseOf = (r) => (r.direction === "expense" ? Math.abs(Number(r.amount || 0)) : 0);
+  const dd = (point) => point.date.slice(8); // day-of-month label
+  const toBars = (series) => series.map((p) => ({ label: dd(p), value: Math.round(p.value) }));
+
+  const spend7 = dailySeries({ rows: ledger, today, days: 7, valueOf: expenseOf });
+  const protein14 = dailySeries({ rows: foods, today, days: 14, valueOf: (r) => Number(r.protein_g || 0) });
+  const spend30 = dailySeries({ rows: ledger, today, days: 30, valueOf: expenseOf });
+
+  let run = 0;
+  const cumulative = spend30.map((p) => { run += p.value; return { date: p.date, value: run }; });
 
   return {
-    dod: [
-      { label: "Spend", value: spend },
-      { label: "Protein", value: protein },
-      { label: "Calories", value: caloriesUsed },
-      { label: "Reviews", value: reviews * 100 },
-      { label: "Meals", value: meals * 100 },
-      { label: "Imports", value: imports * 100 },
-      { label: "Habit", value: habit },
-    ],
-    wow: [
-      { label: "Ledger", value: state.ledgerRows.length * 100 },
-      { label: "Meals", value: meals * 100 },
-      { label: "Files", value: imports * 100 },
-      { label: "Insights", value: insights * 100 },
-    ],
-    mom: [
-      { label: "Spend", value: spend },
-      { label: "Food", value: foodRows * 300 },
-      { label: "Protein", value: protein * 10 },
-      { label: "Reviews", value: reviews * 200 },
-      { label: "Imports", value: imports * 300 },
-    ],
-    trajectory: [
-      { label: "Spend", value: spend },
-      { label: "Protein", value: protein * 10 },
-      { label: "Calories", value: caloriesUsed },
-      { label: "Habit", value: habit * 10 },
-      { label: "Queue", value: reviews * 150 },
-    ],
+    dod: toBars(spend7),
+    wow: toBars(protein14),
+    mom: toBars(spend30),
+    trajectory: toBars(cumulative),
   };
 }

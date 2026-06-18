@@ -4,6 +4,53 @@ The DB, schema, RLS, buckets, Gemini key — all already set up. The only thing
 that can't be automated without a Personal Access Token is the actual edge
 function code upload. Here's the literal click path.
 
+---
+
+## ⚡ UPDATE — do these 3 things to turn on the DeepSeek brain + new features
+
+This build switched the pipeline to **Gemini for image/voice extraction → DeepSeek
+for the reasoning/tool-calls (the "brain")**, added a `workout_logs` table, and
+made `schema.sql` the single source of truth. To activate it on your live site:
+
+### 1. Add the DeepSeek API key (the brain)
+
+Get a key from <https://platform.deepseek.com/api_keys>, then **either**:
+
+- **CLI:** `supabase secrets set DEEPSEEK_API_KEY=sk-... GEMINI_API_KEY=...`
+  (the repo's `scripts/set-supabase-secrets.ps1` also picks up `$env:DEEPSEEK_API_KEY`), **or**
+- **SQL editor** (same place the Gemini key lives):
+  ```sql
+  insert into public.app_secrets (name, value) values ('DEEPSEEK_API_KEY', 'sk-...')
+  on conflict (name) do update set value = excluded.value;
+  ```
+
+Gemini stays required (it does the image OCR / voice transcription / food-photo
+vision). DeepSeek is the new reasoning brain. If DeepSeek is unset/down, the
+function automatically falls back to Gemini for reasoning too.
+
+### 2. Apply the DB changes
+
+In the SQL editor, run the new migration (and, on a fresh project, `schema.sql`
+alone is now complete):
+```
+supabase/migrations/20260524000005_workout_logs.sql
+```
+Or just `supabase db push` if you use the CLI. `schema.sql` now also contains
+every table that previously lived only in migrations.
+
+### 3. Re-deploy the `agent` function
+
+Paste the updated `supabase/functions/agent/index.ts` (steps below) and Deploy.
+
+### Connecting the frontend to your backend
+
+The app resolves Supabase URL + anon key from (1) `src/config.local.js`,
+(2) `localStorage`, or (3) the on-screen setup card. On the live Pages site the
+publishable config is already baked in, so signing in just works. The anon key is
+safe in the browser because RLS is on every user table.
+
+---
+
 ## Steps
 
 1. Open **Edge Functions** in Studio:

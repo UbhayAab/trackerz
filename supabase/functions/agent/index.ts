@@ -31,6 +31,12 @@ type ToolCall = {
 };
 
 const GEMINI_MODEL = "gemini-2.5-flash";
+const DEEPSEEK_MODEL = "deepseek-chat";
+const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
+
+// Rough provider pricing per 1M tokens (used only for the cost meter/cap).
+const GEMINI_IN_USD = 0.075, GEMINI_OUT_USD = 0.3;
+const DEEPSEEK_IN_USD = 0.27, DEEPSEEK_OUT_USD = 1.1;
 
 const ALLOWED_TOOLS = new Set([
   "create_expense_candidate",
@@ -45,6 +51,22 @@ const ALLOWED_TOOLS = new Set([
   "request_user_review",
 ]);
 
+// Tools that write a row to a domain table. EVERY member here MUST have an
+// applyTool() case and a tableForTool() mapping — tests/agent-contract.test.mjs
+// fails the build otherwise. Tools NOT in this set (request_user_review,
+// link_duplicate_candidates) never auto-write; they are always surfaced for
+// review so a high-confidence call can never be marked "applied" with no row.
+const WRITE_TOOLS = new Set([
+  "create_expense_candidate",
+  "create_income_candidate",
+  "create_transfer_candidate",
+  "create_statement_row_candidate",
+  "create_food_log_candidate",
+  "create_workout_log_candidate",
+  "create_body_metric_candidate",
+  "create_wellness_note_candidate",
+]);
+
 const RATE_LIMIT_WINDOW_MIN = 5;
 const RATE_LIMIT_MAX = 60;
 const DEFAULT_DAILY_COST_CAP_USD = 2;
@@ -54,6 +76,8 @@ const REVIEW_MIN_CONFIDENCE = 0.72;
 const SYSTEM_PROMPT = `You convert messy personal logs into structured tool calls.
 
 Return ONLY a JSON object: { "tool_calls": [ { name, arguments, confidence } ] }.
+
+Every amount, merchant, date, and figure you put in a tool call MUST appear in the provided content (typed text or text already OCR'd/transcribed from images/audio). If something is not present, do not invent it — lower the confidence or use request_user_review. The server independently re-checks this.
 
 Allowed tool names: ${[...ALLOWED_TOOLS].join(", ")}.
 
@@ -212,7 +236,7 @@ async function rateLimitOk(supabase: ReturnType<typeof adminClient>, userId: str
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
     .gte("created_at", windowStart);
-  if (error) return true; // fail-open on rate limit lookup, never block on error
+  if (error) return false; // fail CLOSED: never let a lookup error silently disable the limit
   return (count ?? 0) < RATE_LIMIT_MAX;
 }
 
@@ -224,7 +248,7 @@ async function withinDailyCap(supabase: ReturnType<typeof adminClient>, userId: 
     .select("estimated_cost_usd")
     .eq("user_id", userId)
     .gte("created_at", startOfDay.toISOString());
-  if (error) return true;
+  if (error) return false; // fail CLOSED: never run a paid call when the cap can't be verified
   const sum = (data || []).reduce((acc, r) => acc + Number(r.estimated_cost_usd || 0), 0);
   return sum < DEFAULT_DAILY_COST_CAP_USD;
 }
@@ -256,84 +280,166 @@ function base64Encode(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-async function callGemini(opts: { text: string; inlineMedia: { mimeType: string; data: string }[]; mode: string }) {
+function costOf(inUsdPerM: number, outUsdPerM: number, pt = 0, ot = 0) {
+  return ((pt || 0) / 1_000_000) * inUsdPerM + ((ot || 0) / 1_000_000) * outUsdPerM;
+}
+
+// STEP 1 — Gemini reads images/audio: OCR, transcription, and a faithful
+// description. It does NOT reason about tool calls; it only produces evidence
+// text that the brain (DeepSeek) then works from.
+const EXTRACT_PROMPT = `You are an OCR + transcription + vision extractor. Read EVERYTHING in the provided media and text and output it faithfully. For images: transcribe ALL visible text (amounts, merchant names, dates, UPI/UTR references, balances) and briefly describe non-text content (e.g. the food on a plate). For audio: transcribe verbatim. Do not interpret, summarize, translate, or add anything not present. Return ONLY JSON: { "evidence_text": string }.`;
+
+async function geminiExtract(opts: { text: string; inlineMedia: { mimeType: string; data: string }[] }) {
   const apiKey = await resolveSecret("GEMINI_API_KEY");
-  const startedAt = Date.now();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-  const nowIso = new Date().toISOString();
-
-  const wrapped = wrapUserContent(opts.text || "");
-  const injectionMatched = INJECTION_PATTERNS.some((rx) => rx.test(opts.text || ""));
-
-  const userParts: any[] = [
-    {
-      text: `Current time: ${nowIso}.
-Mode hint: ${opts.mode}.
-${wrapped}
-Return ONLY JSON.`,
-    },
+  const parts: any[] = [
+    { text: `${opts.text ? `User text:\n${opts.text}\n\n` : ""}Extract everything from the attached media.` },
     ...opts.inlineMedia.map((m) => ({ inlineData: { mimeType: m.mimeType, data: m.data } })),
   ];
+  const response = await fetch(`${url}?key=${apiKey}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: EXTRACT_PROMPT }] },
+      contents: [{ role: "user", parts }],
+      generationConfig: { temperature: 0, responseMimeType: "application/json" },
+    }),
+  });
+  if (!response.ok) throw new Error(`Gemini extract ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  const json = await response.json();
+  const raw = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  let evidenceText = "";
+  try { evidenceText = String(JSON.parse(raw).evidence_text || ""); } catch { evidenceText = raw.slice(0, 4000); }
+  const usage = json.usageMetadata || {};
+  return { evidenceText, promptTokens: usage.promptTokenCount || 0, outputTokens: usage.candidatesTokenCount || 0 };
+}
 
+function reasoningUserMessage(combinedText: string, mode: string) {
+  return `Current time: ${new Date().toISOString()}.
+Mode hint: ${mode}.
+${wrapUserContent(combinedText)}
+Return ONLY JSON.`;
+}
+
+// STEP 2 (brain) — DeepSeek turns the text + extracted evidence into tool calls.
+async function deepseekReason(combinedText: string, mode: string) {
+  const apiKey = await resolveSecret("DEEPSEEK_API_KEY");
+  const response = await fetch(DEEPSEEK_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: reasoningUserMessage(combinedText, mode) },
+      ],
+      temperature: 0,
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (!response.ok) throw new Error(`DeepSeek ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  const json = await response.json();
+  const raw = json.choices?.[0]?.message?.content ?? "{}";
+  const usage = json.usage || {};
+  return { raw, promptTokens: usage.prompt_tokens || 0, outputTokens: usage.completion_tokens || 0 };
+}
+
+// Fallback brain — Gemini reasons over text only (evidence is already extracted).
+async function geminiReason(combinedText: string, mode: string) {
+  const apiKey = await resolveSecret("GEMINI_API_KEY");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const response = await fetch(`${url}?key=${apiKey}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: "user", parts: userParts }],
+      contents: [{ role: "user", parts: [{ text: reasoningUserMessage(combinedText, mode) }] }],
       generationConfig: { temperature: 0, responseMimeType: "application/json" },
     }),
   });
-
-  const latencyMs = Date.now() - startedAt;
-  if (!response.ok) {
-    const errBody = await response.text();
-    throw new Error(`Gemini ${response.status}: ${errBody.slice(0, 300)}`);
-  }
+  if (!response.ok) throw new Error(`Gemini reason ${response.status}: ${(await response.text()).slice(0, 200)}`);
   const json = await response.json();
   const raw = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
   const usage = json.usageMetadata || {};
+  return { raw, promptTokens: usage.promptTokenCount || 0, outputTokens: usage.candidatesTokenCount || 0 };
+}
 
+function parseToolCalls(raw: string) {
   let parsed: { tool_calls?: ToolCall[] } = {};
   try { parsed = JSON.parse(raw); }
   catch {
     parsed = { tool_calls: [{ name: "request_user_review", arguments: { reason: "Model returned non-JSON", raw_input: raw.slice(0, 400) }, confidence: 0.5 }] };
   }
-
   const validCalls: ToolCall[] = [];
   const rejected: { tc: ToolCall; errors: string[] }[] = [];
-
   for (const tc of parsed.tool_calls || []) {
-    if (!tc || typeof tc.name !== "string" || !ALLOWED_TOOLS.has(tc.name)) {
-      rejected.push({ tc, errors: ["unknown_tool"] });
-      continue;
-    }
-    if (typeof tc.confidence !== "number" || tc.confidence < 0 || tc.confidence > 1) {
-      rejected.push({ tc, errors: ["bad_confidence"] });
-      continue;
-    }
+    if (!tc || typeof tc.name !== "string" || !ALLOWED_TOOLS.has(tc.name)) { rejected.push({ tc, errors: ["unknown_tool"] }); continue; }
+    if (typeof tc.confidence !== "number" || tc.confidence < 0 || tc.confidence > 1) { rejected.push({ tc, errors: ["bad_confidence"] }); continue; }
     const v = validateToolArguments(tc.name, tc.arguments || {});
     if (!v.ok) { rejected.push({ tc, errors: v.errors }); continue; }
     validCalls.push(tc);
   }
+  return { validCalls, rejected };
+}
 
-  // If user content looked injected, replace all writes with a review call.
+// Orchestrates the two-model pipeline: Gemini extracts evidence from media,
+// DeepSeek (brain) reasons into tool calls, Gemini reasoning is the fallback.
+async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string; data: string }[]; mode: string }) {
+  const startedAt = Date.now();
+  let geminiEvidence = "";
+  let extractCost = 0;
+  const usedProviders: string[] = [];
+
+  if (opts.inlineMedia.length) {
+    try {
+      const ext = await geminiExtract(opts);
+      geminiEvidence = ext.evidenceText;
+      extractCost = costOf(GEMINI_IN_USD, GEMINI_OUT_USD, ext.promptTokens, ext.outputTokens);
+      usedProviders.push("gemini-vision");
+    } catch (_e) {
+      geminiEvidence = ""; // extraction failed; reason over text alone
+    }
+  }
+
+  const combinedText = [opts.text, geminiEvidence].filter(Boolean).join("\n").trim();
+  const injectionMatched = INJECTION_PATTERNS.some((rx) => rx.test(opts.text || "") || rx.test(geminiEvidence));
+
+  let raw = "{}";
+  let brainPt = 0, brainOt = 0, brainCost = 0;
+  let model = DEEPSEEK_MODEL;
+  try {
+    const r = await deepseekReason(combinedText, opts.mode);
+    raw = r.raw; brainPt = r.promptTokens; brainOt = r.outputTokens;
+    brainCost = costOf(DEEPSEEK_IN_USD, DEEPSEEK_OUT_USD, brainPt, brainOt);
+    usedProviders.push("deepseek");
+  } catch (_e) {
+    const r = await geminiReason(combinedText, opts.mode);
+    raw = r.raw; brainPt = r.promptTokens; brainOt = r.outputTokens;
+    model = GEMINI_MODEL;
+    brainCost = costOf(GEMINI_IN_USD, GEMINI_OUT_USD, brainPt, brainOt);
+    usedProviders.push("gemini-fallback");
+  }
+
+  const { validCalls, rejected } = parseToolCalls(raw);
+  const latencyMs = Date.now() - startedAt;
+  const estimatedCostUsd = Number((extractCost + brainCost).toFixed(6));
+  const provider = usedProviders.join("+") || "deepseek";
+  // Evidence for grounding/injection = user text + Gemini-extracted text.
+  const evidenceText = combinedText;
+  const inputText = opts.text || "";
+
   if (injectionMatched) {
     return {
-      toolCalls: [{
-        name: "request_user_review",
-        arguments: { reason: "suspected_prompt_injection", raw_input: (opts.text || "").slice(0, 400) },
-        confidence: 0.5,
-      }],
-      rejected,
-      latencyMs,
-      promptTokens: usage.promptTokenCount,
-      outputTokens: usage.candidatesTokenCount,
-      raw,
+      toolCalls: [{ name: "request_user_review", arguments: { reason: "suspected_prompt_injection", raw_input: inputText.slice(0, 400) }, confidence: 0.5 }],
+      rejected, latencyMs, promptTokens: brainPt, outputTokens: brainOt,
+      provider, model, estimatedCostUsd, evidenceText, inputText,
     };
   }
 
-  return { toolCalls: validCalls, rejected, latencyMs, promptTokens: usage.promptTokenCount, outputTokens: usage.candidatesTokenCount, raw };
+  return {
+    toolCalls: validCalls, rejected, latencyMs, promptTokens: brainPt, outputTokens: brainOt,
+    provider, model, estimatedCostUsd, evidenceText, inputText,
+  };
 }
 
 function estimateCostUsd(promptTokens?: number, outputTokens?: number) {
@@ -348,6 +454,52 @@ function actionStatus(confidence: number) {
   if (confidence >= AUTO_APPLY_MIN_CONFIDENCE) return "auto_applied";
   if (confidence >= REVIEW_MIN_CONFIDENCE) return "proposed";
   return "rejected";
+}
+
+// ---- field-level evidence grounding (mirror of src/agent/evidence-grounding.js) ----
+// Keep in sync with that module; tests/evidence-grounding.test.mjs locks the JS copy.
+function evidenceHasNumber(value: any, evidence: string): boolean {
+  const n = Math.abs(Number(value));
+  if (!Number.isFinite(n) || n === 0) return false;
+  const ev = String(evidence || "").replace(/,/g, "");
+  const intPart = String(Math.round(n));
+  if (new RegExp(`(^|\\D)${intPart}(\\D|$)`).test(ev)) return true;
+  if (!Number.isInteger(n)) {
+    const dp1 = n.toFixed(1);
+    if (new RegExp(`(^|\\D)${dp1.replace(".", "\\.")}(\\D|$)`).test(ev)) return true;
+    if (ev.includes(n.toFixed(2))) return true;
+  }
+  return false;
+}
+
+function hasWordOverlap(text: any, evidence: string, minLen = 3): boolean {
+  const ev = String(evidence || "").toLowerCase();
+  if (!ev) return false;
+  const tokens = String(text || "").toLowerCase().match(new RegExp(`[a-z]{${minLen},}`, "g")) || [];
+  return tokens.some((w) => ev.includes(w));
+}
+
+function isGrounded(toolName: string, args: any = {}, evidence = ""): boolean {
+  const ev = String(evidence || "");
+  // Empty evidence makes the number/word helpers return false → write tools are
+  // forced to review; non-write tools fall through to the default `true`.
+  switch (toolName) {
+    case "create_expense_candidate":
+    case "create_income_candidate":
+    case "create_transfer_candidate":
+    case "create_statement_row_candidate":
+      return evidenceHasNumber(args.amount, ev);
+    case "create_body_metric_candidate":
+      return evidenceHasNumber(args.value, ev);
+    case "create_food_log_candidate":
+      return hasWordOverlap(args.description, ev) || hasWordOverlap(args.meal_name, ev);
+    case "create_wellness_note_candidate":
+      return hasWordOverlap(args.note, ev);
+    case "create_workout_log_candidate":
+      return hasWordOverlap(args.description, ev);
+    default:
+      return true;
+  }
 }
 
 async function applyTool(supabase: ReturnType<typeof adminClient>, userId: string, ingestionId: string, tc: ToolCall) {
@@ -376,6 +528,27 @@ async function applyTool(supabase: ReturnType<typeof adminClient>, userId: strin
         user_id: userId, ingestion_id: ingestionId,
         amount: args.amount, currency: args.currency || "INR", direction: "transfer",
         description: args.description || null, occurred_at: occurredAt, confidence: tc.confidence,
+      }).select().single();
+    case "create_statement_row_candidate": {
+      // A statement row the model surfaced directly (not via the client import
+      // pipeline). Persist it as a ledger entry in the stated direction so it is
+      // never silently dropped. Reference/UTR is kept as a tag for later dedupe.
+      const dir = ["expense", "income", "transfer"].includes(args.direction) ? args.direction : "expense";
+      return supabase.from("ledger_entries").insert({
+        user_id: userId, ingestion_id: ingestionId,
+        amount: Math.abs(Number(args.amount)) || 0, currency: args.currency || "INR", direction: dir,
+        merchant: args.merchant || null, description: args.description || null,
+        occurred_at: occurredAt, confidence: tc.confidence,
+        tags: args.reference ? [String(args.reference)] : [],
+      }).select().single();
+    }
+    case "create_workout_log_candidate":
+      return supabase.from("workout_logs").insert({
+        user_id: userId, ingestion_id: ingestionId,
+        description: args.description || "",
+        duration_min: args.duration_min ?? null,
+        intensity: args.intensity || null,
+        occurred_at: occurredAt,
       }).select().single();
     case "create_food_log_candidate":
       return supabase.from("food_logs").insert({
@@ -409,12 +582,13 @@ async function persistRunAndActions(
   userId: string, ingestionId: string,
   runInfo: { latencyMs: number; promptTokens?: number; outputTokens?: number; toolCalls: ToolCall[]; rejected: { tc: ToolCall; errors: string[] }[] },
 ) {
-  const cost = estimateCostUsd(runInfo.promptTokens, runInfo.outputTokens);
+  const ri = runInfo as any;
+  const cost = typeof ri.estimatedCostUsd === "number" ? ri.estimatedCostUsd : estimateCostUsd(runInfo.promptTokens, runInfo.outputTokens);
   const { data: aiRun, error: runErr } = await supabase
     .from("ai_runs")
     .insert({
       user_id: userId, ingestion_id: ingestionId,
-      provider: "google", model: GEMINI_MODEL, purpose: "capture_to_tool_calls",
+      provider: ri.provider || "deepseek", model: ri.model || DEEPSEEK_MODEL, purpose: "capture_to_tool_calls",
       prompt_tokens: runInfo.promptTokens ?? null, output_tokens: runInfo.outputTokens ?? null,
       estimated_cost_usd: cost, latency_ms: runInfo.latencyMs, status: "completed",
     })
@@ -430,17 +604,44 @@ async function persistRunAndActions(
     });
   }
 
+  const evidence = `${(runInfo as any).inputText || ""}\n${(runInfo as any).evidenceText || ""}`;
+
   for (const tc of runInfo.toolCalls) {
-    const status = actionStatus(tc.confidence);
+    // Non-write tools (request_user_review, link_duplicate_candidates) never
+    // produce a domain row. Always surface them for review — never let confidence
+    // demote a review request to "rejected", and never claim a write happened.
+    if (!WRITE_TOOLS.has(tc.name)) {
+      await supabase.from("ai_actions").insert({
+        user_id: userId, ai_run_id: aiRun.id, ingestion_id: ingestionId,
+        tool_name: tc.name, arguments: tc.arguments, confidence: tc.confidence,
+        status: "proposed",
+      });
+      continue;
+    }
+
+    let status = actionStatus(tc.confidence);
     let appliedTable: string | null = null;
     let appliedId: string | null = null;
+    let groundingNote: string | null = null;
+    // Field-level evidence guard: a high-confidence write whose load-bearing
+    // fields are not present in the evidence (user text + model OCR) is demoted
+    // to review rather than auto-applied. Blocks fabricated/injected writes.
+    if (status === "auto_applied" && !isGrounded(tc.name, tc.arguments, evidence)) {
+      status = "proposed";
+      groundingNote = "ungrounded_fields";
+    }
     if (status === "auto_applied") {
       try {
         const res = await applyTool(supabase, userId, ingestionId, tc);
-        if (res && (res as any).data) {
-          const row: any = (res as any).data;
+        const row: any = res && (res as any).data;
+        if (row && row.id) {
           appliedTable = tableForTool(tc.name);
-          appliedId = row.id || null;
+          appliedId = row.id;
+        } else {
+          // A write tool that produced no row is a contract failure, not a
+          // success. Do NOT record auto_applied with a null id — demote to
+          // proposed so a human sees it and nothing is silently lost.
+          status = "proposed";
         }
       } catch (err) {
         await supabase.from("ai_actions").insert({
@@ -455,8 +656,8 @@ async function persistRunAndActions(
       user_id: userId, ai_run_id: aiRun.id, ingestion_id: ingestionId,
       tool_name: tc.name, arguments: tc.arguments, confidence: tc.confidence,
       status, applied_record_table: appliedTable, applied_record_id: appliedId,
-      applied_at: status === "auto_applied" ? new Date().toISOString() : null,
-      undo_payload: appliedId ? { table: appliedTable, id: appliedId } : null,
+      applied_at: appliedId ? new Date().toISOString() : null,
+      undo_payload: appliedId ? { table: appliedTable, id: appliedId } : (groundingNote ? { review_reason: groundingNote } : null),
     });
   }
 
@@ -472,6 +673,7 @@ function tableForTool(name: string): string | null {
     case "create_statement_row_candidate":
       return "ledger_entries";
     case "create_food_log_candidate": return "food_logs";
+    case "create_workout_log_candidate": return "workout_logs";
     case "create_body_metric_candidate": return "body_metrics";
     case "create_wellness_note_candidate": return "wellness_logs";
     default: return null;
@@ -524,9 +726,9 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: "daily_cap_reached" }, { status: 402, headers: corsHeaders });
     }
 
-    // 5. Run.
+    // 5. Run the two-model pipeline (Gemini extract → DeepSeek reason).
     const inlineMedia = await loadMediaInline(supabase, payload.mediaAssetIds || []);
-    const runInfo = await callGemini({
+    const runInfo = await runPipeline({
       text: payload.text || "",
       inlineMedia,
       mode: payload.mode || "auto",

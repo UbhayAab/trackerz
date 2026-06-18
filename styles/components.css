@@ -7,6 +7,52 @@
   text-transform: uppercase;
 }
 
+/* One-tap quick-log chips (direct, no-AI writes). */
+.quick-log-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.quick-log-label {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.quick-log-chip {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  background: var(--surface, #fff);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.quick-log-chip:hover { filter: brightness(0.97); }
+.quick-log-chip:disabled { opacity: 0.5; cursor: progress; }
+
+/* Header action cluster (e.g. Approve all + risk badge). */
+.panel-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Privacy mode: blur figures on screen; hover a table cell to reveal. */
+.privacy-on .metric-card strong,
+.privacy-on #todaySpend,
+.privacy-on #proteinMetric,
+.privacy-on .data-table-wrap td {
+  filter: blur(6px);
+  transition: filter 0.12s ease;
+}
+.privacy-on .data-table-wrap td:hover {
+  filter: none;
+}
+
 .file-chip,
 .primary-button,
 .secondary-button,

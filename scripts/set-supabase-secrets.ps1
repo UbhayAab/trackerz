@@ -18,12 +18,18 @@ if ($env:GEMINI_API_KEY) {
   $secrets += @{ name = "GEMINI_API_KEY"; value = $env:GEMINI_API_KEY }
 }
 
+# The AI "brain" (reasoning -> tool calls) runs on DeepSeek; Gemini handles
+# image/voice extraction. Both keys are read by the edge function.
+if ($env:DEEPSEEK_API_KEY) {
+  $secrets += @{ name = "DEEPSEEK_API_KEY"; value = $env:DEEPSEEK_API_KEY }
+}
+
 if ($env:SB_SECRET_KEY) {
   $secrets += @{ name = "SB_SECRET_KEY"; value = $env:SB_SECRET_KEY }
 }
 
 if ($secrets.Count -eq 0) {
-  throw "No secrets found. Set NVIDIA_API_KEY, GEMINI_API_KEY, or SB_SECRET_KEY in the environment first."
+  throw "No secrets found. Set GEMINI_API_KEY, DEEPSEEK_API_KEY, NVIDIA_API_KEY, or SB_SECRET_KEY in the environment first."
 }
 
 $headers = @{

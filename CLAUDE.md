@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this app is
 
-Trackerz is a capture-first life tracker (money/diet/wellness) served as static files from GitHub Pages, with Supabase for auth/DB/storage and a single Supabase Edge Function (`agent`) that calls Gemini 2.5 Flash to turn messy captures (text, voice, screenshots, bank statements) into structured tool calls. The live URL is https://ubhayaab.github.io/trackerz/. Project ref: `qmlenovxatoyxxqlvzlo`.
+Trackerz is a capture-first life tracker (money/diet/wellness) served as static files from GitHub Pages, with Supabase for auth/DB/storage and a single Supabase Edge Function (`agent`) that turns messy captures (text, voice, screenshots, bank statements) into structured tool calls. The agent is a **two-model pipeline**: **Gemini 2.5 Flash** extracts evidence from images/audio (OCR, transcription, food-photo vision) and **DeepSeek** (`deepseek-chat`) is the reasoning "brain" that emits the tool calls; if DeepSeek is unavailable it falls back to Gemini for reasoning. Both keys (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`) live only as edge-function secrets / `app_secrets`. The live URL is https://ubhayaab.github.io/trackerz/. Project ref: `qmlenovxatoyxxqlvzlo`.
 
-There is no bundler and no `package.json`. Everything is native ES modules loaded directly by the browser.
+There is no bundler or transpiler. Everything is native ES modules loaded directly by the browser. A `package.json` exists for dev tooling only (test runner scripts, Playwright, `pg`, `dotenv`).
 
 ## Commands
 
@@ -14,36 +14,34 @@ Run from the repo root (`trackerz/`):
 
 ```powershell
 # Local static server (http://127.0.0.1:4173)
-node scripts/static-server.mjs
+npm run serve
+
+# Run all tests (the suite — each file is a standalone `node:assert` script, no test runner)
+npm test
 
 # Run a single test file
 node tests/agent-core.test.mjs
 
-# Run all tests (each file is a standalone `node:assert` script — no test runner)
-node tests/agent-core.test.mjs
-node tests/agent-policy.test.mjs
-node tests/analytics-imports.test.mjs
-node tests/architecture.test.mjs
-node tests/capture-fixtures.test.mjs
-node tests/dedupe-scan.test.mjs
-node tests/flow-catalog.test.mjs
-node tests/interaction-contract.test.mjs
-node tests/opportunity-cost.test.mjs
-node tests/ui-contract.test.mjs
+# Apply schema / migrations via Node (reads DB URL from .env)
+npm run db:push
 
 # Deploy the edge function (requires supabase CLI logged in)
 supabase functions deploy agent
-
-# Apply schema / migrations
-supabase db push --file supabase/schema.sql
-supabase db push --file supabase/migrations/20260518000001_rls_and_buckets.sql
-supabase db push --file supabase/migrations/20260518000002_discretionary_and_nifty.sql
 
 # Push edge-function secrets (reads from env)
 $env:GEMINI_API_KEY = "..."; ./scripts/set-supabase-secrets.ps1
 ```
 
 GitHub Pages deploy is automatic on push to `main` via `.github/workflows/pages.yml` — it uploads the whole repo as the Pages artifact, so anything outside `.gitignore` ships to production.
+
+### Test files outside `npm test`
+
+These exist but are not in the `npm test` suite and must be run individually:
+
+- `tests/diet-domain.test.mjs`, `tests/money-intelligence.test.mjs`, `tests/wellness-domain.test.mjs` — domain logic
+- `tests/dedupe-matrix.test.mjs`, `tests/period-aggregator.test.mjs` — analytics
+- `tests/fuzz-corpus.test.mjs`, `tests/safety.test.mjs` — fuzzing and safety invariants
+- `tests/e2e-live-db.test.mjs`, `tests/e2e-gemini-vision.test.mjs` — require live Supabase/Gemini credentials
 
 ## Architecture
 

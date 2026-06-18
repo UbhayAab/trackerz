@@ -1,6 +1,7 @@
 import { bindCapturePanel, renderRoutePreview } from "../ui/capture-panel.js";
 import { bindInsights, renderInsights } from "../ui/insights-panel.js";
 import { bindOperationalTables, renderOperationalTables } from "../ui/operational-tables.js";
+import { bindQuickLog, renderQuickLog } from "../ui/quick-log.js";
 import { renderAgentStatus } from "../ui/agent-status.js";
 import { renderMetrics } from "../ui/metrics.js";
 import { renderSummaryRail } from "../ui/summary-rail.js";
@@ -21,10 +22,12 @@ bootWithAuth(async () => {
     renderInsights(state);
     renderMetrics(state);
     renderSummaryRail(state);
+    renderQuickLog(state);
   });
   bindCapturePanel();
   bindInsights();
   bindOperationalTables();
+  bindQuickLog();
   bindOnlineDrain(runCapture);
   await hydrateStateFromSupabase();
 });

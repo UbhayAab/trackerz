@@ -1,4 +1,5 @@
 import { classifyCaptureInput, routeModelForCapture } from "../../lib/agent-core.mjs";
+import { looksLikeBankSms, parseBankSms } from "../imports/sms-parser.js";
 
 export function buildFileDescriptors(fileList) {
   return Array.from(fileList || []).map((file) => ({
@@ -16,10 +17,18 @@ export function previewCaptureRoute({ text, files }) {
     risk: descriptors.length > 12 ? "high" : "normal",
   });
 
+  // Deterministic fast-lane hint: recognize a pasted bank/UPI SMS.
+  let sms = null;
+  if (text && !descriptors.length && looksLikeBankSms(text)) {
+    const parsed = parseBankSms(text);
+    if (parsed.ok) sms = parsed;
+  }
+
   return {
     captureType,
     route,
     descriptors,
+    sms,
   };
 }
 
