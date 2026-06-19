@@ -127,6 +127,14 @@ async function resolveSecret(name: string): Promise<string> {
   return data.value;
 }
 
+async function resolveSecretOptional(name: string): Promise<string | null> {
+  try { return await resolveSecret(name); } catch { return null; }
+}
+async function resolveAnySecret(names: string[]): Promise<string | null> {
+  for (const n of names) { const v = await resolveSecretOptional(n); if (v) return v; }
+  return null;
+}
+
 // JWT-validating client: any DB call respects RLS as the caller.
 function userClient(jwt: string) {
   return createClient(
@@ -322,13 +330,21 @@ Return ONLY JSON.`;
 }
 
 // STEP 2 (brain) — DeepSeek turns the text + extracted evidence into tool calls.
+// Provider-agnostic OpenAI-compatible client: defaults to DeepSeek's own API, but
+// set DEEPSEEK_BASE_URL + DEEPSEEK_MODEL (and provide NVIDIA_API_KEY) to use an
+// NVIDIA-hosted DeepSeek, e.g.
+//   DEEPSEEK_BASE_URL=https://integrate.api.nvidia.com/v1/chat/completions
+//   DEEPSEEK_MODEL=deepseek-ai/deepseek-v3.1
 async function deepseekReason(combinedText: string, mode: string) {
-  const apiKey = await resolveSecret("DEEPSEEK_API_KEY");
-  const response = await fetch(DEEPSEEK_URL, {
+  const apiKey = await resolveAnySecret(["DEEPSEEK_API_KEY", "NVIDIA_API_KEY"]);
+  if (!apiKey) throw new Error("no_brain_key"); // -> Gemini reasoning fallback
+  const url = (await resolveSecretOptional("DEEPSEEK_BASE_URL")) || DEEPSEEK_URL;
+  const model = (await resolveSecretOptional("DEEPSEEK_MODEL")) || DEEPSEEK_MODEL;
+  const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: DEEPSEEK_MODEL,
+      model,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: reasoningUserMessage(combinedText, mode) },
@@ -337,11 +353,11 @@ async function deepseekReason(combinedText: string, mode: string) {
       response_format: { type: "json_object" },
     }),
   });
-  if (!response.ok) throw new Error(`DeepSeek ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  if (!response.ok) throw new Error(`Brain ${response.status}: ${(await response.text()).slice(0, 200)}`);
   const json = await response.json();
   const raw = json.choices?.[0]?.message?.content ?? "{}";
   const usage = json.usage || {};
-  return { raw, promptTokens: usage.prompt_tokens || 0, outputTokens: usage.completion_tokens || 0 };
+  return { raw, promptTokens: usage.prompt_tokens || 0, outputTokens: usage.completion_tokens || 0, model };
 }
 
 // Fallback brain — Gemini reasons over text only (evidence is already extracted).
@@ -410,6 +426,7 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   try {
     const r = await deepseekReason(combinedText, opts.mode);
     raw = r.raw; brainPt = r.promptTokens; brainOt = r.outputTokens;
+    model = r.model || DEEPSEEK_MODEL;
     brainCost = costOf(DEEPSEEK_IN_USD, DEEPSEEK_OUT_USD, brainPt, brainOt);
     usedProviders.push("deepseek");
   } catch (_e) {
