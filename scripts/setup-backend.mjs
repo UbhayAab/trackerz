@@ -27,11 +27,19 @@ const API = "https://api.supabase.com";
 
 const TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
 const REF = process.env.SUPABASE_PROJECT_REF || "qmlenovxatoyxxqlvzlo";
-const DEEPSEEK = process.env.DEEPSEEK_API_KEY || "";
-const GEMINI = process.env.GEMINI_API_KEY || "";
+
+// Any of these, if set in the environment, get stored as backend secrets.
+// GEMINI_API_KEY  -> image/voice extraction (required for media captures).
+// DEEPSEEK_API_KEY OR NVIDIA_API_KEY -> the reasoning brain (optional; Gemini
+//   reasoning is the fallback). For NVIDIA-hosted DeepSeek also set:
+// DEEPSEEK_BASE_URL=https://integrate.api.nvidia.com/v1/chat/completions
+// DEEPSEEK_MODEL=deepseek-ai/deepseek-v3.1
+const SECRET_ENV = ["GEMINI_API_KEY", "DEEPSEEK_API_KEY", "NVIDIA_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL"];
 
 if (!TOKEN) {
-  console.error("ERROR: set SUPABASE_ACCESS_TOKEN (https://supabase.com/dashboard/account/tokens). Aborting.");
+  console.error("ERROR: set SUPABASE_ACCESS_TOKEN to a PERSONAL ACCESS TOKEN (starts with `sbp_`,");
+  console.error("       create at https://supabase.com/dashboard/account/tokens).");
+  console.error("       NOTE: the service_role key (sb_secret_...) does NOT work for the Management API.");
   process.exit(1);
 }
 
@@ -59,12 +67,14 @@ function sqlString(v) {
 }
 
 async function setSecrets() {
-  console.log("2. Storing API keys…");
+  console.log("2. Storing API keys / brain config…");
   // app_secrets is the reliable path the edge function reads first via fallback.
   const rows = [];
-  if (DEEPSEEK) rows.push(["DEEPSEEK_API_KEY", DEEPSEEK]);
-  if (GEMINI) rows.push(["GEMINI_API_KEY", GEMINI]);
-  if (!rows.length) { console.log("  · no new keys provided (DeepSeek optional; Gemini likely already set)"); return; }
+  for (const name of SECRET_ENV) {
+    const value = process.env[name];
+    if (value) rows.push([name, value]);
+  }
+  if (!rows.length) { console.log("  · no keys provided (brain optional; Gemini likely already set)"); return; }
   const values = rows.map(([n, v]) => `(${sqlString(n)}, ${sqlString(v)})`).join(", ");
   await runSql(
     "app_secrets upsert",
