@@ -69,19 +69,15 @@ function showSignInCard() {
     document.body.appendChild(card);
   }
   card.innerHTML = `
-    <h2>Sign in to Trackerz</h2>
-    <p class="muted small">Private to you. Your data is RLS-isolated by user id.</p>
-    <div class="local-auth-box">
-      <label>Name
-        <input type="text" id="localName" value="Ubhay" autocomplete="name" />
-      </label>
-      <label>Email
-        <input type="email" id="localEmail" value="ubhay@test.local" autocomplete="email" />
-      </label>
-      <button type="button" id="localSignin" class="primary-button">Continue locally</button>
-      <p class="muted small">Fast local mode for testing this browser. Supabase sign-in stays below for real sync.</p>
+    <div class="auth-brand">
+      <span class="auth-logo" aria-hidden="true">◆</span>
+      <div class="auth-brand-text">
+        <strong>Trackerz</strong>
+        <span>Capture money, food &amp; wellness — your AI sorts it.</span>
+      </div>
     </div>
-    <div class="auth-divider"><span>or Supabase</span></div>
+    <h2>Sign in</h2>
+    <p class="muted small">Private to you. Every row is RLS-isolated by your user id.</p>
     <div class="oauth-row">
       <button type="button" class="oauth-button" data-provider="google">
         <span class="oauth-glyph oauth-google" aria-hidden="true"></span>
@@ -92,19 +88,31 @@ function showSignInCard() {
         Continue with GitHub
       </button>
     </div>
-    <div class="auth-divider"><span>magic link</span></div>
+    <div class="auth-divider"><span>or magic link</span></div>
     <label>Email
       <input type="email" id="signinEmail" placeholder="you@example.com" autocomplete="email" />
     </label>
     <button type="button" id="signinSend" class="primary-button">Send magic link</button>
-    <p id="signinMessage" class="muted small"></p>
+    <p id="signinMessage" class="muted small" role="status" aria-live="polite"></p>
+    <details class="local-mode">
+      <summary>Developer · local test mode</summary>
+      <div class="local-auth-box">
+        <label>Name
+          <input type="text" id="localName" placeholder="You" autocomplete="name" />
+        </label>
+        <label>Email
+          <input type="email" id="localEmail" placeholder="local@trackerz.app" autocomplete="email" />
+        </label>
+        <button type="button" id="localSignin" class="secondary-button">Continue locally (no sync)</button>
+      </div>
+    </details>
   `;
   const message = card.querySelector("#signinMessage");
   card.querySelector("#localSignin").addEventListener("click", async () => {
     message.textContent = "Starting local session...";
     const session = await signInLocal({
-      name: card.querySelector("#localName").value,
-      email: card.querySelector("#localEmail").value,
+      name: card.querySelector("#localName").value.trim() || "You",
+      email: card.querySelector("#localEmail").value.trim() || "local@trackerz.app",
     });
     message.textContent = `Local session ready for ${session.user.email}.`;
   });

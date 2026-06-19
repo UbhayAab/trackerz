@@ -198,11 +198,49 @@
   overflow: auto;
   margin: auto;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--panel);
-  box-shadow: var(--shadow);
-  padding: 22px;
+  /* Centered card + full-viewport dim backdrop in one (no extra element). */
+  box-shadow: var(--shadow), 0 0 0 100vmax rgba(12, 32, 24, 0.55);
+  padding: 26px 24px;
 }
+
+/* Brand header on the auth screens. */
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+.auth-logo {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #15a06b, #0c7a4f);
+  color: #fff;
+  font-size: 1.1rem;
+}
+.auth-brand-text { display: grid; gap: 1px; }
+.auth-brand-text strong { font-size: 1.05rem; }
+.auth-brand-text span { color: var(--muted); font-size: 0.78rem; }
+
+/* Collapsible developer local-mode block. */
+.local-mode {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.local-mode > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.78rem;
+  list-style: none;
+}
+.local-mode > summary::-webkit-details-marker { display: none; }
+.local-mode > summary::before { content: "▸ "; }
+.local-mode[open] > summary::before { content: "▾ "; }
 
 .auth-card h2 {
   margin: 0;
