@@ -117,6 +117,7 @@ export async function hydrateStateFromSupabase() {
       state.mealTemplates = mealTemplates;
       // Detector-driven insight feed.
       state.insights = feed.lines;
+      state.insightItems = feed.items;
       state.metrics.todaySpend = todaySpend;
       state.metrics.protein = protein;
       state.syncError = null;
