@@ -45,6 +45,21 @@ if (!TOKEN) {
 
 const auth = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" };
 
+// Lists projects the token can see and verifies REF is one of them. This is how
+// you settle the qmlenovxatoyxxqlvzlo vs yyoewdcijplkhxleejtm confusion: deploy
+// to the SAME project your frontend (src/config.js) points at.
+async function verifyProject() {
+  console.log(`0. Verifying project ${REF}…`);
+  const res = await fetch(`${API}/v1/projects`, { headers: auth });
+  if (!res.ok) throw new Error(`list projects: ${res.status} ${(await res.text()).slice(0, 200)} (is the token a valid PAT?)`);
+  const projects = await res.json();
+  for (const p of projects) console.log(`   · ${p.id}  ${p.name}  [${p.status}]`);
+  if (!projects.some((p) => p.id === REF)) {
+    throw new Error(`project ref "${REF}" is not in your account. Set SUPABASE_PROJECT_REF to one of the ids above (use the SAME one as src/config.js PROD_URL).`);
+  }
+  console.log(`  ✓ ${REF} found`);
+}
+
 async function runSql(label, sql) {
   const res = await fetch(`${API}/v1/projects/${REF}/database/query`, {
     method: "POST", headers: auth, body: JSON.stringify({ query: sql }),
@@ -112,6 +127,7 @@ async function deployFunction() {
 
 console.log(`Trackerz backend setup → project ${REF}\n`);
 try {
+  await verifyProject();
   await applySchemaAndMigrations();
   await setSecrets();
   await deployFunction();
