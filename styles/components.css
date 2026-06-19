@@ -53,6 +53,31 @@
   filter: none;
 }
 
+/* AI insight feed — severity-accented rows. */
+.insight-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.insight {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel, #fff);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+.insight-dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--muted); }
+.insight-info { border-left: 3px solid #3b82f6; }
+.insight-info .insight-dot { background: #3b82f6; }
+.insight-good { border-left: 3px solid #15a06b; }
+.insight-good .insight-dot { background: #15a06b; }
+.insight-warning { border-left: 3px solid #d97706; }
+.insight-warning .insight-dot { background: #d97706; }
+.insight-critical { border-left: 3px solid #dc2626; background: #fef2f2; }
+.insight-critical .insight-dot { background: #dc2626; }
+.insight-empty { color: var(--muted); border-style: dashed; grid-template-columns: 1fr; }
+
 .file-chip,
 .primary-button,
 .secondary-button,
