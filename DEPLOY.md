@@ -6,6 +6,29 @@ function code upload. Here's the literal click path.
 
 ---
 
+## ⚡ ONE-COMMAND SETUP (recommended)
+
+Everything below (migrations + keys + function deploy) is automated by
+`scripts/setup-backend.mjs`. You only need a **Supabase personal access token**
+(`sbp_…`, 15-sec create at <https://supabase.com/dashboard/account/tokens> — the
+`sb_secret_…` service key does NOT work for this). Run on a machine with internet:
+
+```powershell
+cd C:\Users\Abhay Vasta\Desktop\Gpt\trackerz
+$env:SUPABASE_ACCESS_TOKEN="sbp_..."           # personal access token
+$env:GEMINI_API_KEY="AIza..."                  # image/voice extraction
+# Brain (optional — falls back to Gemini if unset). For NVIDIA-hosted DeepSeek:
+$env:NVIDIA_API_KEY="nvapi-..."
+$env:DEEPSEEK_BASE_URL="https://integrate.api.nvidia.com/v1/chat/completions"
+$env:DEEPSEEK_MODEL="deepseek-ai/deepseek-v3.1"
+# (or native DeepSeek: $env:DEEPSEEK_API_KEY="sk-..." and skip BASE_URL/MODEL)
+node scripts\setup-backend.mjs
+```
+
+It applies the schema + migrations, stores the keys in `app_secrets`, and
+best-effort deploys the `agent` function. If the function-deploy step prints a
+FALLBACK, do the single Studio paste described below. The manual path follows.
+
 ## ⚡ UPDATE — do these 3 things to turn on the DeepSeek brain + new features
 
 This build switched the pipeline to **Gemini for image/voice extraction → DeepSeek
