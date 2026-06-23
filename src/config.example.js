@@ -9,5 +9,5 @@
 // The anon key is safe to ship in browser code as long as RLS is enabled
 // on every user-owned table (it is, see supabase/schema.sql).
 
-export const SUPABASE_URL = "https://qmlenovxatoyxxqlvzlo.supabase.co";
+export const SUPABASE_URL = "https://yyoewdcijplkhxleejtm.supabase.co";
 export const SUPABASE_ANON_KEY = "PASTE_YOUR_ANON_KEY_HERE";

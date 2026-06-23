@@ -71,7 +71,7 @@ for (const selector of [".capture-panel", ".route-preview", ".agent-console", ".
   assert.ok(css.includes(selector), `missing CSS ${selector}`);
 }
 
-for (const sourceText of ["Continue locally", "signInLocal", "qmlenovxatoyxxqlvzlo.supabase.co"]) {
+for (const sourceText of ["Continue locally", "signInLocal", "yyoewdcijplkhxleejtm.supabase.co"]) {
   assert.ok(srcCodeFiles.includes(sourceText), `missing auth/config source text ${sourceText}`);
 }
 
