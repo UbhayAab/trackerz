@@ -5,8 +5,10 @@
 // Unchecking deletes that row. No "approve" — checking IS the commit.
 
 import { planForDate, MACRO_TARGETS } from "../domain/diet/plan.js";
+import { nutrientsSoFar } from "../domain/diet/nutrients.js";
 import { getSupabaseClient } from "../services/supabase-client.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
+import { hydrateStateFromSupabase } from "../state/sync.js";
 
 const CONTAINER = "#dietPlan";
 const STATE_PREFIX = "trackerz.diet.v1.";
@@ -84,6 +86,25 @@ function macroTally(plan, state) {
   </div>`;
 }
 
+// Full macro + micro panel. Each nutrient fills proportionally to the share of
+// the day's calories already checked off, hitting the plan value when complete.
+function nutrientPanel(plan, state) {
+  const totalCal = plan.meals.reduce((a, m) => a + (m.macros.calories || 0), 0) || 1;
+  const eatenCal = plan.meals.reduce((a, m) => a + (state[m.id]?.done ? (m.macros.calories || 0) : 0), 0);
+  const frac = eatenCal / totalCal;
+  const rows = nutrientsSoFar(plan.dietType, frac);
+  const labels = { macro: "Macros", mineral: "Minerals", vitamin: "Vitamins" };
+  const section = (g) => {
+    const items = rows.filter((r) => r.group === g);
+    return `<div class="nutgroup"><p class="nutgroup-head">${labels[g]}</p>${items.map((r) => {
+      const pct = Math.min(100, Math.round((r.current / (r.target || 1)) * 100));
+      const over = r.limit && r.current > r.target;
+      return `<div class="nutrow${over ? " nut-over" : ""}"><span class="nutname">${r.label}${r.limit ? " ≤" : ""}</span><span class="nutval">${r.current} / ${r.target} ${r.unit}</span><div class="nutbar"><i style="width:${pct}%"></i></div></div>`;
+    }).join("")}</div>`;
+  };
+  return `<details class="nutrients"><summary>Macros &amp; micros — full panel (${Math.round(frac * 100)}% of today)</summary>${["macro", "mineral", "vitamin"].map(section).join("")}</details>`;
+}
+
 function countDone(ids, state) { return ids.filter((id) => state[id]?.done).length; }
 
 export function renderDietPlan() {
@@ -106,6 +127,7 @@ export function renderDietPlan() {
       <span class="metric-badge">${countDone(mealIds, state)}/4 meals</span>
     </div>
     ${macroTally(plan, state)}
+    ${nutrientPanel(plan, state)}
 
     <div class="diet-section">
       <p class="diet-head">🍽️ Meals</p>
@@ -168,6 +190,8 @@ export function bindDietPlan() {
         try { await deleteLog(prev.table, prev.recordId); } catch { /* best effort */ }
       }
     }
+    // Re-hydrate so the additions feed + glance metrics on Home update too.
+    if (canSync()) hydrateStateFromSupabase().catch(() => {});
     renderDietPlan();
   });
 }

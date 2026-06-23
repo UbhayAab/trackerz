@@ -330,6 +330,19 @@ export async function rejectAiAction(actionId) {
   if (error) throw error;
 }
 
+// Generic single-row delete for the additions feed's ✕. Whitelisted to the
+// user-owned domain tables; RLS also enforces ownership on the server.
+const DELETABLE_TABLES = new Set([
+  "ledger_entries", "food_logs", "workout_logs", "body_metrics", "wellness_logs", "hydration_logs",
+]);
+export async function deleteRow(table, id) {
+  if (!DELETABLE_TABLES.has(table)) throw new Error(`delete not allowed for ${table}`);
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { error } = await supabase.from(table).delete().eq("id", id).eq("user_id", userId);
+  if (error) throw error;
+}
+
 // Server-side data erasure: wipe every row this user owns and their stored
 // media. The profile row is kept so the account still works. RLS guarantees
 // only the caller's own rows are touched.

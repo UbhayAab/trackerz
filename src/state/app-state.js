@@ -15,6 +15,7 @@ export function createEmptyState() {
     ledgerRows: [],
     budgetRows: [],
     macroRows: [],
+    additions: [],
     insights: [],
     metrics: {
       todaySpend: 0,
