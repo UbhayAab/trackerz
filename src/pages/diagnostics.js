@@ -4,8 +4,10 @@ import { getCurrentSession } from "../services/auth.js";
 import { isLiveTranscriptionSupported } from "../services/speech.js";
 import { hasSupabaseConfig } from "../config.js";
 import { runCapture } from "../services/agent-runner.js";
+import { renderNav } from "../ui/navigation.js";
 
 bootWithAuth(async () => {
+  renderNav();
   await runChecks();
   document.getElementById("diagRunBtn").addEventListener("click", runChecks);
   document.getElementById("diagE2EBtn").addEventListener("click", runE2E);

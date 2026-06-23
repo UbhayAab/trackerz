@@ -1,7 +1,7 @@
 import { bindInsights, renderInsights } from "../ui/insights-panel.js";
 import { renderMetrics } from "../ui/metrics.js";
 import { renderOperationalTables } from "../ui/operational-tables.js";
-import { renderSummaryRail } from "../ui/summary-rail.js";
+import { renderNav } from "../ui/navigation.js";
 import { bindBudgetInputs } from "../ui/budget-inputs.js";
 import { subscribe } from "../state/app-state.js";
 import { bootWithAuth } from "./bootstrap.js";
@@ -19,11 +19,11 @@ export { parseRestaurantBill } from "../domain/diet/restaurant-mode.js";
 export { rollingWeightAverages } from "../domain/diet/weight-rolling-avg.js";
 
 bootWithAuth(async () => {
+  renderNav("diet");
   subscribe((state) => {
     renderMetrics(state);
     renderOperationalTables(state);
     renderInsights(state);
-    renderSummaryRail(state);
   });
   bindInsights();
   bindBudgetInputs("dietBudgetStatus");

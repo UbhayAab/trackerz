@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Trackerz · Analytics</title>
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="manifest" href="../manifest.webmanifest" />
+    <link rel="icon" href="../icons/icon-192.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#138a5b" />
+  </head>
+  <body>
+    <div class="app-shell page-shell">
+      <header class="topbar topbar-tight">
+        <div>
+          <p class="eyebrow">Trackerz</p>
+          <h1 class="topbar-title">Analytics</h1>
+        </div>
+        <a class="icon-link" href="./settings.html" aria-label="Settings">⚙</a>
+      </header>
+
+      <main>
+        <section class="command-panel" aria-label="Trends">
+          <div class="view-tabs" role="tablist" aria-label="Period">
+            <button class="view-tab active" type="button" data-view="dod">DOD</button>
+            <button class="view-tab" type="button" data-view="wow">WOW</button>
+            <button class="view-tab" type="button" data-view="mom">MOM</button>
+            <button class="view-tab" type="button" data-view="trajectory">Trajectory</button>
+          </div>
+          <canvas id="chart" class="trend-chart" width="600" height="240" aria-label="Trend chart"></canvas>
+          <div id="dashboardViews" class="dashboard-views"></div>
+        </section>
+
+        <section class="ai-panel" aria-labelledby="analytics-ai-title">
+          <div class="panel-title-row"><div><p class="eyebrow">AI</p><h2 id="analytics-ai-title">Smart analysis</h2></div></div>
+          <ul id="insightList" class="insight-list"></ul>
+        </section>
+      </main>
+
+      <nav id="bottomNav" class="bottom-nav" aria-label="Main navigation"></nav>
+    </div>
+
+    <script type="module" src="../src/pages/analytics.js"></script>
+  </body>
+</html>
