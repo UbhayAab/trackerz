@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Trackerz · Gym</title>
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="manifest" href="../manifest.webmanifest" />
+    <link rel="icon" href="../icons/icon-192.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#138a5b" />
+  </head>
+  <body>
+    <div class="app-shell page-shell">
+      <header class="topbar topbar-tight">
+        <div>
+          <p class="eyebrow">Trackerz</p>
+          <h1 class="topbar-title">Gym</h1>
+        </div>
+        <a class="icon-link" href="./settings.html" aria-label="Settings">⚙</a>
+      </header>
+
+      <main>
+        <section class="command-panel" id="workoutLog" aria-label="Workout log">
+          <div class="panel-title-row"><div><p class="eyebrow">Today</p><h2>Workout</h2></div></div>
+          <p class="muted small">Per-exercise sets/reps/weight logging lands here (P3).</p>
+        </section>
+        <section class="command-panel" id="bodyComposition" aria-label="Body composition">
+          <div class="panel-title-row"><div><p class="eyebrow">Body</p><h2>Composition</h2></div></div>
+          <p class="muted small">Weight, body-fat and circumference tracking lands here (P3).</p>
+        </section>
+      </main>
+
+      <nav id="bottomNav" class="bottom-nav" aria-label="Main navigation"></nav>
+    </div>
+
+    <script type="module" src="../src/pages/gym.js"></script>
+  </body>
+</html>

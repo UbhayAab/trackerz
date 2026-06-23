@@ -4,10 +4,10 @@ import { join } from "node:path";
 
 const html = readFileSync("index.html", "utf8");
 const pageHtml = [
-  "pages/dashboard.html",
   "pages/money.html",
   "pages/diet.html",
-  "pages/insights.html",
+  "pages/gym.html",
+  "pages/analytics.html",
   "pages/settings.html",
 ].map((file) => readFileSync(file, "utf8")).join("\n");
 const css =
@@ -30,9 +30,9 @@ for (const id of [
   "agentStageList",
   "parseLog",
   "jobEta",
-  "flowList",
   "monthlyCost",
   "chart",
+  "bottomNav",
   "clearWorkspace",
   "dataStatus",
 ]) {
@@ -43,7 +43,7 @@ for (const id of ["monthlyMoneyBudget", "weeklyMoneyBudget", "dailyCaloriesBudge
   assert.ok(pageHtml.includes(`id="${id}"`), `missing settings/budget #${id}`);
 }
 
-for (const text of ["Bank Excel", "Diet voice", "Screenshot dump", "DOD", "WOW", "MOM", "Trajectory", "12 AM daily summary"]) {
+for (const text of ["Bank Excel", "Diet voice", "Screenshot dump", "DOD", "WOW", "MOM", "Trajectory"]) {
   assert.ok((html + pageHtml).includes(text), `missing UI label ${text}`);
 }
 
@@ -80,27 +80,24 @@ assert.ok(srcFiles.length >= 12, `expected modular src scaffold, got ${srcFiles.
 
 for (const file of [
   "pages/capture.js",
-  "pages/dashboard.js",
   "pages/money.js",
   "pages/diet.js",
-  "pages/insights.js",
+  "pages/gym.js",
+  "pages/analytics.js",
   "pages/settings.js",
   "ui/capture-panel.js",
   "ui/operational-tables.js",
-  "ui/summary-rail.js",
+  "ui/navigation.js",
   "ui/agent-status.js",
   "ui/budget-inputs.js",
   "ui/data-controls.js",
   "ui/nightly-schedule.js",
-  "ui/settings-panel.js",
-  "ui/flow-lab.js",
   "ui/auth-gate.js",
   "state/app-state.js",
   "ai/job-runner.js",
   "ai/capture-parser.js",
   "services/capture-router.js",
   "services/auth.js",
-  "ui/pipeline.js",
 ]) {
   assert.ok(srcFiles.includes(file), `missing src/${file}`);
 }
