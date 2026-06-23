@@ -1,7 +1,6 @@
 import { bindCapturePanel, renderRoutePreview } from "../ui/capture-panel.js";
 import { bindInsights, renderInsights } from "../ui/insights-panel.js";
 import { renderAdditionsFeed, bindAdditionsFeed } from "../ui/additions-feed.js";
-import { bindQuickLog, renderQuickLog } from "../ui/quick-log.js";
 import { renderDietPlan, bindDietPlan } from "../ui/diet-plan-panel.js";
 import { renderAgentStatus } from "../ui/agent-status.js";
 import { renderMetrics } from "../ui/metrics.js";
@@ -23,12 +22,10 @@ bootWithAuth(async () => {
     renderAdditionsFeed(state);
     renderInsights(state);
     renderMetrics(state);
-    renderQuickLog(state);
   });
   bindCapturePanel();
   bindInsights();
   bindAdditionsFeed();
-  bindQuickLog();
   bindDietPlan();
   renderDietPlan();
   bindOnlineDrain(runCapture);

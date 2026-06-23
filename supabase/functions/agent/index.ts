@@ -11,7 +11,7 @@
 // 4. Per-user rate limit (60 calls / 5 min) and daily cost cap.
 // 5. Server-side action policy decides apply/review/block from confidence.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.74.0";
+import { createClient } from "npm:@supabase/supabase-js@2.74.0";
 
 type Domain = "money" | "diet" | "fitness" | "wellness";
 type SourceType = "text" | "image" | "audio" | "file" | "mixed";

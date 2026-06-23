@@ -30,11 +30,15 @@ const WORKOUTS = {
       "Leg curl 2×12", "Machine shoulder press 2×10", "Cable triceps pushdown 2×12", "DB curl 2×12", "Dead bug 2×10/side", "Cooldown walk 5 min"],
     rules: "No failure · no PR · no HIIT · 90s rest",
   },
-  walk35: { id: "walk-35", name: "35-min walk + mobility", kind: "walk", duration_min: 35, items: ["35-min walk (nose-breathing pace)", "10-min mobility"], rules: "Easy enough to breathe through your nose" },
-  walk45: { id: "walk-45", name: "45-min walk", kind: "walk", duration_min: 45, items: ["45-min walk (easy)"], rules: "Easy pace" },
-  walk20: { id: "walk-20", name: "20-min easy walk + rest", kind: "walk", duration_min: 20, items: ["20-min easy walk", "Full rest day"], rules: "Recovery" },
+  cardio: {
+    id: "cardio", name: "Cardio — forgiven day", kind: "cardio", duration_min: 40,
+    items: ["10,000 steps walk", "— or a gym session (either one counts)"],
+    rules: "Forgiven day: hit ~10k steps OR train at the gym. Both count.",
+  },
 };
-const WORKOUT_BY_WEEKDAY = { 1: "A", 2: "walk35", 3: "B", 4: "walk35", 5: "A", 6: "walk45", 7: "walk20" };
+// Focus (strength) days: Mon, Fri, Sat, Sun (Workout A/B alternating).
+// Forgiven cardio days: Tue, Wed, Thu (10k steps OR gym — either counts).
+const WORKOUT_BY_WEEKDAY = { 1: "A", 2: "cardio", 3: "cardio", 4: "cardio", 5: "B", 6: "A", 7: "B" };
 
 // Per-meal macro estimates; the four meals sum to roughly the daily targets.
 function mealsFor(dietType) {
