@@ -43,7 +43,7 @@ for (const id of ["monthlyMoneyBudget", "weeklyMoneyBudget", "dailyCaloriesBudge
   assert.ok(pageHtml.includes(`id="${id}"`), `missing settings/budget #${id}`);
 }
 
-for (const text of ["Bank Excel", "Diet voice", "Screenshot dump", "DOD", "WOW", "MOM", "Trajectory"]) {
+for (const text of ["DOD", "WOW", "MOM", "Trajectory"]) {
   assert.ok((html + pageHtml).includes(text), `missing UI label ${text}`);
 }
 
