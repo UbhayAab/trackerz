@@ -5,7 +5,7 @@
 // Unchecking deletes that row. No "approve" — checking IS the commit.
 
 import { planForDate, MACRO_TARGETS } from "../domain/diet/plan.js";
-import { nutrientsSoFar } from "../domain/diet/nutrients.js";
+import { nutrientsSoFar, gauge } from "../domain/diet/nutrients.js";
 import { getSupabaseClient } from "../services/supabase-client.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
@@ -94,15 +94,22 @@ function nutrientPanel(plan, state) {
   const frac = eatenCal / totalCal;
   const rows = nutrientsSoFar(plan.dietType, frac);
   const labels = { macro: "Macros", mineral: "Minerals", vitamin: "Vitamins" };
-  const section = (g) => {
-    const items = rows.filter((r) => r.group === g);
-    return `<div class="nutgroup"><p class="nutgroup-head">${labels[g]}</p>${items.map((r) => {
-      const pct = Math.min(100, Math.round((r.current / (r.target || 1)) * 100));
-      const over = r.limit && r.current > r.target;
-      return `<div class="nutrow${over ? " nut-over" : ""}"><span class="nutname">${r.label}${r.limit ? " ≤" : ""}</span><span class="nutval">${r.current} / ${r.target} ${r.unit}</span><div class="nutbar"><i style="width:${pct}%"></i></div></div>`;
+  const section = (grp) => {
+    const items = rows.filter((r) => r.group === grp);
+    return `<div class="nutgroup"><p class="nutgroup-head">${labels[grp]}</p>${items.map((r) => {
+      const g = gauge({ current: r.current, target: r.target, kind: r.kind, limit: r.limit });
+      return `<div class="nutrow nut-${g.status}${g.over ? " nut-pegged" : ""}">
+        <span class="nutname">${r.label}${r.limit ? " ≤" : ""}</span>
+        <span class="nutval">${r.current} / ${r.target} ${r.unit}</span>
+        <div class="nutgauge" role="img" aria-label="${r.label}: ${r.current} of ${r.target} ${r.unit}">
+          <span class="nutgauge-center"></span>
+          <span class="nutgauge-ptr" style="left:${g.position}%"></span>
+          ${g.over ? '<span class="nutgauge-over">▲ over</span>' : ""}
+        </div>
+      </div>`;
     }).join("")}</div>`;
   };
-  return `<details class="nutrients"><summary>Macros &amp; micros — full panel (${Math.round(frac * 100)}% of today)</summary>${["macro", "mineral", "vitamin"].map(section).join("")}</details>`;
+  return `<details class="nutrients"><summary>Macros &amp; micros — full panel (${Math.round(frac * 100)}% of today · centre line = target)</summary>${["macro", "mineral", "vitamin"].map(section).join("")}</details>`;
 }
 
 function countDone(ids, state) { return ids.filter((id) => state[id]?.done).length; }
