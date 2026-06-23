@@ -44,3 +44,30 @@
 
 #dietPlan .diet-prep .diet-item { background: rgba(245, 178, 38, 0.08); border-color: rgba(245, 178, 38, 0.25); }
 #dietPlan .diet-prep .diet-item input[type="checkbox"] { accent-color: #c98a00; }
+
+/* Full macro + micro panel (collapsible). Functional layout only; polish in P5. */
+#dietPlan .nutrients { margin: 8px 0 4px; }
+#dietPlan .nutrients summary { cursor: pointer; font-size: 0.84rem; font-weight: 600; opacity: 0.8; }
+#dietPlan .nutgroup { margin-top: 8px; }
+#dietPlan .nutgroup-head { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; margin: 6px 0 2px; }
+#dietPlan .nutrow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; padding: 2px 0; }
+#dietPlan .nutname { font-size: 0.82rem; }
+#dietPlan .nutval { font-size: 0.78rem; font-variant-numeric: tabular-nums; opacity: 0.75; }
+#dietPlan .nutbar { grid-column: 1 / -1; height: 4px; border-radius: 999px; background: rgba(127,127,127,0.16); overflow: hidden; }
+#dietPlan .nutbar i { display: block; height: 100%; background: #138a5b; }
+#dietPlan .nutrow.nut-over .nutbar i { background: #d4533e; }
+
+/* Additions feed: day-over-day rows, green adds, one-tap ✕ delete. */
+.additions-feed .add-day { margin-bottom: 10px; }
+.additions-feed .add-day-head { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; margin: 6px 0 4px; }
+.additions-feed .add-row {
+  display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px;
+  padding: 8px 10px; min-height: 44px; border-radius: 10px; margin-bottom: 6px;
+  border: 1px solid rgba(19,138,91,0.25); background: rgba(19,138,91,0.07);
+}
+.additions-feed .add-domain { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
+.additions-feed .add-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
+.additions-feed .add-delta { font-size: 0.85rem; font-variant-numeric: tabular-nums; opacity: 0.85; }
+.additions-feed .add-del { border: 0; background: transparent; font-size: 1rem; line-height: 1; min-width: 36px; min-height: 36px; cursor: pointer; opacity: 0.55; }
+.additions-feed .add-del:active { opacity: 1; }
+.additions-feed .add-row.is-deleting { border-color: rgba(212,83,62,0.5); background: rgba(212,83,62,0.1); text-decoration: line-through; opacity: 0.6; }

@@ -7,6 +7,7 @@ import { isLocalSession } from "../services/auth.js";
 import { updateState } from "./app-state.js";
 import { detectSubscriptions } from "../domain/money/subscription-detector.js";
 import { buildInsightFeed } from "../analytics/insights-engine.js";
+import { buildAdditions } from "../../lib/additions.mjs";
 
 const INR = new Intl.NumberFormat("en-IN");
 
@@ -110,6 +111,8 @@ export async function hydrateStateFromSupabase() {
       // Raw arrays for the dashboards + insight engine.
       state.ledger = ledger;
       state.foodLogs = foods;
+      // Unified day-over-day "additions" list for the Home feed.
+      state.additions = buildAdditions(ledger, foods, {});
       state.wellnessLogs = wellnessLogs;
       state.bodyMetrics = bodyMetrics;
       state.budgets = budgets;

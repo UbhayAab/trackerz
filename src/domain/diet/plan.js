@@ -68,14 +68,15 @@ const WATER = [
 
 function supplementsFor(wd) {
   const b12Day = (wd === 1 || wd === 3 || wd === 5);
+  // Whey is intentionally NOT here — it IS the 08:00 protein shake meal, not a
+  // second supplement. Listing it twice was the duplication.
   const list = [
-    { id: "sup-whey", time: "08:00", name: "Whey (2 scoops)", note: "with shake" },
     { id: "sup-d3", time: "20:00", name: "Vitamin D3 2000 IU", note: "with dinner" },
     { id: "sup-omega", time: "20:00", name: "Omega-3 (1000 mg EPA+DHA)", note: "with dinner" },
     { id: "sup-mg", time: "22:00", name: "Magnesium glycinate 200 mg", note: "" },
     { id: "sup-psyllium", time: "22:45", name: "Psyllium husk 5 g", note: "+400–500 ml water" },
   ];
-  if (b12Day) list.splice(1, 0, { id: "sup-b12", time: "08:15", name: "Vitamin B12 1000 mcg", note: "after shake (Mon/Wed/Fri)" });
+  if (b12Day) list.unshift({ id: "sup-b12", time: "08:15", name: "Vitamin B12 1000 mcg", note: "after shake (Mon/Wed/Fri)" });
   return list;
 }
 
