@@ -1,5 +1,5 @@
 import { hasSupabaseConfig, primeSupabaseConfig, saveConfig } from "../config.js";
-import { initAuth, onAuthChange, signInLocal, signInWithEmail, signInWithProvider, signOut, ensureProfileRow, getCurrentSession, isLocalSession } from "../services/auth.js";
+import { initAuth, onAuthChange, signInLocal, signInWithEmail, signInWithPassword, signInWithProvider, signOut, ensureProfileRow, getCurrentSession, isLocalSession } from "../services/auth.js";
 import { resetSupabaseClient } from "../services/supabase-client.js";
 
 const SETUP_ID = "trackerz-setup-card";
@@ -78,6 +78,15 @@ function showSignInCard() {
     </div>
     <h2>Sign in</h2>
     <p class="muted small">Private to you. Every row is RLS-isolated by your user id.</p>
+    <label>Username or email
+      <input type="text" id="pwUser" value="Ubhay" autocomplete="username" autocapitalize="none" />
+    </label>
+    <label>Password
+      <input type="password" id="pwPass" placeholder="••••••••" autocomplete="current-password" />
+    </label>
+    <button type="button" id="pwSignin" class="primary-button">Sign in</button>
+    <p id="pwMessage" class="muted small" role="status" aria-live="polite"></p>
+    <div class="auth-divider"><span>or use another method</span></div>
     <div class="oauth-row">
       <button type="button" class="oauth-button" data-provider="google">
         <span class="oauth-glyph oauth-google" aria-hidden="true"></span>
@@ -108,6 +117,21 @@ function showSignInCard() {
     </details>
   `;
   const message = card.querySelector("#signinMessage");
+  const pwMessage = card.querySelector("#pwMessage");
+  const doPasswordSignin = async () => {
+    const user = card.querySelector("#pwUser").value.trim();
+    const pass = card.querySelector("#pwPass").value;
+    if (!user || !pass) { pwMessage.textContent = "Enter your username and password."; return; }
+    pwMessage.textContent = "Signing in...";
+    try {
+      await signInWithPassword(user, pass);
+      pwMessage.textContent = "Signed in.";
+    } catch (err) {
+      pwMessage.textContent = `Sign-in failed: ${err.message || err}`;
+    }
+  };
+  card.querySelector("#pwSignin").addEventListener("click", doPasswordSignin);
+  card.querySelector("#pwPass").addEventListener("keydown", (e) => { if (e.key === "Enter") doPasswordSignin(); });
   card.querySelector("#localSignin").addEventListener("click", async () => {
     message.textContent = "Starting local session...";
     const session = await signInLocal({

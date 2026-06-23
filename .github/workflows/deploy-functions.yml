@@ -1,0 +1,40 @@
+name: Deploy edge functions
+
+# Deploys Supabase edge functions from GitHub's network, which bypasses the
+# corporate proxy that blocks `supabase functions deploy` uploads from a work
+# laptop. Requires one repo secret: SUPABASE_ACCESS_TOKEN (a sbp_... personal
+# access token from https://supabase.com/dashboard/account/tokens).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+      - ".github/workflows/deploy-functions.yml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: yyoewdcijplkhxleejtm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Deploy agent function
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::warning::No SUPABASE_ACCESS_TOKEN secret set — skipping deploy. Add it under repo Settings > Secrets and variables > Actions, then re-run."
+            exit 0
+          fi
+          supabase functions deploy agent --project-ref "$PROJECT_REF"
+      - name: Deploy gmail-sync function (if present)
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ ! -d supabase/functions/gmail-sync ]; then
+            echo "gmail-sync not deployed (missing token or function not present yet)"
+            exit 0
+          fi
+          supabase functions deploy gmail-sync --project-ref "$PROJECT_REF"

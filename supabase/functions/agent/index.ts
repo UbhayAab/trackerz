@@ -31,12 +31,15 @@ type ToolCall = {
 };
 
 const GEMINI_MODEL = "gemini-2.5-flash";
-const DEEPSEEK_MODEL = "deepseek-chat";
+const DEEPSEEK_MODEL = "deepseek-chat";              // strict-JSON fallback brain
+const DEEPSEEK_REASONER_MODEL = "deepseek-reasoner"; // thinking-mode primary brain
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 
-// Rough provider pricing per 1M tokens (used only for the cost meter/cap).
+// Rough provider pricing per 1M tokens (used only for the cost meter/cap). The
+// DeepSeek figures track the pricier "reasoner" tier so the daily cap errs toward
+// protecting spend rather than overshooting it.
 const GEMINI_IN_USD = 0.075, GEMINI_OUT_USD = 0.3;
-const DEEPSEEK_IN_USD = 0.27, DEEPSEEK_OUT_USD = 1.1;
+const DEEPSEEK_IN_USD = 0.55, DEEPSEEK_OUT_USD = 2.2;
 
 const ALLOWED_TOOLS = new Set([
   "create_expense_candidate",
@@ -94,7 +97,12 @@ Rules:
 - If the user says "yesterday" / "last X" normalize using the current time provided in the user turn.
 - One tool call per real event. Split mixed inputs into multiple calls.
 - For UPI/bank screenshots, extract: amount, merchant, ref/UTR, timestamp.
-- For bank statement files, the import pipeline handles it client-side — do not fabricate rows.`;
+- For bank statement files, the import pipeline handles it client-side — do not fabricate rows.
+- HDFC Bank payment alerts (email or SMS) are a primary money source. Recognize both shapes:
+  • Credit card: "...HDFC Bank Credit Card ending 1234 for Rs 540.00 at SWIGGY on 21-06-2026..." -> create_expense_candidate { amount:540, payment_mode:"card", merchant:"SWIGGY", occurred_at, is_discretionary:true }.
+  • UPI / account debit: "Rs.250.00 has been debited from a/c **1234 to VPA name@bank on 21-06-26. UPI Ref 412345678901." -> create_expense_candidate { amount:250, payment_mode:"upi", merchant:"name@bank or the payee name", occurred_at, tags:["412345678901"] }.
+  Money LEAVING the account (debited/spent/paid/withdrawn) is an expense; money ARRIVING (credited/received/refund/salary) is income; movement between the user's OWN accounts is a transfer. Never count the "available balance" figure as the transaction amount.
+- Think step by step about what actually happened, then output ONLY the final JSON object (no prose, no markdown code fences around it).`;
 
 // -------- env / clients --------
 
@@ -330,34 +338,93 @@ Return ONLY JSON.`;
 }
 
 // STEP 2 (brain) — DeepSeek turns the text + extracted evidence into tool calls.
+//
+// Thinking-mode first: deepseek-reasoner (R1) reasons through the ambiguous calls
+// (transfer vs expense, discretionary or not, HDFC alert semantics, "yesterday"
+// date normalization, splitting one mixed capture into several events) and emits
+// its final answer. The reasoner API rejects response_format/temperature and
+// returns its chain-of-thought separately in `reasoning_content`, so we read
+// `content` and extract the JSON object leniently. If the reasoner is unavailable
+// or returns no parseable JSON, we fall back to deepseek-chat with strict
+// json_object mode, then (in the caller) to Gemini.
+//
 // Provider-agnostic OpenAI-compatible client: defaults to DeepSeek's own API, but
-// set DEEPSEEK_BASE_URL + DEEPSEEK_MODEL (and provide NVIDIA_API_KEY) to use an
-// NVIDIA-hosted DeepSeek, e.g.
-//   DEEPSEEK_BASE_URL=https://integrate.api.nvidia.com/v1/chat/completions
-//   DEEPSEEK_MODEL=deepseek-ai/deepseek-v3.1
-async function deepseekReason(combinedText: string, mode: string) {
+// set DEEPSEEK_BASE_URL + DEEPSEEK_MODEL (and provide NVIDIA_API_KEY) to point at
+// another host, e.g. an NVIDIA-hosted DeepSeek.
+
+// Pull the first balanced {...} out of a model response, tolerating leading
+// reasoning prose and ```json fences that a thinking model may wrap around it.
+function extractJsonObject(raw: string): string {
+  if (!raw) return "";
+  let s = String(raw).trim();
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) s = fence[1].trim();
+  const start = s.indexOf("{");
+  if (start === -1) return "";
+  let depth = 0;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") { depth--; if (depth === 0) return s.slice(start, i + 1); }
+  }
+  return "";
+}
+
+async function callDeepseek(model: string, combinedText: string, mode: string, opts: { json: boolean }) {
   const apiKey = await resolveAnySecret(["DEEPSEEK_API_KEY", "NVIDIA_API_KEY"]);
   if (!apiKey) throw new Error("no_brain_key"); // -> Gemini reasoning fallback
   const url = (await resolveSecretOptional("DEEPSEEK_BASE_URL")) || DEEPSEEK_URL;
-  const model = (await resolveSecretOptional("DEEPSEEK_MODEL")) || DEEPSEEK_MODEL;
+  const body: Record<string, unknown> = {
+    model,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: reasoningUserMessage(combinedText, mode) },
+    ],
+  };
+  // deepseek-reasoner rejects response_format + temperature; only set them for chat.
+  if (opts.json) { body.response_format = { type: "json_object" }; body.temperature = 0; }
   const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: reasoningUserMessage(combinedText, mode) },
-      ],
-      temperature: 0,
-      response_format: { type: "json_object" },
-    }),
+    body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`Brain ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  if (!response.ok) throw new Error(`Brain ${model} ${response.status}: ${(await response.text()).slice(0, 200)}`);
   const json = await response.json();
-  const raw = json.choices?.[0]?.message?.content ?? "{}";
+  const message = json.choices?.[0]?.message ?? {};
   const usage = json.usage || {};
-  return { raw, promptTokens: usage.prompt_tokens || 0, outputTokens: usage.completion_tokens || 0, model };
+  return {
+    raw: String(message.content ?? "{}"),
+    promptTokens: usage.prompt_tokens || 0,
+    outputTokens: usage.completion_tokens || 0,
+  };
+}
+
+// Thinking-mode primary (deepseek-reasoner) with a strict-JSON deepseek-chat
+// fallback. Returns the same shape the pipeline expects from the brain.
+async function runBrain(combinedText: string, mode: string) {
+  const configured = await resolveSecretOptional("DEEPSEEK_MODEL");
+  const primary = configured || DEEPSEEK_REASONER_MODEL; // thinking by default
+  const isReasoner = /reason|r1/i.test(primary);
+  // Attempt 1: primary brain (thinking mode when it's a reasoner model).
+  try {
+    const r = await callDeepseek(primary, combinedText, mode, { json: !isReasoner });
+    const jsonStr = extractJsonObject(r.raw) || (isReasoner ? "" : r.raw);
+    if (jsonStr) {
+      return {
+        raw: jsonStr, promptTokens: r.promptTokens, outputTokens: r.outputTokens,
+        model: primary, provider: isReasoner ? "deepseek-reasoner" : "deepseek",
+      };
+    }
+    // Reasoner produced no parseable JSON — fall through to the strict-JSON model.
+  } catch (err) {
+    if (!isReasoner) throw err; // chat already failed -> let caller fall back to Gemini
+  }
+  // Attempt 2: deepseek-chat with strict json_object (reliable structured output).
+  const r2 = await callDeepseek(DEEPSEEK_MODEL, combinedText, mode, { json: true });
+  return {
+    raw: extractJsonObject(r2.raw) || r2.raw, promptTokens: r2.promptTokens,
+    outputTokens: r2.outputTokens, model: DEEPSEEK_MODEL, provider: "deepseek",
+  };
 }
 
 // Fallback brain — Gemini reasons over text only (evidence is already extracted).
@@ -422,13 +489,13 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
 
   let raw = "{}";
   let brainPt = 0, brainOt = 0, brainCost = 0;
-  let model = DEEPSEEK_MODEL;
+  let model = DEEPSEEK_REASONER_MODEL;
   try {
-    const r = await deepseekReason(combinedText, opts.mode);
+    const r = await runBrain(combinedText, opts.mode);
     raw = r.raw; brainPt = r.promptTokens; brainOt = r.outputTokens;
-    model = r.model || DEEPSEEK_MODEL;
+    model = r.model || DEEPSEEK_REASONER_MODEL;
     brainCost = costOf(DEEPSEEK_IN_USD, DEEPSEEK_OUT_USD, brainPt, brainOt);
-    usedProviders.push("deepseek");
+    usedProviders.push(r.provider || "deepseek");
   } catch (_e) {
     const r = await geminiReason(combinedText, opts.mode);
     raw = r.raw; brainPt = r.promptTokens; brainOt = r.outputTokens;

@@ -91,6 +91,21 @@ export async function signInWithEmail(email) {
   if (error) throw error;
 }
 
+// Short handles -> real account emails, so sign-in can be "Ubhay" + a password
+// instead of a full email. Anything containing "@" is treated as an email as-is.
+const USERNAME_ALIASES = {
+  ubhay: "abhay.vatsa@meesho.com",
+};
+
+export async function signInWithPassword(identifier, password) {
+  const raw = String(identifier || "").trim();
+  const email = raw.includes("@") ? normalizeEmail(raw) : (USERNAME_ALIASES[raw.toLowerCase()] || raw);
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return data.session;
+}
+
 const SUPPORTED_PROVIDERS = new Set(["google", "github", "apple", "facebook", "azure", "discord", "linkedin", "slack", "spotify", "twitter", "notion", "kakao", "workos", "zoom"]);
 
 export async function signInWithProvider(provider) {
