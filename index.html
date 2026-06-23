@@ -88,6 +88,10 @@
           </details>
         </section>
 
+        <section class="command-panel" id="dietPlan" aria-label="Today's diet plan">
+          <p class="muted small">Loading today's plan…</p>
+        </section>
+
         <section class="dashboard-grid dashboard-grid-tight">
           <article class="metric-card accent-money">
             <p>Today spend</p>
@@ -110,12 +114,11 @@
           <article class="command-panel" aria-labelledby="review-table-title">
             <div class="panel-title-row">
               <div>
-                <p class="eyebrow">AI review</p>
-                <h2 id="review-table-title">Action queue</h2>
+                <p class="eyebrow">Auto-committed</p>
+                <h2 id="review-table-title">Recent additions</h2>
               </div>
               <div class="panel-title-actions">
-                <button id="approveAllReview" class="secondary-button" type="button">Approve all</button>
-                <span id="reviewRisk" class="metric-badge">0 risk</span>
+                <span id="reviewRisk" class="metric-badge">tap ✕ to delete</span>
               </div>
             </div>
             <div id="reviewTable" class="data-table-wrap" data-mode="auto"></div>
