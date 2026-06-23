@@ -10,9 +10,14 @@
 // allow auth.uid() = row.user_id. The setup card stays as a fallback for
 // people forking the repo to point at their own Supabase project.
 
-const PROD_URL = "https://qmlenovxatoyxxqlvzlo.supabase.co";
+// Live project ref: yyoewdcijplkhxleejtm. A previous build shipped the ref
+// `qmlenovxatoyxxqlvzlo`, which no longer resolves (DNS NXDOMAIN) — pointing the
+// app there was why sign-in/capture silently did nothing. The anon key below is
+// the publishable key minted from this (yyoe) project; RLS protects every table.
+const PROD_URL = "https://yyoewdcijplkhxleejtm.supabase.co";
 const PROD_ANON_KEY = "sb_publishable_0AfWy1NnROvjW0P0Cj3KVA_m286sLXT";
-const OLD_MISMATCHED_URL = "https://yyoewdcijplkhxleejtm.supabase.co";
+// Dead ref kept ONLY to self-heal browsers that cached it in localStorage.
+const OLD_MISMATCHED_URL = "https://qmlenovxatoyxxqlvzlo.supabase.co";
 
 const LS_URL = "trackerz.supabase_url";
 const LS_KEY = "trackerz.supabase_anon_key";
@@ -36,7 +41,9 @@ function loadLocalStorage() {
   try {
     const url = globalThis.localStorage?.getItem(LS_URL);
     const key = globalThis.localStorage?.getItem(LS_KEY);
-    if (url === OLD_MISMATCHED_URL && key === PROD_ANON_KEY) {
+    // Self-heal: any browser still holding the dead project ref gets it wiped so
+    // the working PROD default takes over on next load.
+    if (url === OLD_MISMATCHED_URL) {
       globalThis.localStorage?.removeItem(LS_URL);
       globalThis.localStorage?.removeItem(LS_KEY);
       return null;

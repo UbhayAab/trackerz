@@ -9,3 +9,6 @@ coverage/
 src/config.local.js
 screenshots/
 package-lock.json
+
+# Supabase CLI scratch
+supabase/.temp/

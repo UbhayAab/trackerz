@@ -42,7 +42,7 @@ function showSetupCard(onSaved) {
     <h2>One-time setup</h2>
     <p>Paste your Supabase project URL and anon (publishable) key. Stored only in this browser.</p>
     <label>Supabase URL
-      <input type="url" id="setupUrl" placeholder="https://your-project.supabase.co" value="https://qmlenovxatoyxxqlvzlo.supabase.co" />
+      <input type="url" id="setupUrl" placeholder="https://your-project.supabase.co" value="https://yyoewdcijplkhxleejtm.supabase.co" />
     </label>
     <label>Supabase anon key
       <input type="password" id="setupKey" placeholder="eyJhbGciOi..." />
