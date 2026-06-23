@@ -12,13 +12,14 @@ assert.equal(
   "auto_apply",
 );
 
-assert.equal(
-  decideActionPolicy({
-    name: "create_expense_candidate",
-    confidence: 0.91,
-  }).mode,
-  "review",
-);
+// No approve gate any more: a non-blocked action auto-commits even without an
+// evidenceId. The `reasons` still carry the flag so the UI can mark it.
+const lowEvidence = decideActionPolicy({
+  name: "create_expense_candidate",
+  confidence: 0.91,
+});
+assert.equal(lowEvidence.mode, "auto_apply");
+assert.ok(lowEvidence.reasons.includes("missing_evidence"));
 
 assert.equal(
   decideActionPolicy({

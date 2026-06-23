@@ -73,8 +73,10 @@ const WRITE_TOOLS = new Set([
 const RATE_LIMIT_WINDOW_MIN = 5;
 const RATE_LIMIT_MAX = 60;
 const DEFAULT_DAILY_COST_CAP_USD = 2;
-const AUTO_APPLY_MIN_CONFIDENCE = 0.88;
-const REVIEW_MIN_CONFIDENCE = 0.72;
+// No approve gate: every write auto-commits (status 'auto_applied') regardless of
+// confidence. The client feed shows each addition and lets the user delete any.
+const AUTO_APPLY_MIN_CONFIDENCE = 0;
+const REVIEW_MIN_CONFIDENCE = 0;
 
 const SYSTEM_PROMPT = `You convert messy personal logs into structured tool calls.
 
@@ -707,12 +709,11 @@ async function persistRunAndActions(
     let appliedTable: string | null = null;
     let appliedId: string | null = null;
     let groundingNote: string | null = null;
-    // Field-level evidence guard: a high-confidence write whose load-bearing
-    // fields are not present in the evidence (user text + model OCR) is demoted
-    // to review rather than auto-applied. Blocks fabricated/injected writes.
-    if (status === "auto_applied" && !isGrounded(tc.name, tc.arguments, evidence)) {
-      status = "proposed";
-      groundingNote = "ungrounded_fields";
+    // Field-level evidence flag: a write whose load-bearing fields are not present
+    // in the evidence (user text + model OCR) still commits (no approve gate) but
+    // is tagged low_evidence so the client feed can mark it for a quick look.
+    if (!isGrounded(tc.name, tc.arguments, evidence)) {
+      groundingNote = "low_evidence";
     }
     if (status === "auto_applied") {
       try {

@@ -11,7 +11,7 @@ const reviewColumns = [
   { key: "confidence", label: "Conf." },
   { key: "risk", label: "Risk", badge: true },
   { key: "action", label: "Action" },
-  { key: "ops", label: "Ops", actions: [{ label: "Approve", action: "approve" }, { label: "Drop", action: "drop" }] },
+  { key: "ops", label: "Ops", actions: [{ label: "✕ Delete", action: "drop" }] },
 ];
 
 const importColumns = [
@@ -49,7 +49,7 @@ const macroColumns = [
 ];
 
 export function renderOperationalTables(state) {
-  setTable("#reviewTable", reviewColumns, state.reviewRows, { table: "review", emptyMessage: "No review items yet. Process a capture to create AI-reviewed rows." });
+  setTable("#reviewTable", reviewColumns, state.reviewRows, { table: "review", emptyMessage: "Nothing yet today. Captures auto-commit here as additions — delete any that are wrong." });
   setTable("#importTable", importColumns, state.importRows, { table: "import", emptyMessage: "No bank files yet. Upload CSV, Excel, PDF, or screenshots from Capture." });
   setTable("#ledgerTable", ledgerColumns, state.ledgerRows, { emptyMessage: "No expenses yet. Add a payment, statement, or screenshot dump." });
   setTable("#budgetTable", budgetColumns, state.budgetRows, { emptyMessage: "No budget burn yet. Add spends or load demo data." });
@@ -58,10 +58,6 @@ export function renderOperationalTables(state) {
 
 export function bindOperationalTables() {
   document.addEventListener("click", (event) => {
-    if (event.target.closest("#approveAllReview")) {
-      handleApproveAll();
-      return;
-    }
     const button = event.target.closest(".table-action");
     if (!button) return;
     const { table, action, rowId } = button.dataset;
