@@ -36,7 +36,7 @@ export function composeInsights({ aggregates, budgets = [], subscriptions = [], 
 
   // Diet
   if (t.protein < 90 && t.mealCount >= 2) {
-    out.push({ kind: "diet", severity: "warning", text: `Protein at ${t.protein}g — gap to 130g target.` });
+    out.push({ kind: "diet", severity: "warning", text: `Protein at ${t.protein}g — gap to 162g target.` });
   }
   if (deltas?.dod_calories > 0.25 && yesterday?.calories > 0) {
     out.push({ kind: "diet", severity: "info", text: `Calorie pace higher than yesterday.` });

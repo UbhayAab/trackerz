@@ -2,13 +2,14 @@ import { $ } from "../utils/dom.js";
 import { inr } from "../utils/formatters.js";
 
 export function renderMetrics(state) {
-  setText("#todaySpend", inr(state.metrics.todaySpend), `Budget pace ${inr(state.metrics.budgetPace)}`);
-  setText("#proteinMetric", `${state.metrics.protein}g`, `Target ${state.metrics.proteinTarget}g`);
-  setText("#habitScore", String(state.metrics.habitScore), state.metrics.habitNote);
-  setText("#reviewCount", String(state.reviewRows.length));
-  setText("#reviewRisk", `${state.reviewRows.filter((row) => row.risk !== "none").length} risk`);
-  setText("#caloriesLeft", String(state.metrics.caloriesLeft), "Target 2,100");
-  setText("#adherenceMetric", String(state.metrics.adherence), "Photo + voice evidence");
+  const m = state.metrics || {};
+  // Home glance cards: spend, protein vs target, calories vs target.
+  setText("#todaySpend", inr(m.todaySpend), "so far today");
+  setText("#proteinMetric", `${Math.round(m.protein || 0)}g`, `Target ${m.proteinTarget || 162}g`);
+  setText("#caloriesMetric", `${Math.round(m.caloriesToday || 0)}`, "target 2,000 kcal");
+  // Diet-page cards (these IDs don't exist on Home, so they no-op there).
+  setText("#caloriesLeft", String(m.caloriesLeft ?? ""), "Target 2,000");
+  setText("#adherenceMetric", String(m.adherence ?? ""), "Photo + voice evidence");
 }
 
 function setText(selector, value, siblingText = null) {

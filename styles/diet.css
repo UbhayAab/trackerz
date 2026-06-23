@@ -53,9 +53,19 @@
 #dietPlan .nutrow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; padding: 2px 0; }
 #dietPlan .nutname { font-size: 0.82rem; }
 #dietPlan .nutval { font-size: 0.78rem; font-variant-numeric: tabular-nums; opacity: 0.75; }
-#dietPlan .nutbar { grid-column: 1 / -1; height: 4px; border-radius: 999px; background: rgba(127,127,127,0.16); overflow: hidden; }
-#dietPlan .nutbar i { display: block; height: 100%; background: #138a5b; }
-#dietPlan .nutrow.nut-over .nutbar i { background: #d4533e; }
+/* Range gauge: neutral track, centre tick = target, colour pointer = actual.
+   Pointer left of centre = under target, right of centre = over (visible!). */
+#dietPlan .nutgauge { grid-column: 1 / -1; position: relative; height: 12px; margin-top: 4px; border-radius: 999px; background: rgba(127,127,127,0.14); }
+#dietPlan .nutgauge-center { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: rgba(127,127,127,0.7); transform: translateX(-50%); }
+#dietPlan .nutgauge-ptr { position: absolute; top: -3px; bottom: -3px; width: 5px; border-radius: 3px; transform: translateX(-50%); background: #8a8a8a; }
+#dietPlan .nutrow.nut-good .nutgauge-ptr { background: #138a5b; }
+#dietPlan .nutrow.nut-near .nutgauge-ptr { background: #c98a00; }
+#dietPlan .nutrow.nut-bad  .nutgauge-ptr { background: #d4533e; }
+#dietPlan .nutrow.nut-good .nutval { color: #138a5b; }
+#dietPlan .nutrow.nut-near .nutval { color: #c98a00; }
+#dietPlan .nutrow.nut-bad  .nutval { color: #d4533e; }
+#dietPlan .nutgauge-over { position: absolute; right: 3px; top: -7px; font-size: 0.58rem; font-weight: 700; color: #d4533e; }
+#dietPlan .nutrow.nut-pegged .nutgauge-ptr { left: 100% !important; }
 
 /* Additions feed: day-over-day rows, green adds, one-tap ✕ delete. */
 .additions-feed .add-day { margin-bottom: 10px; }

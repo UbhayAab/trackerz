@@ -99,6 +99,7 @@ export async function hydrateStateFromSupabase() {
 
     const todaySpend = sumTodayExpense(ledger);
     const protein = sumTodayProtein(foods);
+    const caloriesToday = sumTodayCalories(foods);
 
     updateState((state) => {
       // Formatted rows for the tables.
@@ -123,6 +124,7 @@ export async function hydrateStateFromSupabase() {
       state.insightItems = feed.items;
       state.metrics.todaySpend = todaySpend;
       state.metrics.protein = protein;
+      state.metrics.caloriesToday = caloriesToday;
       state.syncError = null;
     });
   } catch (err) {
@@ -170,4 +172,10 @@ function sumTodayProtein(rows) {
   return rows
     .filter((r) => isSameLocalDay(r.occurred_at))
     .reduce((acc, r) => acc + Number(r.protein_g || 0), 0);
+}
+
+function sumTodayCalories(rows) {
+  return rows
+    .filter((r) => isSameLocalDay(r.occurred_at))
+    .reduce((acc, r) => acc + Number(r.calories_estimate || 0), 0);
 }

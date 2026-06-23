@@ -42,12 +42,23 @@ export const NUTRIENTS = [
 
 export const NUTRIENT_GROUPS = ["macro", "mineral", "vitamin"];
 
+// Scale behaviour per nutrient:
+//   target = hit it (both under and over are off)   -> calories/protein/carbs/fat
+//   limit  = stay at/under it                         -> sodium, saturated fat
+//   floor  = meet or exceed it (more is fine)         -> fiber, vitamins, minerals
+const TARGET_KEYS = new Set(["calories", "protein", "carbs", "fat"]);
+function kindOf(n) {
+  if (n.limit) return "limit";
+  if (TARGET_KEYS.has(n.key)) return "target";
+  return "floor";
+}
+
 // What today's diet type is planned to deliver for each nutrient (full panel).
 export function planNutrients(dietType) {
   const col = dietType === "paneer-soy" ? "paneerSoy" : "soybean";
   return NUTRIENTS.map((n) => ({
     key: n.key, label: n.label, unit: n.unit, group: n.group,
-    target: n.target, plan: n[col], limit: Boolean(n.limit),
+    target: n.target, plan: n[col], limit: Boolean(n.limit), kind: kindOf(n),
   }));
 }
 
@@ -57,4 +68,22 @@ export function planNutrients(dietType) {
 export function nutrientsSoFar(dietType, fractionOfDay) {
   const f = Math.max(0, Math.min(1, Number(fractionOfDay) || 0));
   return planNutrients(dietType).map((n) => ({ ...n, current: Math.round(n.plan * f * 100) / 100 }));
+}
+
+// Range-gauge model: the TARGET sits at the centre (50%), the track runs 0..2×target,
+// and the pointer shows the actual value. `over` flags a value past the high end so
+// exceeding is visible (not silently clamped). `status` colours the pointer:
+//   limit: good under target, bad over it.   floor: good at/above target.
+//   target: good within ±15% of target.
+export function gauge({ current, target, kind = "floor", limit = false } = {}) {
+  const t = Number(target) || 1;
+  const ratio = (Number(current) || 0) / t;
+  const position = Math.max(0, Math.min(100, ratio * 50)); // target -> 50% (centre)
+  const over = (Number(current) || 0) > t * 2;
+  const k = limit ? "limit" : kind;
+  let status;
+  if (k === "limit") status = ratio <= 1 ? "good" : (ratio <= 1.1 ? "near" : "bad");
+  else if (k === "target") status = (ratio >= 0.85 && ratio <= 1.15) ? "good" : ((ratio >= 0.6 && ratio <= 1.4) ? "near" : "bad");
+  else status = ratio >= 1 ? "good" : (ratio >= 0.6 ? "near" : "bad");
+  return { position: Math.round(position * 10) / 10, status, over };
 }
