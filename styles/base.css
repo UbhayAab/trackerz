@@ -4,10 +4,7 @@
 
 body {
   margin: 0;
-  background:
-    linear-gradient(135deg, rgba(39, 111, 194, 0.11), transparent 34%),
-    linear-gradient(215deg, rgba(19, 138, 91, 0.1), transparent 42%),
-    var(--paper);
+  background: var(--paper);
   color: var(--ink);
   font-weight: var(--weight-regular);
   line-height: 1.45;
