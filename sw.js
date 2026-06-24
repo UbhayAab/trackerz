@@ -5,7 +5,7 @@
 // 4. Offline capture queue: POSTs to /__offline-capture__ are saved to
 //    IndexedDB and replayed via Background Sync when the SW comes back.
 
-const VERSION = "trackerz-v5";
+const VERSION = "trackerz-v8-20260624";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -56,7 +56,10 @@ self.addEventListener("fetch", (event) => {
 
 async function networkFirst(req) {
   try {
-    const fresh = await fetch(req);
+    // no-store: bypass the browser HTTP cache so a freshly-deployed asset always
+    // wins (GitHub Pages sets ~10min cache headers that otherwise cause "ghost
+    // versions"). The SW cache below is kept purely as the offline fallback.
+    const fresh = await fetch(req, { cache: "no-store" });
     const cache = await caches.open(VERSION);
     cache.put(req, fresh.clone());
     return fresh;
