@@ -5,6 +5,7 @@ import {
 } from "../services/supabase-data.js";
 import { setDietPlanOverride, planForDate } from "../domain/diet/plan.js";
 import { resolveDietTargets } from "../domain/goals.js";
+import { estimateNutrition } from "../../lib/food-nutrition.mjs";
 import { isLocalSession } from "../services/auth.js";
 import { updateState } from "./app-state.js";
 import { detectSubscriptions } from "../domain/money/subscription-detector.js";
@@ -40,6 +41,19 @@ export async function hydrateStateFromSupabase() {
     const mealTemplates = await fetchMealTemplates().catch(() => []);
     const userPlans = await fetchUserPlans().catch(() => []);
     const workoutLogs = await fetchWorkoutLogs().catch(() => []);
+
+    // Self-heal food macros at DISPLAY time: the lookup table is the source of
+    // truth for everyday foods, so recompute macros from the description even for
+    // rows logged before the lookup shipped (fixes stale "coffee+cookies = 10g").
+    for (const f of foods) {
+      const est = estimateNutrition(f.description || f.meal_name || "");
+      if (est.recognized) {
+        f.calories_estimate = est.totals.calories;
+        f.protein_g = est.totals.protein_g;
+        f.carbs_g = est.totals.carbs_g;
+        f.fat_g = est.totals.fat_g;
+      }
+    }
     // Latest permanent diet plan (if any) overrides the fixed default in the hub.
     const dietOverride = userPlans.find((p) => p.kind === "diet" && p.scope === "permanent");
     setDietPlanOverride(dietOverride?.payload || null);
@@ -141,6 +155,7 @@ export async function hydrateStateFromSupabase() {
       state.metrics.caloriesToday = caloriesToday;
       state.metrics.caloriesTarget = dietTargets.calories;
       state.metrics.caloriesLeft = Math.max(0, Math.round(dietTargets.calories - caloriesToday));
+      state.metrics.mealsToday = foods.filter((r) => isSameLocalDay(r.occurred_at)).length;
       state.syncError = null;
     });
   } catch (err) {

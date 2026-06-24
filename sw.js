@@ -5,7 +5,7 @@
 // 4. Offline capture queue: POSTs to /__offline-capture__ are saved to
 //    IndexedDB and replayed via Background Sync when the SW comes back.
 
-const VERSION = "trackerz-v10-20260624";
+const VERSION = "trackerz-v11-20260624";
 const APP_SHELL = [
   "./",
   "./index.html",

@@ -5,7 +5,8 @@
 // No page holds its own copy of a budget.
 
 import { upsertBudget } from "../services/supabase-data.js";
-import { goalDef, goalDisplayValue } from "../domain/goals.js";
+import { goalDef, goalValue, goalDisplayValue, resolveDietTargets } from "../domain/goals.js";
+import { planForDate } from "../domain/diet/plan.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 
@@ -19,9 +20,18 @@ function canSync() {
 // seed default). Call this on every state change so edits made elsewhere appear.
 export function renderBudgetInputs(state) {
   const budgets = state?.budgets || [];
+  // Diet inputs show the EFFECTIVE target (set goal, else the scaffold-derived
+  // value) so the input always matches the gauges/cards — never an input that
+  // disagrees with the target shown elsewhere.
+  const dt = resolveDietTargets(budgets, planForDate(new Date()).macroTargets);
   document.querySelectorAll("input[data-budget-kind]").forEach((input) => {
     if (input.matches(":focus")) return; // don't fight the user mid-type
-    const v = goalDisplayValue(budgets, input.dataset.budgetKind);
+    const kind = input.dataset.budgetKind;
+    let v;
+    if (kind === "daily_calories") v = dt.calories;
+    else if (kind === "daily_protein") v = dt.protein_g;
+    else if (kind === "weekly_calories") v = goalValue(budgets, kind) ?? Math.round(dt.calories * 7);
+    else v = goalDisplayValue(budgets, kind);
     if (v != null) input.value = v;
   });
 }
