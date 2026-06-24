@@ -1,50 +1,73 @@
 :root {
-  /* Type & weights */
+  font-family: "Inter", "SF Pro Text", "Aptos", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+
+  /* ---- Type scale (restrained; mobile-first) ---- */
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
   --weight-bold: 700;
-  font-family: "Inter", "SF Pro Text", "Aptos", "Segoe UI", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --fs-xs: 0.72rem;
+  --fs-sm: 0.82rem;
+  --fs-base: 0.94rem;
+  --fs-md: 1.02rem;
+  --fs-lg: 1.18rem;
+  --fs-xl: 1.36rem;
+  --fs-2xl: 1.7rem;
+  --lh-tight: 1.16;
+  --lh: 1.5;
 
-  /* Surfaces */
-  --ink: #0d1015;
-  --ink-soft: #1b2230;
-  --muted: #6b7480;
-  --muted-soft: #97a0aa;
-  --paper: #f7f6f1;
+  /* ---- Spacing scale ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 22px;
+  --sp-6: 30px;
+
+  /* ---- Neutral, premium surfaces (the chrome is neutral; colour is earned) ---- */
+  --ink: #17191e;
+  --ink-soft: #3b4049;
+  --muted: #787d87;
+  --muted-soft: #a7abb3;
+  --paper: #f5f5f2;
   --panel: #ffffff;
-  --panel-warm: #fff8e7;
-  --line: #e6e5df;
-  --line-strong: #d0cfc8;
-  --chip: #f1f0ea;
+  --panel-2: #fbfbf9;
+  --line: #eae9e3;
+  --line-strong: #dcdbd3;
+  --chip: #f0f0eb;
+  --charcoal: #17191e;
 
-  /* Brand */
-  --money: #1a8d62;
-  --money-soft: #e5f3ed;
-  --food: #d04733;
-  --food-soft: #fbe8e4;
-  --wellness: #3b6dc7;
-  --wellness-soft: #e6edf9;
-  --risk: #a83120;
-  --sun: #e8a82c;
-  --charcoal: #0d1015;
+  /* ---- Accent: ONE deliberate colour, used sparingly (primary action + money) ---- */
+  --accent: #0f7a52;
+  --accent-strong: #0b5e3f;
+  --accent-soft: #e9f1ed;
 
-  /* Effects */
-  --radius-sm: 10px;
-  --radius-md: 14px;
+  /* ---- Semantic domain hues — muted, for small dots/labels, not big fills ---- */
+  --money: #0f7a52;
+  --money-soft: #e9f1ed;
+  --food: #c0492f;
+  --food-soft: #f6e9e5;
+  --wellness: #3a5fb0;
+  --wellness-soft: #e9eef8;
+  --risk: #b5392a;
+  --sun: #c0871c;
+
+  /* ---- Radius + depth (subtle, layered) ---- */
+  --radius-sm: 9px;
+  --radius-md: 13px;
   --radius-lg: 18px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 22px 60px rgba(15, 23, 42, 0.12);
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(20, 22, 28, 0.05);
+  --shadow: 0 2px 8px rgba(20, 22, 28, 0.05), 0 12px 26px rgba(20, 22, 28, 0.06);
+  --shadow-lg: 0 18px 48px rgba(20, 22, 28, 0.13);
 
   color-scheme: light;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -52,6 +75,4 @@ body {
   color: var(--ink);
 }
 
-button {
-  font-family: inherit;
-}
+button { font-family: inherit; }
