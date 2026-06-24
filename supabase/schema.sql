@@ -290,6 +290,22 @@ create table if not exists public.weekly_reviews (
   unique(user_id, week_start)
 );
 
+-- User-editable diet/gym plan. scope='permanent' is the standing plan; a
+-- 'YYYY-MM-DD' scope is a one-day temporary override. payload holds the parsed
+-- plan (meals/workouts + macros). Latest active row per (user,kind,scope) wins.
+create table if not exists public.user_plans (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  kind text not null default 'diet' check (kind in ('diet','gym')),
+  scope text not null default 'permanent',
+  summary text,
+  payload jsonb not null default '{}'::jsonb,
+  source text not null default 'ai',
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index if not exists ix_user_plans_lookup on public.user_plans(user_id, kind, scope, active, created_at desc);
+
 create table if not exists public.invited_emails (
   email text primary key,
   invited_by uuid references public.profiles(id) on delete set null,
@@ -423,7 +439,7 @@ begin
     select unnest(array[
       'workout_logs','merchant_aliases','category_memory','subscriptions',
       'bank_format_memory','meal_templates','hydration_logs','weekly_reviews',
-      'audit_log','user_secrets'
+      'audit_log','user_secrets','user_plans'
     ])
   loop
     execute format('alter table public.%I enable row level security', t);

@@ -14,6 +14,7 @@ export const APPLIER_WRITE_TOOLS = [
   "create_workout_log_candidate",
   "create_body_metric_candidate",
   "create_wellness_note_candidate",
+  "update_plan_candidate",
 ];
 
 export function buildRowForTool(action, userId) {
@@ -70,6 +71,15 @@ export function buildRowForTool(action, userId) {
       return { table: "wellness_logs", row: {
         ...base, note: args.note || "", mood_score: args.mood_score ?? null,
         energy_score: args.energy_score ?? null, stress_score: args.stress_score ?? null, occurred_at: occurredAt,
+      } };
+    case "update_plan_candidate":
+      return { table: "user_plans", row: {
+        user_id: userId,
+        kind: args.kind || "diet",
+        scope: args.scope || "permanent",
+        summary: args.summary || args.description || null,
+        payload: (args.payload && typeof args.payload === "object" && !Array.isArray(args.payload)) ? args.payload : {},
+        source: "ai",
       } };
     default:
       return null; // non-write tools (request_user_review, link_duplicate_candidates)

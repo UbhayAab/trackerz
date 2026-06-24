@@ -9,6 +9,7 @@ export const toolRegistry = [
   { name: "create_body_metric_candidate", domain: "fitness", write: true, destructive: false },
   { name: "create_wellness_note_candidate", domain: "wellness", write: true, destructive: false },
   { name: "link_duplicate_candidates", domain: "all", write: true, destructive: false },
+  { name: "update_plan_candidate", domain: "all", write: true, destructive: false },
   { name: "request_user_review", domain: "all", write: false, destructive: false },
   { name: "apply_verified_action", domain: "all", write: true, destructive: false },
   { name: "undo_ai_action", domain: "all", write: true, destructive: false },
