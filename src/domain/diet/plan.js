@@ -3,9 +3,36 @@
 // The same 7-day cycle repeats every week, so we key everything off the weekday
 // (ISO: 1=Mon … 7=Sun). Wed(3) & Sat(6) are Paneer-Soy days; the rest Soybean.
 
+// Fallback only. The REAL daily macro targets are derived from the scaffold —
+// i.e. the sum of the day's planned meals — so "the values in the scaffold
+// determine the overall values". fiber_g / water_ml aren't carried on meals, so
+// they fall back to these. An explicit { targets } in a user plan override wins.
 export const MACRO_TARGETS = Object.freeze({
   calories: 2000, protein_g: 162, carbs_g: 188, fat_g: 77, fiber_g: 47, water_ml: 3450,
 });
+
+// Sum a meal list's macros — the scaffold IS the source of truth for targets.
+export function sumMealMacros(meals) {
+  const t = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+  for (const m of meals || []) {
+    const x = m.macros || {};
+    t.calories += Number(x.calories || 0);
+    t.protein_g += Number(x.protein_g || 0);
+    t.carbs_g += Number(x.carbs_g || 0);
+    t.fat_g += Number(x.fat_g || 0);
+  }
+  return { calories: Math.round(t.calories), protein_g: Math.round(t.protein_g), carbs_g: Math.round(t.carbs_g), fat_g: Math.round(t.fat_g) };
+}
+
+// Resolve targets: scaffold sum drives calories/protein/carbs/fat (when > 0);
+// fiber_g/water_ml fall back to the constant; an explicit override wins outright.
+function resolveTargets(meals) {
+  const out = { ...MACRO_TARGETS };
+  const scaffold = sumMealMacros(meals);
+  for (const k of ["calories", "protein_g", "carbs_g", "fat_g"]) if (scaffold[k] > 0) out[k] = scaffold[k];
+  Object.assign(out, _dietOverride?.targets || {});
+  return out;
+}
 
 // A permanent diet override from user_plans (payload). When the user pastes/asks
 // the AI to update their diet, sync.js calls setDietPlanOverride(payload) and the
@@ -127,6 +154,7 @@ export function planForDate(date = new Date()) {
   const tomorrow = new Date(date);
   tomorrow.setDate(date.getDate() + 1);
   const wdT = isoWeekday(tomorrow);
+  const meals = overrideMeals() || mealsFor(dietType);
   return {
     date,
     weekday: wd,
@@ -134,11 +162,11 @@ export function planForDate(date = new Date()) {
     dietType,
     dietLabel: dietType === "paneer-soy" ? "Paneer-Soy day" : "Soybean day",
     workout: WORKOUTS[WORKOUT_BY_WEEKDAY[wd]],
-    meals: overrideMeals() || mealsFor(dietType),
+    meals,
     customDiet: Boolean(_dietOverride),
     supplements: supplementsFor(wd),
     water: WATER,
-    macroTargets: { ...MACRO_TARGETS, ...(_dietOverride?.targets || {}) },
+    macroTargets: resolveTargets(meals),
     tomorrowName: WEEKDAY_NAMES[wdT],
     tomorrowDietLabel: dietTypeForWeekday(wdT) === "paneer-soy" ? "Paneer-Soy day" : "Soybean day",
     prepForTomorrow: prepForTomorrow(dietTypeForWeekday(wdT)),
