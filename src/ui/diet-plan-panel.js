@@ -107,7 +107,14 @@ function nutrientPanel(plan) {
   const frac = plan.macroTargets.calories ? cal / plan.macroTargets.calories : 0;
   const rows = nutrientsSoFar(plan.dietType, frac);
   const actual = { calories: cal, protein: sumFood("protein_g"), carbs: sumFood("carbs_g"), fat: sumFood("fat_g") };
-  for (const r of rows) if (r.key in actual) r.current = Math.round(actual[r.key] * 100) / 100;
+  // The macro-row TARGETS come from the scaffold (plan meals), so the panel and
+  // the meals below it always agree — no second hardcoded target source.
+  const targetFromScaffold = { calories: "calories", protein: "protein_g", carbs: "carbs_g", fat: "fat_g", fiber: "fiber_g" };
+  for (const r of rows) {
+    if (r.key in actual) r.current = Math.round(actual[r.key] * 100) / 100;
+    const tk = targetFromScaffold[r.key];
+    if (tk && plan.macroTargets?.[tk] != null) r.target = plan.macroTargets[tk];
+  }
   const labels = { macro: "Macros", mineral: "Minerals", vitamin: "Vitamins" };
   const section = (grp) => {
     const items = rows.filter((r) => r.group === grp);

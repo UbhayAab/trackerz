@@ -97,7 +97,8 @@ Rules:
   is_discretionary=true for non-essential spend (eating out, entertainment, impulse shopping, subscriptions, food delivery).
   is_discretionary=false for groceries, fuel, utilities, rent, medical, transport, EMI/loan.
 - create_food_log_candidate.arguments: { meal_slot, description, calories_estimate, protein_g, carbs_g, fat_g, occurred_at }.
-- A bare food/drink mention with NO payment ("had coffee and 5 cookies", "ate 3 rotis dal", "2 boiled eggs", "5 choc chip cookies") IS a diet event → ALWAYS emit create_food_log_candidate with your best calorie + macro ESTIMATE. Calorie/macro estimates for logged food are EXPECTED and are NOT "inventing". NEVER route clear food/drink to request_user_review.
+- A bare food/drink mention with NO payment ("had coffee and 5 cookies", "ate 3 rotis dal", "2 boiled eggs", "5 choc chip cookies") IS a diet event → ALWAYS emit create_food_log_candidate. Calorie/macro estimates for logged food are EXPECTED and are NOT "inventing". NEVER route clear food/drink to request_user_review.
+- MACROS: a deterministic nutrition table overrides your numbers for everyday foods (eggs, roti, rice, dal, coffee, milk, banana, paneer, chicken, cookies, etc.) AFTER you respond, so don't sweat precision there — just keep the description faithful with quantities ("2 eggs and 2 rotis", "coffee + 5 cookies"). For UNUSUAL / restaurant / branded foods NOT in everyday Indian home cooking, think step-by-step about a realistic per-item portion and macros before emitting — never output a lazy round guess. Always preserve item counts and portion sizes in `description` so the table can do the math.
 - occurred_at must be ISO 8601 with timezone. If only date given, use noon Asia/Kolkata.
 - If the user says "yesterday" / "last X" normalize using the current time provided in the user turn.
 - One tool call per real event. Split mixed inputs into multiple calls.
@@ -526,6 +527,203 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   return out;
 }
 
+// -------- everyday-food nutrition (mirrors lib/food-nutrition.mjs) --------
+// Deterministic macros for common foods so we never ship the model's nonsense
+// guesses ("coffee + 5 cookies -> 10g protein"). When estimateNutrition(desc)
+// .recognized is true, these table totals OVERRIDE the model. Unusual foods stay
+// the brain's job (DeepSeek reasoning) — "deepseek only for non-everyday items".
+const FOOD_TABLE: any[] = [
+  { key: "egg", kind: "count", aliases: ["egg", "eggs", "boiled egg", "boiled eggs", "whole egg", "whole eggs", "anda", "ande"], calories: 72, protein_g: 6.3, carbs_g: 0.4, fat_g: 5 },
+  { key: "egg white", kind: "count", aliases: ["egg white", "egg whites", "whites"], calories: 17, protein_g: 3.6, carbs_g: 0.2, fat_g: 0.1 },
+  { key: "roti", kind: "count", aliases: ["roti", "rotis", "phulka", "phulkas", "chapati", "chapatis", "chapathi", "fulka"], calories: 110, protein_g: 3.5, carbs_g: 22, fat_g: 1 },
+  { key: "paratha", kind: "count", aliases: ["paratha", "parathas", "parantha"], calories: 240, protein_g: 5, carbs_g: 30, fat_g: 10 },
+  { key: "aloo paratha", kind: "count", aliases: ["aloo paratha", "aloo parathas", "potato paratha"], calories: 320, protein_g: 6, carbs_g: 38, fat_g: 14 },
+  { key: "rice", kind: "count", aliases: ["rice", "rice bowl", "steamed rice", "jeera rice", "white rice", "boiled rice", "chawal", "bhaat"], calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0.5 },
+  { key: "dal", kind: "count", aliases: ["dal", "daal", "dal bowl", "lentils", "tadka dal", "dal fry"], calories: 150, protein_g: 9, carbs_g: 20, fat_g: 3 },
+  { key: "sabzi", kind: "count", aliases: ["sabzi", "sabji", "mixed veg", "veg curry", "bhindi", "aloo gobi"], calories: 130, protein_g: 4, carbs_g: 12, fat_g: 7 },
+  { key: "rajma", kind: "count", aliases: ["rajma", "kidney beans"], calories: 200, protein_g: 12, carbs_g: 30, fat_g: 4 },
+  { key: "chole", kind: "count", aliases: ["chole", "chana", "chickpea curry", "chana masala", "chhole"], calories: 220, protein_g: 11, carbs_g: 28, fat_g: 7 },
+  { key: "sambar", kind: "count", aliases: ["sambar", "sambhar"], calories: 140, protein_g: 6, carbs_g: 18, fat_g: 4 },
+  { key: "curd", kind: "count", aliases: ["curd", "dahi", "yogurt", "yoghurt"], calories: 90, protein_g: 5, carbs_g: 6, fat_g: 5 },
+  { key: "greek yogurt", kind: "gram", per: 100, aliases: ["greek yogurt", "greek yoghurt", "hung curd"], calories: 60, protein_g: 10, carbs_g: 4, fat_g: 0.4 },
+  { key: "paneer", kind: "gram", per: 100, aliases: ["paneer", "cottage cheese"], calories: 265, protein_g: 18, carbs_g: 4, fat_g: 20 },
+  { key: "soybean", kind: "gram", per: 100, aliases: ["soybean", "soybeans", "soya", "soya beans", "soya chunks", "soyabean", "soyabeans"], calories: 172, protein_g: 18, carbs_g: 10, fat_g: 9 },
+  { key: "tofu", kind: "gram", per: 100, aliases: ["tofu"], calories: 145, protein_g: 15, carbs_g: 4, fat_g: 9 },
+  { key: "idli", kind: "count", aliases: ["idli", "idlis", "idly"], calories: 50, protein_g: 1.5, carbs_g: 10, fat_g: 0.3 },
+  { key: "dosa", kind: "count", aliases: ["dosa", "dosas", "plain dosa"], calories: 170, protein_g: 4, carbs_g: 28, fat_g: 4 },
+  { key: "masala dosa", kind: "count", aliases: ["masala dosa", "masala dosas"], calories: 260, protein_g: 5, carbs_g: 36, fat_g: 10 },
+  { key: "poha", kind: "count", aliases: ["poha"], calories: 250, protein_g: 5, carbs_g: 40, fat_g: 7 },
+  { key: "upma", kind: "count", aliases: ["upma"], calories: 230, protein_g: 5, carbs_g: 35, fat_g: 8 },
+  { key: "khichdi", kind: "count", aliases: ["khichdi"], calories: 290, protein_g: 11, carbs_g: 45, fat_g: 6 },
+  { key: "biryani veg", kind: "count", aliases: ["veg biryani", "vegetable biryani"], calories: 480, protein_g: 12, carbs_g: 70, fat_g: 16 },
+  { key: "biryani chicken", kind: "count", aliases: ["chicken biryani", "biryani"], calories: 600, protein_g: 28, carbs_g: 70, fat_g: 22 },
+  { key: "chicken curry", kind: "count", aliases: ["chicken curry", "chicken gravy", "butter chicken"], calories: 280, protein_g: 22, carbs_g: 6, fat_g: 18 },
+  { key: "chicken breast", kind: "gram", per: 100, aliases: ["chicken breast", "grilled chicken", "chicken 100g", "chicken"], calories: 165, protein_g: 31, carbs_g: 0, fat_g: 3.6 },
+  { key: "fish curry", kind: "count", aliases: ["fish curry", "fish"], calories: 230, protein_g: 20, carbs_g: 5, fat_g: 14 },
+  { key: "mutton curry", kind: "count", aliases: ["mutton curry", "mutton", "lamb curry"], calories: 300, protein_g: 22, carbs_g: 5, fat_g: 22 },
+  { key: "egg curry", kind: "count", aliases: ["egg curry", "anda curry", "egg masala"], calories: 230, protein_g: 14, carbs_g: 6, fat_g: 16 },
+  { key: "samosa", kind: "count", aliases: ["samosa", "samosas"], calories: 130, protein_g: 3, carbs_g: 16, fat_g: 7 },
+  { key: "pakora", kind: "count", aliases: ["pakora", "pakoda", "bhaji"], calories: 60, protein_g: 1.5, carbs_g: 5, fat_g: 4 },
+  { key: "vada pav", kind: "count", aliases: ["vada pav", "vada pao"], calories: 290, protein_g: 7, carbs_g: 42, fat_g: 11 },
+  { key: "pav bhaji", kind: "count", aliases: ["pav bhaji", "pao bhaji"], calories: 400, protein_g: 9, carbs_g: 48, fat_g: 18 },
+  { key: "salad", kind: "count", aliases: ["salad", "salad bowl", "veg salad", "green salad"], calories: 150, protein_g: 5, carbs_g: 15, fat_g: 7 },
+  { key: "fruit chaat", kind: "count", aliases: ["fruit chaat", "fruit salad"], calories: 110, protein_g: 1.5, carbs_g: 26, fat_g: 0.5 },
+  { key: "chai", kind: "count", aliases: ["chai", "tea", "masala chai", "milk tea", "doodh chai"], calories: 70, protein_g: 2, carbs_g: 8, fat_g: 3 },
+  { key: "black tea", kind: "count", aliases: ["black tea", "green tea", "lemon tea"], calories: 5, protein_g: 0, carbs_g: 1, fat_g: 0 },
+  { key: "coffee", kind: "count", aliases: ["coffee", "milk coffee", "cappuccino", "latte", "cafe latte"], calories: 60, protein_g: 2, carbs_g: 7, fat_g: 3 },
+  { key: "black coffee", kind: "count", aliases: ["black coffee", "americano", "espresso"], calories: 5, protein_g: 0.3, carbs_g: 1, fat_g: 0 },
+  { key: "filter coffee", kind: "count", aliases: ["filter coffee", "south indian coffee"], calories: 90, protein_g: 3, carbs_g: 9, fat_g: 4 },
+  { key: "milk", kind: "ml", per: 250, aliases: ["milk", "toned milk", "doodh"], calories: 140, protein_g: 8, carbs_g: 12, fat_g: 5 },
+  { key: "lassi", kind: "count", aliases: ["lassi", "sweet lassi"], calories: 220, protein_g: 7, carbs_g: 28, fat_g: 8 },
+  { key: "buttermilk", kind: "count", aliases: ["buttermilk", "chaas", "chhaas"], calories: 60, protein_g: 3, carbs_g: 6, fat_g: 2 },
+  { key: "juice", kind: "count", aliases: ["juice", "orange juice", "fruit juice", "mango juice"], calories: 130, protein_g: 1, carbs_g: 32, fat_g: 0.3 },
+  { key: "soft drink", kind: "count", aliases: ["coke", "pepsi", "soft drink", "cola", "soda", "sprite", "thums up"], calories: 140, protein_g: 0, carbs_g: 39, fat_g: 0 },
+  { key: "protein shake", kind: "count", aliases: ["protein shake", "protein milk shake", "mass gainer shake"], calories: 250, protein_g: 35, carbs_g: 12, fat_g: 5 },
+  { key: "whey scoop", kind: "count", aliases: ["whey", "whey scoop", "protein scoop", "scoop whey", "scoop of whey"], calories: 120, protein_g: 24, carbs_g: 3, fat_g: 1.5 },
+  { key: "banana", kind: "count", aliases: ["banana", "bananas", "kela"], calories: 105, protein_g: 1.3, carbs_g: 27, fat_g: 0.3 },
+  { key: "apple", kind: "count", aliases: ["apple", "apples", "seb"], calories: 95, protein_g: 0.5, carbs_g: 25, fat_g: 0.3 },
+  { key: "guava", kind: "gram", per: 100, aliases: ["guava", "amrood"], calories: 68, protein_g: 2.6, carbs_g: 14, fat_g: 1 },
+  { key: "orange", kind: "count", aliases: ["orange", "oranges", "santra"], calories: 62, protein_g: 1.2, carbs_g: 15, fat_g: 0.2 },
+  { key: "mango", kind: "count", aliases: ["mango", "mangoes", "aam"], calories: 150, protein_g: 2, carbs_g: 38, fat_g: 0.6 },
+  { key: "cookie", kind: "count", aliases: ["cookie", "cookies", "biscuit", "biscuits", "choc chip cookie", "choco chip cookie", "chocolate chip cookie", "choco chip cookies", "choc chip cookies", "chocolate chip cookies", "cream biscuit"], calories: 55, protein_g: 0.7, carbs_g: 7, fat_g: 2.7 },
+  { key: "rusk", kind: "count", aliases: ["rusk", "toast biscuit"], calories: 40, protein_g: 0.8, carbs_g: 7, fat_g: 1 },
+  { key: "bread slice", kind: "count", aliases: ["bread slice", "bread", "toast", "slice of bread", "bread slices"], calories: 70, protein_g: 2.5, carbs_g: 13, fat_g: 1 },
+  { key: "butter", kind: "count", aliases: ["butter", "makhan"], calories: 35, protein_g: 0, carbs_g: 0, fat_g: 4 },
+  { key: "jam", kind: "count", aliases: ["jam", "marmalade"], calories: 50, protein_g: 0, carbs_g: 13, fat_g: 0 },
+  { key: "cheese slice", kind: "count", aliases: ["cheese slice", "cheese", "cheese slices"], calories: 60, protein_g: 4, carbs_g: 1, fat_g: 5 },
+  { key: "peanut butter", kind: "count", aliases: ["peanut butter", "pb"], calories: 95, protein_g: 4, carbs_g: 3, fat_g: 8 },
+  { key: "chocolate", kind: "count", aliases: ["chocolate", "dairy milk", "choco bar", "chocolate bar"], calories: 160, protein_g: 2, carbs_g: 18, fat_g: 9 },
+  { key: "chips", kind: "count", aliases: ["chips", "lays", "potato chips", "wafers"], calories: 270, protein_g: 3, carbs_g: 27, fat_g: 17 },
+  { key: "namkeen", kind: "count", aliases: ["namkeen", "mixture", "sev", "bhujia"], calories: 150, protein_g: 3, carbs_g: 15, fat_g: 9 },
+  { key: "oats", kind: "gram", per: 40, aliases: ["oats", "oatmeal", "porridge"], calories: 150, protein_g: 5, carbs_g: 27, fat_g: 3 },
+  { key: "peanuts", kind: "gram", per: 30, aliases: ["peanuts", "groundnut", "moongphali", "roasted peanuts"], calories: 170, protein_g: 7, carbs_g: 5, fat_g: 14 },
+  { key: "almonds", kind: "count", aliases: ["almond", "almonds", "badam"], calories: 7, protein_g: 0.26, carbs_g: 0.25, fat_g: 0.6 },
+  { key: "seeds", kind: "count", aliases: ["seeds", "seed mix", "pumpkin seeds", "chia", "chia seeds", "flax seeds", "sunflower seeds"], calories: 50, protein_g: 2, carbs_g: 3, fat_g: 4 },
+  { key: "noodles", kind: "count", aliases: ["maggi", "noodles", "ramen", "instant noodles"], calories: 350, protein_g: 8, carbs_g: 50, fat_g: 13 },
+  { key: "pasta", kind: "count", aliases: ["pasta", "macaroni", "white sauce pasta"], calories: 350, protein_g: 10, carbs_g: 55, fat_g: 9 },
+  { key: "sandwich", kind: "count", aliases: ["sandwich", "veg sandwich", "grilled sandwich"], calories: 250, protein_g: 8, carbs_g: 35, fat_g: 9 },
+  { key: "burger", kind: "count", aliases: ["burger", "veg burger", "aloo tikki burger"], calories: 350, protein_g: 10, carbs_g: 45, fat_g: 14 },
+  { key: "chicken burger", kind: "count", aliases: ["chicken burger", "mcchicken", "chicken patty burger"], calories: 450, protein_g: 22, carbs_g: 40, fat_g: 22 },
+  { key: "pizza slice", kind: "count", aliases: ["pizza slice", "pizza", "pizza slices"], calories: 285, protein_g: 12, carbs_g: 36, fat_g: 10 },
+  { key: "momo", kind: "count", aliases: ["momo", "momos", "dumpling", "dumplings"], calories: 35, protein_g: 1.5, carbs_g: 5, fat_g: 1 },
+];
+const FOOD_ALIAS_INDEX = (() => {
+  const rows: any[] = [];
+  for (const entry of FOOD_TABLE) for (const alias of entry.aliases) rows.push({ alias, words: alias.trim().split(/\s+/).length, len: alias.length, entry });
+  rows.sort((a, b) => b.words - a.words || b.len - a.len);
+  return rows;
+})();
+const FOOD_NUMBER_WORDS: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, half: 0.5, couple: 2, few: 3, dozen: 12 };
+const FOOD_STOPWORDS = new Set<string>(["i", "ate", "eaten", "eat", "had", "have", "having", "just", "today", "yesterday", "now", "and", "with", "plus", "the", "a", "an", "some", "of", "for", "my", "me", "this", "that", "these", "those", "free", "sent", "got", "paid", "pay", "spent", "rs", "rupees", "inr", "only", "also", "in", "on", "at", "to", "from", "was", "were", "is", "morning", "afternoon", "evening", "night", "breakfast", "lunch", "dinner", "snack", "meal", "brunch", "supper", "curry", "gravy", "fry", "fried", "boiled", "roasted", "grilled", "steamed", "raw", "fresh", "homemade", "home", "made", "plain", "masala", "spicy", "hot", "cold", "small", "big", "large", "medium", "regular", "extra", "more", "less", "little", "bit", "piece", "pieces", "plate", "bowl", "cup", "glass", "katori", "scoop", "slice", "slices", "serving", "servings", "approx", "about", "around", "roughly", "g", "gram", "grams", "gm", "ml", "kg", "tbsp", "tsp", "veg", "non", "veggie", "ka", "ki", "ke", "aur", "thoda", "kuch", "wala", "style", "type", "kind", "mix", "mixed"]);
+function foodSplitPhrases(text: string): string[] {
+  return String(text || "").toLowerCase().replace(/\b(and|with|plus|along\s+with|aur|n)\b/g, "|").replace(/[,;+&/\n]+/g, "|").split("|").map((s) => s.trim()).filter(Boolean);
+}
+function foodNumberAt(token: any): number | null {
+  if (token == null) return null;
+  if (/^\d+(?:\.\d+)?$/.test(token)) return Number(token);
+  if (token in FOOD_NUMBER_WORDS) return FOOD_NUMBER_WORDS[token];
+  return null;
+}
+function foodParsePhrase(phrase: string): { items: any[]; unknown: string[] } {
+  let masked = ` ${phrase} `;
+  const found: any[] = [];
+  for (const row of FOOD_ALIAS_INDEX) {
+    const rx = new RegExp(`(?<![a-z])${row.alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z])`, "g");
+    let m: RegExpExecArray | null;
+    while ((m = rx.exec(masked)) !== null) {
+      const start = m.index;
+      const end = m.index + m[0].length;
+      if (masked.slice(start, end).includes("\0")) continue;
+      found.push({ entry: row.entry, start, end });
+      masked = masked.slice(0, start) + "\0".repeat(end - start) + masked.slice(end);
+    }
+  }
+  const tokens = [...` ${phrase} `.matchAll(/(\d+(?:\.\d+)?)\s*(g|gram|grams|gm|ml|kg)?|[a-z]+/g)].map((t: any) => ({ raw: (t[0] as string).trim(), num: foodNumberAt(t[1] ?? (t[0] as string).trim()), unit: t[2] || null, index: t.index }));
+  const numbers = tokens.filter((t) => t.num != null).sort((a, b) => (a.index as number) - (b.index as number));
+  const sortedFoods = [...found].sort((a, b) => a.start - b.start);
+  const qtyFor = new Map<any, any>();
+  const toQty = (n: any) => {
+    const o: any = { qty: n.num, explicit: true, grams: null, ml: null };
+    if (n.unit && /^(g|gram|grams|gm)$/.test(n.unit)) o.grams = n.num;
+    else if (n.unit === "kg") o.grams = n.num * 1000;
+    else if (n.unit === "ml") o.ml = n.num;
+    return o;
+  };
+  for (const n of numbers) {
+    const target = sortedFoods.find((f) => f.start > (n.index as number) && !qtyFor.has(f));
+    if (target) qtyFor.set(target, toQty(n));
+  }
+  if (sortedFoods.length === 1 && !qtyFor.has(sortedFoods[0]) && numbers.length) qtyFor.set(sortedFoods[0], toQty(numbers[numbers.length - 1]));
+  const items = sortedFoods.map((f) => ({ entry: f.entry, ...(qtyFor.get(f) || { qty: 1, explicit: false, grams: null, ml: null }) }));
+  const unknown: string[] = [];
+  for (const w of masked.replace(/\0+/g, " ").split(/\s+/)) {
+    const t = w.trim();
+    if (t.length < 3 || /^\d/.test(t) || FOOD_STOPWORDS.has(t)) continue;
+    unknown.push(t);
+  }
+  return { items, unknown };
+}
+function foodMultiplier(item: any): number {
+  const e = item.entry;
+  if (e.kind === "gram") return (item.grams != null ? item.grams : (item.qty || 1) * (e.per || 100)) / (e.per || 100);
+  if (e.kind === "ml") return (item.ml != null ? item.ml : (item.qty || 1) * (e.per || 250)) / (e.per || 250);
+  return item.qty || 1;
+}
+function estimateNutrition(text: string): any {
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  const matchedByKey = new Map<string, any>();
+  const unknown = new Set<string>();
+  for (const phrase of foodSplitPhrases(text)) {
+    const { items, unknown: unk } = foodParsePhrase(phrase);
+    for (const it of items) {
+      const key = it.entry.key;
+      const mult = foodMultiplier(it);
+      const prev = matchedByKey.get(key);
+      if (!prev) { matchedByKey.set(key, { entry: it.entry, mult, explicit: it.explicit }); continue; }
+      if (it.explicit && prev.explicit) prev.mult += mult;
+      else if (it.explicit && !prev.explicit) { prev.mult = mult; prev.explicit = true; }
+    }
+    for (const u of unk) unknown.add(u);
+  }
+  const COMPOSITE_COMPONENTS: Record<string, string[]> = { "egg curry": ["egg", "egg white"] };
+  for (const [dish, parts] of Object.entries(COMPOSITE_COMPONENTS)) {
+    if (matchedByKey.has(dish) && parts.some((p) => matchedByKey.get(p)?.explicit)) matchedByKey.delete(dish);
+  }
+  const items: any[] = [];
+  const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+  for (const { entry, mult } of matchedByKey.values()) {
+    const row = { key: entry.key, qty: r1(mult), calories: r1(entry.calories * mult), protein_g: r1(entry.protein_g * mult), carbs_g: r1(entry.carbs_g * mult), fat_g: r1(entry.fat_g * mult) };
+    items.push(row);
+    totals.calories += row.calories; totals.protein_g += row.protein_g; totals.carbs_g += row.carbs_g; totals.fat_g += row.fat_g;
+  }
+  totals.calories = Math.round(totals.calories); totals.protein_g = r1(totals.protein_g); totals.carbs_g = r1(totals.carbs_g); totals.fat_g = r1(totals.fat_g);
+  const matchedCount = items.length;
+  const unknownCount = unknown.size;
+  return { items, unknown: [...unknown], totals, recognized: matchedCount > 0 && unknownCount === 0, coverage: matchedCount + unknownCount === 0 ? 0 : r1(matchedCount / (matchedCount + unknownCount)) };
+}
+// Override the model's food macros with the deterministic table whenever the
+// description is fully recognized. Unusual foods (recognized=false) keep the
+// brain's estimate; if the brain gave nothing but the table found part of it,
+// use the partial so the log is never blank.
+function recomputeFoodMacros(toolCalls: ToolCall[]): ToolCall[] {
+  for (const tc of toolCalls) {
+    if (tc.name !== "create_food_log_candidate") continue;
+    const a = (tc.arguments || {}) as any;
+    const est = estimateNutrition(String(a.description || a.meal_name || ""));
+    if (est.recognized) {
+      a.calories_estimate = est.totals.calories; a.protein_g = est.totals.protein_g; a.carbs_g = est.totals.carbs_g; a.fat_g = est.totals.fat_g;
+      a._macro_source = "lookup_table";
+    } else if (a.calories_estimate == null && est.items.length > 0) {
+      a.calories_estimate = est.totals.calories; a.protein_g = est.totals.protein_g; a.carbs_g = est.totals.carbs_g; a.fat_g = est.totals.fat_g;
+      a._macro_source = "lookup_partial";
+    } else {
+      a._macro_source = a.calories_estimate != null ? "model" : "none";
+    }
+    tc.arguments = a;
+  }
+  return toolCalls;
+}
+
 // Orchestrates the two-model pipeline: Gemini extracts evidence from media,
 // DeepSeek (brain) reasons into tool calls, Gemini reasoning is the fallback.
 async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string; data: string }[]; mode: string }) {
@@ -566,7 +764,9 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   }
 
   const { validCalls, rejected } = parseToolCalls(raw);
-  const expandedCalls = expandToolCalls(validCalls, combinedText, new Date().toISOString()); // fan-out + pure-food fallback
+  const expandedCalls = recomputeFoodMacros(
+    expandToolCalls(validCalls, combinedText, new Date().toISOString()), // fan-out + pure-food fallback
+  ); // then deterministic food-macro override (table beats the model for everyday foods)
   const latencyMs = Date.now() - startedAt;
   const estimatedCostUsd = Number((extractCost + brainCost).toFixed(6));
   const provider = usedProviders.join("+") || "deepseek";
