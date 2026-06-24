@@ -2,7 +2,7 @@ import { bindInsights, renderInsights } from "../ui/insights-panel.js";
 import { renderMetrics } from "../ui/metrics.js";
 import { renderOperationalTables } from "../ui/operational-tables.js";
 import { renderNav } from "../ui/navigation.js";
-import { bindBudgetInputs } from "../ui/budget-inputs.js";
+import { bindBudgetInputs, renderBudgetInputs } from "../ui/budget-inputs.js";
 import { subscribe } from "../state/app-state.js";
 import { bootWithAuth } from "./bootstrap.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
@@ -24,6 +24,7 @@ bootWithAuth(async () => {
     renderMetrics(state);
     renderOperationalTables(state);
     renderInsights(state);
+    renderBudgetInputs(state);
   });
   bindInsights();
   bindBudgetInputs("dietBudgetStatus");

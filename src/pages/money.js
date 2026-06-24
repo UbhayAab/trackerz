@@ -1,5 +1,5 @@
 import { bindOperationalTables, renderOperationalTables } from "../ui/operational-tables.js";
-import { bindBudgetInputs } from "../ui/budget-inputs.js";
+import { bindBudgetInputs, renderBudgetInputs } from "../ui/budget-inputs.js";
 import { renderNav } from "../ui/navigation.js";
 import { subscribe } from "../state/app-state.js";
 import { bootWithAuth } from "./bootstrap.js";
@@ -10,6 +10,7 @@ bootWithAuth(async () => {
   renderNav("money");
   subscribe((state) => {
     renderOperationalTables(state);
+    renderBudgetInputs(state);
   });
   bindOperationalTables();
   bindBudgetInputs("moneyBudgetStatus");

@@ -76,9 +76,9 @@
               <span class="status-pill muted">editable scaffold</span>
             </div>
             <div class="budget-grid">
-              <label class="settings-row"><span>Daily calories</span><input id="dailyCaloriesBudget" type="number" value="2100" /></label>
-              <label class="settings-row"><span>Daily protein</span><input id="dailyProteinBudget" type="number" value="130" /></label>
-              <label class="settings-row"><span>Weekly calorie budget</span><input id="weeklyCaloriesBudget" type="number" value="14700" /></label>
+              <label class="settings-row"><span>Daily calories</span><input id="dailyCaloriesBudget" data-budget-kind="daily_calories" type="number" inputmode="numeric" /></label>
+              <label class="settings-row"><span>Daily protein</span><input id="dailyProteinBudget" data-budget-kind="daily_protein" type="number" inputmode="numeric" /></label>
+              <label class="settings-row"><span>Weekly calorie budget</span><input id="weeklyCaloriesBudget" data-budget-kind="weekly_calories" type="number" inputmode="numeric" /></label>
             </div>
             <p id="dietBudgetStatus" class="agent-detail">AI summary checks calorie/protein pace every night at 12 AM.</p>
           </article>
