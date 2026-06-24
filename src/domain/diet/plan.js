@@ -172,3 +172,51 @@ export function planForDate(date = new Date()) {
     prepForTomorrow: prepForTomorrow(dietTypeForWeekday(wdT)),
   };
 }
+
+// ---- Gym: structured exercises from the workout scaffold ----
+// Keyword rules map a free-text exercise name to its primary muscle group, so
+// plan items like "DB Romanian deadlift 2×10" resolve without an exact-name table.
+const MUSCLE_RULES = [
+  [/treadmill|walk|run\b|running|cardio|cycle|cycling|steps|elliptical|cooldown|warm/i, "cardio"],
+  [/plank|dead\s*bug|crunch|core|\babs?\b|hollow|russian twist/i, "core"],
+  [/romanian|rdl|leg curl|hamstring/i, "hamstrings"],
+  [/leg press|squat|lunge|leg extension|quad/i, "quads"],
+  [/calf|calves/i, "calves"],
+  [/glute|hip thrust/i, "glutes"],
+  [/chest press|bench|incline.*press|push[- ]?up|pec|chest fly|\bfly\b/i, "chest"],
+  [/lat pulldown|pull[- ]?up|pull[- ]?down|\brow\b|cable row|\bback\b|deadlift/i, "back"],
+  [/shoulder press|overhead press|lateral raise|\bdelt|\bohp\b|shoulder/i, "shoulders"],
+  [/triceps|pushdown|\bdip/i, "triceps"],
+  [/\bcurl\b|biceps/i, "biceps"],
+];
+
+// Resolve a primary muscle group for an exercise name (defaults to "other").
+export function muscleFor(name) {
+  const n = String(name || "");
+  for (const [rx, m] of MUSCLE_RULES) if (rx.test(n)) return m;
+  return "other";
+}
+
+// Parse a workout's free-text items into structured exercises. Items with a
+// "S×R" pattern ("Leg press 2×12", "Plank 2×30s", "Dead bug 2×10/side") become
+// loggable exercises with `sets` prescribed rows; everything else (warmup,
+// cooldown, "either one counts") becomes a cardio/note row with no sets.
+export function prescribedExercises(workout) {
+  const items = Array.isArray(workout?.items) ? workout.items : [];
+  return items.map((raw, i) => {
+    const text = String(raw).trim();
+    const m = text.match(/^(.*?)[\s,]+(\d+)\s*[×x]\s*(\d+)\s*(s|sec|secs)?\b/i);
+    if (m) {
+      const name = m[1].replace(/[•\-–—]\s*$/, "").trim();
+      const muscle = muscleFor(name);
+      return {
+        key: `ex${i}`, name, raw: text,
+        kind: muscle === "cardio" ? "cardio" : "strength",
+        sets: Number(m[2]), reps: Number(m[3]), repsUnit: m[4] ? "sec" : "reps",
+        muscle,
+        loggable: muscle !== "cardio",
+      };
+    }
+    return { key: `ex${i}`, name: text, raw: text, kind: "note", sets: 0, reps: 0, repsUnit: "", muscle: muscleFor(text), loggable: false };
+  });
+}

@@ -180,6 +180,54 @@ export async function logQuickWellness({ mood_score = null, energy_score = null,
   return data;
 }
 
+export async function fetchWorkoutLogs({ limit = 200 } = {}) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("workout_logs")
+    .select("id, description, duration_min, intensity, sets, bodyweight_kg, notes, occurred_at")
+    .order("occurred_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+// Log one gym session = one workout_logs row. `sets` is the per-exercise array
+// [{exercise, muscle, set, reps, weight_kg, done}]; total_volume is denormalised
+// into duration-independent reporting by the UI/analytics from sets.
+export async function logWorkoutSession({ description, duration_min = null, intensity = null, sets = [], bodyweight_kg = null, notes = null, occurred_at = null } = {}) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("workout_logs")
+    .insert({
+      user_id: userId,
+      description: description || "Workout",
+      duration_min, intensity,
+      sets: Array.isArray(sets) ? sets : [],
+      bodyweight_kg: bodyweight_kg == null ? null : Number(bodyweight_kg),
+      notes,
+      occurred_at: occurred_at || new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Log a body-composition data point (weight, body_fat_pct, waist_cm, …) into the
+// existing body_metrics table — no separate measurements table.
+export async function logBodyMetric({ metric_type, value, unit = "", occurred_at = null } = {}) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("body_metrics")
+    .insert({ user_id: userId, metric_type, value: Number(value), unit, occurred_at: occurred_at || new Date().toISOString() })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchMealTemplates({ limit = 8 } = {}) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
