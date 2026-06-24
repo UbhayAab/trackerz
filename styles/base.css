@@ -6,13 +6,15 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
+  font-size: var(--fs-base);
   font-weight: var(--weight-regular);
-  line-height: 1.45;
+  line-height: var(--lh);
 }
 
 button,
 textarea,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -32,25 +34,34 @@ p {
   margin-top: 0;
 }
 
+/* Tight, restrained type hierarchy — no oversized headings. */
 h1 {
   margin-bottom: 0;
-  font-size: 2rem;
+  font-size: var(--fs-xl);
   font-weight: var(--weight-bold);
-  line-height: 1;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.02em;
 }
 
 h2 {
   margin-bottom: 0;
-  font-size: 1.05rem;
+  font-size: var(--fs-lg);
   font-weight: var(--weight-semibold);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
 
 h3 {
   margin-bottom: 0;
-  font-size: 0.96rem;
+  font-size: var(--fs-md);
   font-weight: var(--weight-semibold);
 }
 
 strong {
   font-weight: var(--weight-bold);
+}
+
+a {
+  color: var(--accent-strong);
+  text-underline-offset: 2px;
 }
