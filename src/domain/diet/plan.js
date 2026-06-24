@@ -7,6 +7,31 @@ export const MACRO_TARGETS = Object.freeze({
   calories: 2000, protein_g: 162, carbs_g: 188, fat_g: 77, fiber_g: 47, water_ml: 3450,
 });
 
+// A permanent diet override from user_plans (payload). When the user pastes/asks
+// the AI to update their diet, sync.js calls setDietPlanOverride(payload) and the
+// hub shows the new meals/targets instead of the fixed defaults. Deleting that
+// row (undo) clears it back to the default plan.
+let _dietOverride = null;
+export function setDietPlanOverride(payload) {
+  _dietOverride = (payload && typeof payload === "object" && !Array.isArray(payload)) ? payload : null;
+}
+function overrideMeals() {
+  if (!Array.isArray(_dietOverride?.meals) || !_dietOverride.meals.length) return null;
+  return _dietOverride.meals.map((m, i) => ({
+    id: `meal-ov-${i}`,
+    time: m.time || "",
+    slot: ["breakfast", "lunch", "snack", "dinner", "other"].includes(m.slot) ? m.slot : "other",
+    name: m.name || m.meal_name || `Meal ${i + 1}`,
+    detail: m.detail || m.description || "",
+    macros: {
+      calories: Number(m.calories ?? m.calories_estimate ?? 0),
+      protein_g: Number(m.protein_g ?? 0),
+      carbs_g: Number(m.carbs_g ?? 0),
+      fat_g: Number(m.fat_g ?? 0),
+    },
+  }));
+}
+
 const WEEKDAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export function isoWeekday(date) {
@@ -109,10 +134,11 @@ export function planForDate(date = new Date()) {
     dietType,
     dietLabel: dietType === "paneer-soy" ? "Paneer-Soy day" : "Soybean day",
     workout: WORKOUTS[WORKOUT_BY_WEEKDAY[wd]],
-    meals: mealsFor(dietType),
+    meals: overrideMeals() || mealsFor(dietType),
+    customDiet: Boolean(_dietOverride),
     supplements: supplementsFor(wd),
     water: WATER,
-    macroTargets: MACRO_TARGETS,
+    macroTargets: { ...MACRO_TARGETS, ...(_dietOverride?.targets || {}) },
     tomorrowName: WEEKDAY_NAMES[wdT],
     tomorrowDietLabel: dietTypeForWeekday(wdT) === "paneer-soy" ? "Paneer-Soy day" : "Soybean day",
     prepForTomorrow: prepForTomorrow(dietTypeForWeekday(wdT)),

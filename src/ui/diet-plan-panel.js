@@ -78,11 +78,11 @@ function item(plan, state, { id, time, name, detail, table }) {
 function macroTally(plan, state) {
   let cal = 0, protein = 0;
   for (const m of plan.meals) if (state[m.id]?.done) { cal += m.macros.calories; protein += m.macros.protein_g; }
-  const pPct = Math.min(100, Math.round((protein / MACRO_TARGETS.protein_g) * 100));
-  const cPct = Math.min(100, Math.round((cal / MACRO_TARGETS.calories) * 100));
+  const pPct = Math.min(100, Math.round((protein / plan.macroTargets.protein_g) * 100));
+  const cPct = Math.min(100, Math.round((cal / plan.macroTargets.calories) * 100));
   return `<div class="diet-macros">
-    <div class="diet-macro"><span>Protein</span><strong>${protein} / ${MACRO_TARGETS.protein_g} g</strong><div class="diet-bar"><i style="width:${pPct}%"></i></div></div>
-    <div class="diet-macro"><span>Calories</span><strong>${cal} / ${MACRO_TARGETS.calories}</strong><div class="diet-bar"><i style="width:${cPct}%"></i></div></div>
+    <div class="diet-macro"><span>Protein</span><strong>${protein} / ${plan.macroTargets.protein_g} g</strong><div class="diet-bar"><i style="width:${pPct}%"></i></div></div>
+    <div class="diet-macro"><span>Calories</span><strong>${cal} / ${plan.macroTargets.calories}</strong><div class="diet-bar"><i style="width:${cPct}%"></i></div></div>
   </div>`;
 }
 

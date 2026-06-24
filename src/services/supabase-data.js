@@ -191,6 +191,20 @@ export async function fetchMealTemplates({ limit = 8 } = {}) {
   return data || [];
 }
 
+// Active diet/gym plans (latest first). The latest permanent diet plan is the
+// override the diet hub applies; older rows are the change history (undo target).
+export async function fetchUserPlans({ limit = 20 } = {}) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("user_plans")
+    .select("id, kind, scope, summary, payload, created_at")
+    .eq("active", true)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
 export async function logMealFromTemplate(template) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
@@ -333,7 +347,7 @@ export async function rejectAiAction(actionId) {
 // Generic single-row delete for the additions feed's ✕. Whitelisted to the
 // user-owned domain tables; RLS also enforces ownership on the server.
 const DELETABLE_TABLES = new Set([
-  "ledger_entries", "food_logs", "workout_logs", "body_metrics", "wellness_logs", "hydration_logs",
+  "ledger_entries", "food_logs", "workout_logs", "body_metrics", "wellness_logs", "hydration_logs", "user_plans",
 ]);
 export async function deleteRow(table, id) {
   if (!DELETABLE_TABLES.has(table)) throw new Error(`delete not allowed for ${table}`);

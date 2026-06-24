@@ -51,6 +51,7 @@ const ALLOWED_TOOLS = new Set([
   "create_body_metric_candidate",
   "create_wellness_note_candidate",
   "link_duplicate_candidates",
+  "update_plan_candidate",
   "request_user_review",
 ]);
 
@@ -68,6 +69,7 @@ const WRITE_TOOLS = new Set([
   "create_workout_log_candidate",
   "create_body_metric_candidate",
   "create_wellness_note_candidate",
+  "update_plan_candidate",
 ]);
 
 const RATE_LIMIT_WINDOW_MIN = 5;
@@ -104,6 +106,7 @@ Rules:
   • Credit card: "...HDFC Bank Credit Card ending 1234 for Rs 540.00 at SWIGGY on 21-06-2026..." -> create_expense_candidate { amount:540, payment_mode:"card", merchant:"SWIGGY", occurred_at, is_discretionary:true }.
   • UPI / account debit: "Rs.250.00 has been debited from a/c **1234 to VPA name@bank on 21-06-26. UPI Ref 412345678901." -> create_expense_candidate { amount:250, payment_mode:"upi", merchant:"name@bank or the payee name", occurred_at, tags:["412345678901"] }.
   Money LEAVING the account (debited/spent/paid/withdrawn) is an expense; money ARRIVING (credited/received/refund/salary) is income; movement between the user's OWN accounts is a transfer. Never count the "available balance" figure as the transaction amount.
+- PLAN UPDATE: if the user pastes a whole diet/gym PLAN, or asks to change their plan ("update my diet", "new plan from gpt", "make Thursdays rest"), emit update_plan_candidate { kind:"diet"|"gym", scope:"permanent" for a lasting change OR a "YYYY-MM-DD" date for a one-day temporary change (when they say "just today/tomorrow/this Thursday/temporary/only this week"), summary: one short line, payload: the parsed plan as JSON. For diet payload use { meals:[{time,slot,name,detail,calories,protein_g,carbs_g,fat_g}], targets:{calories,protein_g,carbs_g,fat_g} }; for gym use { days:{Mon:{...},Tue:{...}} }. A plan is a TEMPLATE — do NOT also emit individual food/expense/workout log events for it.
 - Think step by step about what actually happened, then output ONLY the final JSON object (no prose, no markdown code fences around it).`;
 
 // -------- env / clients --------
@@ -205,6 +208,7 @@ const TOOL_SCHEMAS: Record<string, Schema> = {
   create_wellness_note_candidate: { required: ["note", "occurred_at"], types: { note: "string", mood_score: "number", energy_score: "number", stress_score: "number", occurred_at: "iso" }, ranges: { mood_score: [1, 10], energy_score: [1, 10], stress_score: [1, 10] } },
   link_duplicate_candidates: { required: ["candidate_a", "candidate_b"], types: { candidate_a: "string", candidate_b: "string", reason: "string" } },
   request_user_review: { required: ["reason"], types: { reason: "string", raw_input: "string" } },
+  update_plan_candidate: { required: ["kind"], types: { kind: "string", scope: "string", summary: "string", payload: "object" }, enums: { kind: ["diet", "gym"] } },
 };
 
 function isIso(v: unknown) {
@@ -701,6 +705,15 @@ async function applyTool(supabase: ReturnType<typeof adminClient>, userId: strin
         mood_score: args.mood_score ?? null, energy_score: args.energy_score ?? null, stress_score: args.stress_score ?? null,
         occurred_at: occurredAt,
       }).select().single();
+    case "update_plan_candidate":
+      return supabase.from("user_plans").insert({
+        user_id: userId,
+        kind: args.kind || "diet",
+        scope: args.scope || "permanent",
+        summary: args.summary || null,
+        payload: (args.payload && typeof args.payload === "object" && !Array.isArray(args.payload)) ? args.payload : {},
+        source: "ai",
+      }).select().single();
     default:
       return null;
   }
@@ -804,6 +817,7 @@ function tableForTool(name: string): string | null {
     case "create_workout_log_candidate": return "workout_logs";
     case "create_body_metric_candidate": return "body_metrics";
     case "create_wellness_note_candidate": return "wellness_logs";
+    case "update_plan_candidate": return "user_plans";
     default: return null;
   }
 }

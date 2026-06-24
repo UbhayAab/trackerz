@@ -30,4 +30,11 @@ assert.equal(groups.length, 2);
 assert.equal(groups[0].dayKey, "2026-06-23");
 assert.equal(groups[0].rows.length, 2);
 
+// Plan updates appear in the feed (and are deletable = undo).
+const withPlan = buildAdditions(ledger, foods, [{ id: "p1", kind: "diet", scope: "permanent", summary: "New cut plan", created_at: "2026-06-24T09:00:00+05:30" }]);
+const planRow = withPlan.find((i) => i.table === "user_plans");
+assert.ok(planRow && planRow.domain === "plan", "plan update appears in feed");
+assert.match(planRow.delta, /diet/);
+assert.equal(planRow.label, "New cut plan");
+
 console.log("additions-feed tests passed");

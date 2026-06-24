@@ -72,6 +72,11 @@ export const TOOL_SCHEMAS = {
     required: ["reason"],
     types: { reason: "string", raw_input: "string" },
   },
+  update_plan_candidate: {
+    required: ["kind"],
+    types: { kind: "string", scope: "string", summary: "string", payload: "object" },
+    enums: { kind: ["diet", "gym"] },
+  },
 };
 
 function isIso(v) {

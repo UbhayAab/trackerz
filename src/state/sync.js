@@ -1,8 +1,9 @@
 import {
   fetchLedger, fetchFoodLogs, fetchOpenAiActions, fetchOpenImports, fetchBudgets,
   fetchBodyMetrics, fetchWellnessLogs, fetchSubscriptions, persistDetectedSubscriptions,
-  fetchMealTemplates,
+  fetchMealTemplates, fetchUserPlans,
 } from "../services/supabase-data.js";
+import { setDietPlanOverride } from "../domain/diet/plan.js";
 import { isLocalSession } from "../services/auth.js";
 import { updateState } from "./app-state.js";
 import { detectSubscriptions } from "../domain/money/subscription-detector.js";
@@ -36,6 +37,10 @@ export async function hydrateStateFromSupabase() {
       fetchSubscriptions().catch(() => []),
     ]);
     const mealTemplates = await fetchMealTemplates().catch(() => []);
+    const userPlans = await fetchUserPlans().catch(() => []);
+    // Latest permanent diet plan (if any) overrides the fixed default in the hub.
+    const dietOverride = userPlans.find((p) => p.kind === "diet" && p.scope === "permanent");
+    setDietPlanOverride(dietOverride?.payload || null);
 
     // Detect subscriptions from the ledger and persist them (best-effort), then
     // use the freshest view for insights + dashboards.
@@ -112,8 +117,9 @@ export async function hydrateStateFromSupabase() {
       // Raw arrays for the dashboards + insight engine.
       state.ledger = ledger;
       state.foodLogs = foods;
+      state.userPlans = userPlans;
       // Unified day-over-day "additions" list for the Home feed.
-      state.additions = buildAdditions(ledger, foods, {});
+      state.additions = buildAdditions(ledger, foods, userPlans, {});
       state.wellnessLogs = wellnessLogs;
       state.bodyMetrics = bodyMetrics;
       state.budgets = budgets;
