@@ -37,4 +37,23 @@ const both = expandToolCalls([
 ]);
 assert.equal(both.filter((t) => t.name === "create_food_log_candidate").length, 1);
 
+// Pure-food fallback: brain logged nothing (or only review) but the text is food.
+const coffee = expandToolCalls([], { evidence: "had coffee with 5 choc chip cookies", now: "2026-06-24T16:00:00+05:30" });
+const cf = coffee.find((t) => t.name === "create_food_log_candidate");
+assert.ok(cf, "pure-food fallback logs a food");
+assert.equal(cf.arguments.meal_slot, "snack");
+assert.ok(cf.arguments.description.includes("coffee"));
+
+// A review-only result for clear food becomes a food log (review dropped).
+const fromReview = expandToolCalls(
+  [{ name: "request_user_review", arguments: { reason: "domain unclear" }, confidence: 0.5 }],
+  { evidence: "ate 3 rotis dal sabzi", now: "2026-06-24T13:30:00+05:30" },
+);
+assert.ok(fromReview.some((t) => t.name === "create_food_log_candidate"), "food logged");
+assert.ok(!fromReview.some((t) => t.name === "request_user_review"), "review dropped once resolved");
+
+// Non-food text with no writes stays untouched (no spurious food log).
+const note = expandToolCalls([{ name: "request_user_review", arguments: { reason: "x" }, confidence: 0.5 }], { evidence: "call the bank tomorrow" });
+assert.ok(!note.some((t) => t.name === "create_food_log_candidate"), "non-food not logged");
+
 console.log("fan-out-expander tests passed");
