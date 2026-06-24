@@ -467,6 +467,48 @@ function parseToolCalls(raw: string) {
   return { validCalls, rejected };
 }
 
+// Deterministic fan-out (mirror of lib/fan-out-expander.mjs). A food-merchant
+// expense also yields a food_log at the same time when the model didn't emit one,
+// so "paid 240 zomato lunch" lands in BOTH money and diet.
+const FOOD_MERCHANTS = ["zomato", "swiggy", "blinkit", "zepto", "instamart", "dominos", "domino", "mcdonald", "kfc", "starbucks", "subway", "pizza", "burger", "cafe", "coffee", "restaurant", "dhaba", "bakery", "biryani", "faasos", "eatfit", "box8", "behrouz", "wow momo", "chaayos", "haldiram", "barbeque"];
+const FOOD_WORDS = ["lunch", "dinner", "breakfast", "snack", "meal", "thali", "biryani", "roti", "dal", "sabzi", "rice", "paneer", "egg", "chicken", "mutton", "dosa", "idli", "poha", "sandwich", "salad", "shake", "smoothie", "fruit", "curd", "yogurt", "momo", "noodles", "pasta", "ate", "eaten", "food"];
+function looksLikeFood(text: string): boolean {
+  const t = String(text || "").toLowerCase();
+  if (FOOD_MERCHANTS.some((m) => t.includes(m))) return true;
+  return FOOD_WORDS.some((w) => new RegExp(`\\b${w}\\b`).test(t));
+}
+function mealSlotFromTime(iso: string): string {
+  const m = String(iso || "").match(/T(\d{2}):/);
+  const h = m ? Number(m[1]) : 12;
+  if (h >= 5 && h < 11) return "breakfast";
+  if (h >= 11 && h < 15) return "lunch";
+  if (h >= 15 && h < 18) return "snack";
+  if (h >= 18 && h < 23) return "dinner";
+  return "other";
+}
+function minutesApart(a?: string, b?: string): number {
+  if (!a || !b) return Infinity;
+  return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 60000;
+}
+function expandToolCalls(toolCalls: ToolCall[]): ToolCall[] {
+  const out = [...toolCalls];
+  const foodLogs = toolCalls.filter((tc) => tc.name === "create_food_log_candidate");
+  for (const tc of toolCalls) {
+    if (tc.name !== "create_expense_candidate") continue;
+    const a = (tc.arguments || {}) as any;
+    if (!looksLikeFood(`${a.merchant || ""} ${a.description || ""}`)) continue;
+    const occurredAt = a.occurred_at as string;
+    const dup = foodLogs.some((f) => minutesApart((f.arguments as any)?.occurred_at, occurredAt) <= 2);
+    if (dup) continue;
+    out.push({
+      name: "create_food_log_candidate",
+      arguments: { meal_slot: mealSlotFromTime(occurredAt), description: `${a.merchant || a.description || "meal"} (auto from spend)`, occurred_at: occurredAt, _auto_expanded: true },
+      confidence: Math.round(Number(tc.confidence || 0.7) * 0.6 * 100) / 100,
+    });
+  }
+  return out;
+}
+
 // Orchestrates the two-model pipeline: Gemini extracts evidence from media,
 // DeepSeek (brain) reasons into tool calls, Gemini reasoning is the fallback.
 async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string; data: string }[]; mode: string }) {
@@ -507,6 +549,7 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   }
 
   const { validCalls, rejected } = parseToolCalls(raw);
+  const expandedCalls = expandToolCalls(validCalls); // fan-out: food spend -> +food_log
   const latencyMs = Date.now() - startedAt;
   const estimatedCostUsd = Number((extractCost + brainCost).toFixed(6));
   const provider = usedProviders.join("+") || "deepseek";
@@ -523,7 +566,7 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   }
 
   return {
-    toolCalls: validCalls, rejected, latencyMs, promptTokens: brainPt, outputTokens: brainOt,
+    toolCalls: expandedCalls, rejected, latencyMs, promptTokens: brainPt, outputTokens: brainOt,
     provider, model, estimatedCostUsd, evidenceText, inputText,
   };
 }
