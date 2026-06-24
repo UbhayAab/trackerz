@@ -5,7 +5,7 @@
 // 4. Offline capture queue: POSTs to /__offline-capture__ are saved to
 //    IndexedDB and replayed via Background Sync when the SW comes back.
 
-const VERSION = "trackerz-v4";
+const VERSION = "trackerz-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -48,11 +48,10 @@ self.addEventListener("fetch", (event) => {
   // Supabase API + storage + functions: pass through, never cache.
   if (/supabase\.co|esm\.sh|cdn\.|fonts\./.test(url.hostname)) return;
 
-  if (isHtml(req)) {
-    event.respondWith(networkFirst(req));
-    return;
-  }
-  event.respondWith(staleWhileRevalidate(req));
+  // Network-first for everything (HTML/JS/CSS) so a deploy shows immediately,
+  // like a normal website; the cache is only an offline fallback. This kills the
+  // "ghost version" problem where a stale cached bundle kept showing after deploy.
+  event.respondWith(networkFirst(req));
 });
 
 async function networkFirst(req) {
