@@ -1,0 +1,173 @@
+/* ============================================================================
+   Premium theme — a cohesive visual lift applied to the SHARED surfaces, so
+   every page (Money, Diet, Gym, Analytics, Settings) gets the same elevated feel
+   as Home instead of looking like leftover scaffolding. Imported late so it
+   refines the component/layout/table layers; responsive.css still wins at
+   breakpoints. Purely visual — no markup or behavior changes.
+   ========================================================================== */
+
+:root {
+  /* Refined depth + a signature accent gradient used across primary surfaces. */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --shadow: 0 2px 6px rgba(15, 23, 42, 0.05), 0 14px 34px rgba(15, 23, 42, 0.07);
+  --shadow-lg: 0 8px 20px rgba(15, 23, 42, 0.08), 0 30px 70px rgba(15, 23, 42, 0.14);
+  --accent-grad: linear-gradient(135deg, #1aa06c, #138a5b);
+  --radius-lg: 20px;
+  --radius-md: 14px;
+}
+
+/* Warm, subtle page backdrop instead of flat paper — adds depth on every page. */
+body {
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(26, 141, 98, 0.06), transparent 60%),
+    radial-gradient(90% 50% at 100% 0%, rgba(59, 109, 199, 0.05), transparent 55%),
+    var(--paper);
+  background-attachment: fixed;
+}
+
+/* Topbar: bigger, more confident title + a tiny accent eyebrow, consistent
+   across pages. */
+.topbar { padding-top: 10px; }
+.topbar .eyebrow { color: var(--money); }
+.topbar-title,
+.topbar h1 { font-size: 1.6rem; letter-spacing: -0.01em; }
+
+/* Unified premium panel treatment for every card-like surface. */
+.command-panel,
+.ai-panel,
+.analytics-panel,
+.cost-panel,
+.flow-panel,
+.pipeline-panel,
+.capture-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  padding: 18px;
+  transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
+}
+.command-panel:hover,
+.ai-panel:hover,
+.analytics-panel:hover { box-shadow: var(--shadow); border-color: var(--line-strong); }
+
+/* Section spacing rhythm between stacked panels/sections on every page. */
+main > section + section,
+.command-grid,
+.dashboard-grid { margin-top: 14px; }
+.command-grid { display: grid; gap: 14px; }
+
+/* Panel header: a slim accent tick + crisp hierarchy. */
+.panel-title-row { align-items: flex-start; }
+.panel-title-row .eyebrow {
+  position: relative;
+  padding-left: 12px;
+  color: var(--money);
+}
+.panel-title-row .eyebrow::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 1px;
+  width: 5px; height: 11px;
+  border-radius: 3px;
+  background: var(--accent-grad);
+}
+.panel-title-row h2 { letter-spacing: -0.01em; }
+
+/* Metric cards: a touch more presence + tabular figures. */
+.metric-card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.metric-card strong { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; font-size: 1.55rem; }
+
+/* Pills + badges: rounded, soft, premium. */
+.status-pill,
+.metric-badge {
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-weight: var(--weight-semibold);
+  font-size: 0.74rem;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.metric-badge { background: var(--money-soft); color: #0f7a52; border-color: transparent; }
+
+/* Buttons: gradient primary with depth, crisp secondary. */
+.primary-button,
+.submit-button {
+  background: var(--accent-grad);
+  border: 0;
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: var(--weight-semibold);
+  box-shadow: 0 6px 16px rgba(19, 138, 91, 0.28);
+}
+.primary-button:hover,
+.submit-button:hover { filter: brightness(1.04); box-shadow: 0 8px 20px rgba(19, 138, 91, 0.34); }
+.secondary-button {
+  border-radius: 12px;
+  padding: 11px 16px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  font-weight: var(--weight-semibold);
+}
+.secondary-button:hover { background: var(--chip); }
+
+/* Settings/budget rows + inputs: premium, larger touch targets. */
+.settings-row {
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: var(--panel);
+}
+.settings-row input[type="number"],
+.budget-grid input[type="number"] {
+  width: 104px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--paper);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold);
+  text-align: right;
+}
+.settings-row input:focus,
+.budget-grid input:focus { outline: 2px solid var(--money); outline-offset: 1px; border-color: var(--money); }
+.budget-grid { display: grid; gap: 8px; }
+
+/* Data tables: rounded container, quiet header, row hover, tabular figures. */
+.data-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--panel);
+}
+.data-table-wrap table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.data-table-wrap th {
+  text-align: left;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: var(--weight-semibold);
+  background: var(--chip);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.data-table-wrap td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.data-table-wrap tr:last-child td { border-bottom: 0; }
+.data-table-wrap tbody tr { transition: background 140ms ease; }
+.data-table-wrap tbody tr:hover { background: rgba(26, 141, 98, 0.04); }
+
+/* Bottom nav: premium active pill with the accent gradient. */
+.nav-item.active {
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(19, 138, 91, 0.3);
+}
