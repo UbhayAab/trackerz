@@ -1,15 +1,29 @@
-import { $ } from "../utils/dom.js";
 import { inr } from "../utils/formatters.js";
 
+// The ONE metric renderer. Every figure here comes from state.metrics, which
+// sync.js derives from the single source (budget goals -> resolveDietTargets).
+// No page hardcodes a target — change a goal and every number below moves.
 export function renderMetrics(state) {
   const m = state.metrics || {};
-  // Home glance cards: spend, protein vs target, calories vs target.
+  const protein = Math.round(Number(m.protein) || 0);
+  const proteinTarget = Math.round(Number(m.proteinTarget) || 0);
+  const caloriesTarget = Math.round(Number(m.caloriesTarget) || 0);
+  const caloriesLeft = Math.round(Number(m.caloriesLeft) || 0);
+  const proteinGap = Math.max(0, proteinTarget - protein);
+
+  // Home glance: today's spend.
   setText("#todaySpend", inr(m.todaySpend), "so far today");
-  // Protein/Calories live in the diet hub's scales (driven by today's food logs),
-  // so they're no longer duplicated as glance cards here.
-  // Diet-page cards (these IDs don't exist on Home, so they no-op there).
-  setText("#caloriesLeft", String(m.caloriesLeft ?? ""), m.caloriesTarget ? `Target ${Number(m.caloriesTarget).toLocaleString("en-IN")}` : "Calories left");
-  setText("#adherenceMetric", String(m.adherence ?? ""), "Photo + voice evidence");
+
+  // Diet-page metric cards (no-op on pages that lack these ids).
+  setText("#caloriesLeft", String(caloriesLeft), caloriesTarget ? `Target ${caloriesTarget.toLocaleString("en-IN")}` : "Calories left");
+  setText("#proteinMetric", `${protein}g`, proteinTarget ? `Target ${proteinTarget}g` : "Protein");
+  setText("#adherenceMetric", String(m.adherence ?? 0), "Photo + voice evidence");
+
+  // Diet-page summary rail tiles (all from the same numbers as above).
+  setText("#summaryCaloriesLeft", String(caloriesLeft));
+  setText("#summaryDietProtein", `${protein} / ${proteinTarget}g`);
+  setText("#summaryMealRows", String(m.mealsToday ?? 0));
+  setText("#summaryProteinGap", `${proteinGap}g`);
 }
 
 function setText(selector, value, siblingText = null) {
