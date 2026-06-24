@@ -78,9 +78,9 @@
             <span class="status-pill muted">editable scaffold</span>
           </div>
           <div class="budget-grid">
-            <label class="settings-row"><span>Monthly spend cap</span><input id="monthlyMoneyBudget" type="number" value="45000" /></label>
-            <label class="settings-row"><span>Weekly spend cap</span><input id="weeklyMoneyBudget" type="number" value="10500" /></label>
-            <label class="settings-row"><span>Food delivery cap</span><input id="foodMoneyBudget" type="number" value="6500" /></label>
+            <label class="settings-row"><span>Monthly spend cap</span><input id="monthlyMoneyBudget" data-budget-kind="monthly_spend" type="number" inputmode="numeric" /></label>
+            <label class="settings-row"><span>Weekly spend cap</span><input id="weeklyMoneyBudget" data-budget-kind="weekly_spend" type="number" inputmode="numeric" /></label>
+            <label class="settings-row"><span>Food delivery cap</span><input id="foodMoneyBudget" data-budget-kind="food_cap" type="number" inputmode="numeric" /></label>
           </div>
           <p id="moneyBudgetStatus" class="agent-detail">Budgets update the 12 AM summary and trajectory cards.</p>
         </section>

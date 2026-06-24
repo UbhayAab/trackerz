@@ -303,22 +303,29 @@ export async function fetchBudgets() {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("budgets")
-    .select("id, period, amount, starts_on, category_id")
+    .select("id, kind, period, amount, starts_on, category_id")
     .order("starts_on", { ascending: false });
   if (error) throw error;
   return data || [];
 }
 
-export async function upsertBudget({ period, amount, startsOn, categoryId = null }) {
+// Upsert a budget/goal by its stable `kind` so editing it anywhere updates the
+// ONE canonical row (no duplicate budget rows). Falls back to insert if no kind.
+export async function upsertBudget({ kind = null, period, amount, startsOn, categoryId = null }) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
-  const { data, error } = await supabase
-    .from("budgets")
-    .insert({ user_id: userId, period, amount, starts_on: startsOn, category_id: categoryId })
-    .select()
-    .single();
+  const row = { user_id: userId, kind, period, amount, starts_on: startsOn || monthStartIso(), category_id: categoryId };
+  const query = kind
+    ? supabase.from("budgets").upsert(row, { onConflict: "user_id,kind" })
+    : supabase.from("budgets").insert(row);
+  const { data, error } = await query.select().single();
   if (error) throw error;
   return data;
+}
+
+function monthStartIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
 export async function fetchDuplicates({ limit = 50 } = {}) {

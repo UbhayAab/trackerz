@@ -133,8 +133,13 @@ create table if not exists public.budgets (
   period text not null check (period in ('daily','weekly','monthly')),
   amount numeric(14,2) not null,
   starts_on date not null,
+  -- Stable budget/goal key (monthly_spend, daily_protein, …). ONE row per
+  -- (user, kind) so editing a budget anywhere upserts the single canonical row
+  -- and propagates everywhere. The single source of truth for budgets + targets.
+  kind text,
   created_at timestamptz not null default now()
 );
+create unique index if not exists budgets_user_kind_uniq on public.budgets (user_id, kind);
 
 create table if not exists public.food_logs (
   id uuid primary key default gen_random_uuid(),

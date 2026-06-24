@@ -3,7 +3,8 @@ import {
   fetchBodyMetrics, fetchWellnessLogs, fetchSubscriptions, persistDetectedSubscriptions,
   fetchMealTemplates, fetchUserPlans, fetchWorkoutLogs,
 } from "../services/supabase-data.js";
-import { setDietPlanOverride } from "../domain/diet/plan.js";
+import { setDietPlanOverride, planForDate } from "../domain/diet/plan.js";
+import { resolveDietTargets } from "../domain/goals.js";
 import { isLocalSession } from "../services/auth.js";
 import { updateState } from "./app-state.js";
 import { detectSubscriptions } from "../domain/money/subscription-detector.js";
@@ -51,10 +52,14 @@ export async function hydrateStateFromSupabase() {
     }
     const subscriptions = detectedSubs.length ? detectedSubs : knownSubs;
 
+    // Single source of truth for diet targets: budget goals override the
+    // scaffold-derived plan targets. Used for insights AND the glance metrics.
+    const dietTargets = resolveDietTargets(budgets, planForDate(new Date()).macroTargets);
+
     // Run every detector into one ranked insight feed (strings for the list UI).
     const feed = buildInsightFeed({
       ledger, foodLogs: foods, wellnessLogs, bodyMetrics, budgets, subscriptions,
-      today: new Date(),
+      today: new Date(), proteinTargetG: dietTargets.protein_g,
     });
 
     const ledgerRows = ledger.map((row) => ({
@@ -132,7 +137,10 @@ export async function hydrateStateFromSupabase() {
       state.insightItems = feed.items;
       state.metrics.todaySpend = todaySpend;
       state.metrics.protein = protein;
+      state.metrics.proteinTarget = dietTargets.protein_g;
       state.metrics.caloriesToday = caloriesToday;
+      state.metrics.caloriesTarget = dietTargets.calories;
+      state.metrics.caloriesLeft = Math.max(0, Math.round(dietTargets.calories - caloriesToday));
       state.syncError = null;
     });
   } catch (err) {

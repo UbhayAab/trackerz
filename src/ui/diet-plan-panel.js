@@ -6,6 +6,7 @@
 
 import { planForDate, MACRO_TARGETS } from "../domain/diet/plan.js";
 import { nutrientsSoFar, gauge } from "../domain/diet/nutrients.js";
+import { resolveDietTargets } from "../domain/goals.js";
 import { getSupabaseClient } from "../services/supabase-client.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
@@ -142,6 +143,10 @@ export function renderDietPlan(appState) {
   if (appState && Array.isArray(appState.foodLogs)) _todayFood = appState.foodLogs.filter((f) => isToday(f.occurred_at));
   const today = new Date();
   const plan = planForDate(today);
+  // Single source of truth: an explicit calorie/protein GOAL (set on the Diet
+  // page, stored in budgets) overrides the scaffold-derived targets, so editing
+  // the goal anywhere moves these gauges too.
+  plan.macroTargets = resolveDietTargets(appState?.budgets, plan.macroTargets);
   const state = loadDayState(dayKey(today));
 
   const mealIds = plan.meals.map((m) => m.id);
