@@ -23,6 +23,15 @@ export async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return null;
   try {
     const reg = await navigator.serviceWorker.register(swPath(), { scope: swScope() });
+    // Auto-apply new deploys: when a fresh SW takes control, reload once so the
+    // user is never stuck on a ghost version.
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloaded) return;
+      reloaded = true;
+      globalThis.location?.reload();
+    });
+    reg.update?.();
     return reg;
   } catch (err) {
     console.warn("sw register failed", err);

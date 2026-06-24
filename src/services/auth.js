@@ -94,7 +94,7 @@ export async function signInWithEmail(email) {
 // Short handles -> real account emails, so sign-in can be "Ubhay" + a password
 // instead of a full email. Anything containing "@" is treated as an email as-is.
 const USERNAME_ALIASES = {
-  ubhay: "abhay.vatsa@meesho.com",
+  ubhay: "ubhayvatsaanand@gmail.com",
 };
 
 export async function signInWithPassword(identifier, password) {
