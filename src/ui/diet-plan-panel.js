@@ -28,6 +28,19 @@ function canSync() {
   return Boolean(getCurrentSession()?.user?.id) && !isLocalSession();
 }
 
+// Today's actually-logged food (set from app-state on render). The macro/micro
+// scales reflect what was LOGGED today — via capture OR check-off — not just plan
+// check-offs, so anything you log moves the gauges.
+let _todayFood = [];
+function isToday(iso) {
+  if (!iso) return false;
+  const d = new Date(iso); const n = new Date();
+  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+}
+function sumFood(key) {
+  return _todayFood.reduce((a, f) => a + Number(f[key] || 0), 0);
+}
+
 // Resolve a checklist item id -> { table, payload } for Supabase logging.
 function logSpecFor(itemId, plan) {
   const userId = getCurrentSession()?.user?.id;
@@ -75,9 +88,9 @@ function item(plan, state, { id, time, name, detail, table }) {
   </label>`;
 }
 
-function macroTally(plan, state) {
-  let cal = 0, protein = 0;
-  for (const m of plan.meals) if (state[m.id]?.done) { cal += m.macros.calories; protein += m.macros.protein_g; }
+function macroTally(plan) {
+  const cal = Math.round(sumFood("calories_estimate"));
+  const protein = Math.round(sumFood("protein_g"));
   const pPct = Math.min(100, Math.round((protein / plan.macroTargets.protein_g) * 100));
   const cPct = Math.min(100, Math.round((cal / plan.macroTargets.calories) * 100));
   return `<div class="diet-macros">
@@ -86,13 +99,15 @@ function macroTally(plan, state) {
   </div>`;
 }
 
-// Full macro + micro panel. Each nutrient fills proportionally to the share of
-// the day's calories already checked off, hitting the plan value when complete.
-function nutrientPanel(plan, state) {
-  const totalCal = plan.meals.reduce((a, m) => a + (m.macros.calories || 0), 0) || 1;
-  const eatenCal = plan.meals.reduce((a, m) => a + (state[m.id]?.done ? (m.macros.calories || 0) : 0), 0);
-  const frac = eatenCal / totalCal;
+// Full macro + micro panel driven by TODAY'S LOGGED FOOD. Calories/protein/carbs/
+// fat are summed from the real food_logs; fiber/sat-fat/micros (which logged food
+// doesn't carry) stay proportional estimates scaled to calories-vs-target.
+function nutrientPanel(plan) {
+  const cal = sumFood("calories_estimate");
+  const frac = plan.macroTargets.calories ? cal / plan.macroTargets.calories : 0;
   const rows = nutrientsSoFar(plan.dietType, frac);
+  const actual = { calories: cal, protein: sumFood("protein_g"), carbs: sumFood("carbs_g"), fat: sumFood("fat_g") };
+  for (const r of rows) if (r.key in actual) r.current = Math.round(actual[r.key] * 100) / 100;
   const labels = { macro: "Macros", mineral: "Minerals", vitamin: "Vitamins" };
   const section = (grp) => {
     const items = rows.filter((r) => r.group === grp);
@@ -109,14 +124,15 @@ function nutrientPanel(plan, state) {
       </div>`;
     }).join("")}</div>`;
   };
-  return `<details class="nutrients"><summary>Macros &amp; micros — full panel (${Math.round(frac * 100)}% of today · centre line = target)</summary>${["macro", "mineral", "vitamin"].map(section).join("")}</details>`;
+  return `<details class="nutrients"><summary>Macros &amp; micros — from today's logs (${Math.round(frac * 100)}% of calorie target · micros estimated · centre = target)</summary>${["macro", "mineral", "vitamin"].map(section).join("")}</details>`;
 }
 
 function countDone(ids, state) { return ids.filter((id) => state[id]?.done).length; }
 
-export function renderDietPlan() {
+export function renderDietPlan(appState) {
   const el = document.querySelector(CONTAINER);
   if (!el) return;
+  if (appState && Array.isArray(appState.foodLogs)) _todayFood = appState.foodLogs.filter((f) => isToday(f.occurred_at));
   const today = new Date();
   const plan = planForDate(today);
   const state = loadDayState(dayKey(today));
@@ -133,8 +149,8 @@ export function renderDietPlan() {
       </div>
       <span class="metric-badge">${countDone(mealIds, state)}/4 meals</span>
     </div>
-    ${macroTally(plan, state)}
-    ${nutrientPanel(plan, state)}
+    ${macroTally(plan)}
+    ${nutrientPanel(plan)}
 
     <div class="diet-section">
       <p class="diet-head">🍽️ Meals</p>

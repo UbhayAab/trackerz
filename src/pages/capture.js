@@ -22,7 +22,7 @@ bootWithAuth(async () => {
     renderAdditionsFeed(state);
     renderInsights(state);
     renderMetrics(state);
-    renderDietPlan();
+    renderDietPlan(state);
   });
   bindCapturePanel();
   bindInsights();
