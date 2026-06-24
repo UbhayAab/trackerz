@@ -204,6 +204,12 @@ create table if not exists public.workout_logs (
   description text not null,
   duration_min numeric(6,1),
   intensity text,
+  -- Per-exercise sets for the detailed gym tracker. One workout_logs row = one
+  -- session; `sets` is [{exercise, muscle, set, reps, weight_kg, done}]. Kept on
+  -- the existing table (no extra tables) per the owner's "don't make 100 tables".
+  sets jsonb not null default '[]'::jsonb,
+  bodyweight_kg numeric,
+  notes text,
   occurred_at timestamptz not null,
   created_at timestamptz not null default now()
 );

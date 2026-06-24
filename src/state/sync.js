@@ -1,7 +1,7 @@
 import {
   fetchLedger, fetchFoodLogs, fetchOpenAiActions, fetchOpenImports, fetchBudgets,
   fetchBodyMetrics, fetchWellnessLogs, fetchSubscriptions, persistDetectedSubscriptions,
-  fetchMealTemplates, fetchUserPlans,
+  fetchMealTemplates, fetchUserPlans, fetchWorkoutLogs,
 } from "../services/supabase-data.js";
 import { setDietPlanOverride } from "../domain/diet/plan.js";
 import { isLocalSession } from "../services/auth.js";
@@ -38,6 +38,7 @@ export async function hydrateStateFromSupabase() {
     ]);
     const mealTemplates = await fetchMealTemplates().catch(() => []);
     const userPlans = await fetchUserPlans().catch(() => []);
+    const workoutLogs = await fetchWorkoutLogs().catch(() => []);
     // Latest permanent diet plan (if any) overrides the fixed default in the hub.
     const dietOverride = userPlans.find((p) => p.kind === "diet" && p.scope === "permanent");
     setDietPlanOverride(dietOverride?.payload || null);
@@ -122,6 +123,7 @@ export async function hydrateStateFromSupabase() {
       state.additions = buildAdditions(ledger, foods, userPlans, {});
       state.wellnessLogs = wellnessLogs;
       state.bodyMetrics = bodyMetrics;
+      state.workoutLogs = workoutLogs;
       state.budgets = budgets;
       state.subscriptions = subscriptions;
       state.mealTemplates = mealTemplates;
