@@ -90,6 +90,27 @@
 .primary-button:active,
 .secondary-button:active { transform: translateY(1px); }
 
+/* Live build stamp on every page (top-right). Tap to force a fresh load. */
+.version-stamp {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 6px);
+  right: 8px;
+  z-index: 50;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.version-stamp:active { transform: translateY(1px); color: var(--ink); }
+
 .file-chip,
 .primary-button,
 .secondary-button,
