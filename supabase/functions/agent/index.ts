@@ -97,6 +97,7 @@ Rules:
   is_discretionary=true for non-essential spend (eating out, entertainment, impulse shopping, subscriptions, food delivery).
   is_discretionary=false for groceries, fuel, utilities, rent, medical, transport, EMI/loan.
 - create_food_log_candidate.arguments: { meal_slot, description, calories_estimate, protein_g, carbs_g, fat_g, occurred_at }.
+- A bare food/drink mention with NO payment ("had coffee and 5 cookies", "ate 3 rotis dal", "2 boiled eggs", "5 choc chip cookies") IS a diet event → ALWAYS emit create_food_log_candidate with your best calorie + macro ESTIMATE. Calorie/macro estimates for logged food are EXPECTED and are NOT "inventing". NEVER route clear food/drink to request_user_review.
 - occurred_at must be ISO 8601 with timezone. If only date given, use noon Asia/Kolkata.
 - If the user says "yesterday" / "last X" normalize using the current time provided in the user turn.
 - One tool call per real event. Split mixed inputs into multiple calls.
@@ -494,8 +495,8 @@ function minutesApart(a?: string, b?: string): number {
   if (!a || !b) return Infinity;
   return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 60000;
 }
-function expandToolCalls(toolCalls: ToolCall[]): ToolCall[] {
-  const out = [...toolCalls];
+function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCall[] {
+  let out = [...toolCalls];
   const foodLogs = toolCalls.filter((tc) => tc.name === "create_food_log_candidate");
   for (const tc of toolCalls) {
     if (tc.name !== "create_expense_candidate") continue;
@@ -508,6 +509,18 @@ function expandToolCalls(toolCalls: ToolCall[]): ToolCall[] {
       name: "create_food_log_candidate",
       arguments: { meal_slot: mealSlotFromTime(occurredAt), description: `${a.merchant || a.description || "meal"} (auto from spend)`, occurred_at: occurredAt, _auto_expanded: true },
       confidence: Math.round(Number(tc.confidence || 0.7) * 0.6 * 100) / 100,
+    });
+  }
+  // Pure-food fallback: nothing got logged (model only asked for review) but the
+  // text is clearly food/drink -> log it so "had coffee and 5 cookies" still counts.
+  const hasWrite = out.some((tc) => typeof tc?.name === "string" && tc.name.startsWith("create_"));
+  if (!hasWrite && looksLikeFood(evidence)) {
+    out = out.filter((tc) => tc?.name !== "request_user_review");
+    const occurredAt = now || new Date().toISOString();
+    out.push({
+      name: "create_food_log_candidate",
+      arguments: { meal_slot: mealSlotFromTime(occurredAt), description: String(evidence).trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
+      confidence: 0.5,
     });
   }
   return out;
@@ -553,7 +566,7 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   }
 
   const { validCalls, rejected } = parseToolCalls(raw);
-  const expandedCalls = expandToolCalls(validCalls); // fan-out: food spend -> +food_log
+  const expandedCalls = expandToolCalls(validCalls, combinedText, new Date().toISOString()); // fan-out + pure-food fallback
   const latencyMs = Date.now() - startedAt;
   const estimatedCostUsd = Number((extractCost + brainCost).toFixed(6));
   const provider = usedProviders.join("+") || "deepseek";

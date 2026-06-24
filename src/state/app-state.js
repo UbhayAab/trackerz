@@ -1,4 +1,4 @@
-const STORAGE_KEY_BASE = "trackerz_state_v3";
+const STORAGE_KEY_BASE = "trackerz_state_v4";
 const LOCAL_SESSION_KEY = "trackerz_local_auth_session_v1";
 const LEGACY_KEYS = ["trackerz_state", "trackerz_state_v2"];
 const listeners = new Set();
