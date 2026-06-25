@@ -24,7 +24,7 @@ for (const t of migrationTables) {
 }
 
 // 2. Migration-added columns on existing tables are present in schema.sql.
-for (const col of ["is_discretionary", "tags"]) {
+for (const col of ["is_discretionary", "tags", "source_type", "event_group_id", "merged_into", "account", "briefing_enabled"]) {
   assert.ok(new RegExp(`\\b${col}\\b`).test(schema), `schema.sql is missing the "${col}" column added by a migration`);
 }
 

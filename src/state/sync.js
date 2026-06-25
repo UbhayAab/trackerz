@@ -2,6 +2,7 @@ import {
   fetchLedger, fetchFoodLogs, fetchOpenAiActions, fetchOpenImports, fetchBudgets,
   fetchBodyMetrics, fetchWellnessLogs, fetchSubscriptions, persistDetectedSubscriptions,
   fetchMealTemplates, fetchUserPlans, fetchWorkoutLogs,
+  fetchNotes, fetchMemoryFacts, fetchTargetEvents,
 } from "../services/supabase-data.js";
 import { setDietPlanOverride, planForDate } from "../domain/diet/plan.js";
 import { resolveDietTargets } from "../domain/goals.js";
@@ -41,6 +42,9 @@ export async function hydrateStateFromSupabase() {
     const mealTemplates = await fetchMealTemplates().catch(() => []);
     const userPlans = await fetchUserPlans().catch(() => []);
     const workoutLogs = await fetchWorkoutLogs().catch(() => []);
+    const notes = await fetchNotes().catch(() => []);
+    const memoryFacts = await fetchMemoryFacts().catch(() => []);
+    const targetEvents = await fetchTargetEvents().catch(() => []);
 
     // Self-heal food macros at DISPLAY time: the lookup table is the source of
     // truth for everyday foods, so recompute macros from the description even for
@@ -138,8 +142,11 @@ export async function hydrateStateFromSupabase() {
       state.ledger = ledger;
       state.foodLogs = foods;
       state.userPlans = userPlans;
-      // Unified day-over-day "additions" list for the Home feed.
-      state.additions = buildAdditions(ledger, foods, userPlans, {});
+      state.notes = notes;
+      state.memoryFacts = memoryFacts;
+      // Unified day-over-day "additions" list for the Home feed (incl. notes +
+      // undoable AI target changes).
+      state.additions = buildAdditions(ledger, foods, userPlans, { notes, targetEvents, reviewActions: actions });
       state.wellnessLogs = wellnessLogs;
       state.bodyMetrics = bodyMetrics;
       state.workoutLogs = workoutLogs;

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this app is
 
-Trackerz is a capture-first life tracker (money/diet/wellness) served as static files from GitHub Pages, with Supabase for auth/DB/storage and a single Supabase Edge Function (`agent`) that turns messy captures (text, voice, screenshots, bank statements) into structured tool calls. The agent is a **two-model pipeline**: **Gemini 2.5 Flash** extracts evidence from images/audio (OCR, transcription, food-photo vision) and **DeepSeek** (`deepseek-chat`) is the reasoning "brain" that emits the tool calls; if DeepSeek is unavailable it falls back to Gemini for reasoning. Both keys (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`) live only as edge-function secrets / `app_secrets`. The live URL is https://ubhayaab.github.io/trackerz/. Project ref: `yyoewdcijplkhxleejtm` (an earlier build pointed at `qmlenovxatoyxxqlvzlo`, which no longer resolves — that mismatch broke the live app; the frontend now points at yyoe and the schema/keys live there).
+Trackerz is a capture-first life tracker (money/diet/wellness) served as static files from GitHub Pages, with Supabase for auth/DB/storage and a single Supabase Edge Function (`agent`) that turns messy captures (text, voice, screenshots, bank statements) into structured tool calls. The agent is a **two-model pipeline**: **Gemini 2.5 Flash** extracts evidence from images/audio (OCR, transcription, food-photo vision) and **DeepSeek** is the reasoning "brain" that emits the tool calls. DeepSeek runs thinking-mode first — `deepseek-reasoner` (R1) is the primary brain, with `deepseek-chat` (strict-JSON `response_format`) as the fallback when the reasoner errors or returns no parseable JSON; if DeepSeek is unavailable entirely it falls back to Gemini for reasoning. (`deepseek-reasoner` rejects `response_format`/`temperature` — only set those for `deepseek-chat`. `DEEPSEEK_BASE_URL`/`DEEPSEEK_MODEL` secrets can override the endpoint/model, e.g. to point at an NVIDIA-hosted model.) Both keys (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`) live only as edge-function secrets / `app_secrets`. The live URL is https://ubhayaab.github.io/trackerz/. Project ref: `yyoewdcijplkhxleejtm` (an earlier build pointed at `qmlenovxatoyxxqlvzlo`, which no longer resolves — that mismatch broke the live app; the frontend now points at yyoe and the schema/keys live there).
 
 There is no bundler or transpiler. Everything is native ES modules loaded directly by the browser. A `package.json` exists for dev tooling only (test runner scripts, Playwright, `pg`, `dotenv`).
 
@@ -25,7 +25,13 @@ node tests/agent-core.test.mjs
 # Apply schema / migrations via Node (reads DB URL from .env)
 npm run db:push
 
-# Deploy the edge function (requires supabase CLI logged in)
+# One-shot backend provisioning (schema + buckets + secrets via Node)
+npm run setup:backend
+
+# Screenshot pages with Playwright (writes to docs/ — used for visual checks)
+npm run screenshot
+
+# Deploy the edge function (requires supabase CLI logged in; or use scripts/deploy-edge-function.mjs)
 supabase functions deploy agent
 
 # Push edge-function secrets (reads from env)
@@ -58,7 +64,7 @@ A single ingestion path runs for everything the user drops in:
 
 1. `src/pages/capture.js` collects text/files/voice, calls `previewCaptureRoute` from `src/services/capture-router.js` to classify the input.
 2. `src/services/agent-runner.js` (`runCapture`) inserts a `raw_ingestions` row, uploads media to the `raw-media` Supabase Storage bucket, then invokes the `agent` edge function.
-3. The edge function calls Gemini 2.5 Flash with `SYSTEM_PROMPT` constraining output to a JSON tool-call schema, persists rows in `ai_runs` + `ai_actions`, and auto-applies high-confidence writes server-side.
+3. The edge function runs the pipeline — Gemini 2.5 Flash extracts evidence from any media, then the DeepSeek brain emits the JSON tool calls under `SYSTEM_PROMPT` (which constrains output to the allowed-tool schema) — persists rows in `ai_runs` + `ai_actions`, and auto-applies high-confidence writes server-side.
 4. After the function returns, the client runs `runCrossSourceDedupe` (`src/services/dedupe-scan.js`) to link e.g. a voice-logged "Rs 250 lunch" to a "Rs 252" bank row using time-bucket + amount-tolerance matching (`src/duplicates/score-pair.js`).
 5. The capture page polls/refreshes the review queue and dashboard tiles via `src/services/supabase-data.js`.
 
@@ -66,7 +72,7 @@ If the edge function is unavailable, captures still land in `raw_ingestions` wit
 
 ### AI safety boundary
 
-The Gemini model never writes to the DB directly. It returns tool calls that pass through layered guards:
+The model never writes to the DB directly. It returns tool calls that pass through layered guards:
 
 - `src/agent/tool-registry.js` is the allowlist of known tool names (also mirrored in `ALLOWED_TOOLS` inside the edge function — keep them in sync).
 - `src/agent/action-policy.js` decides `block` / `review` / `auto_apply` from `(tool kind, confidence, evidence, risk)`. Thresholds: `autoApply ≥ 0.88`, `review ≥ 0.72`, anything lower or destructive → blocked.
@@ -81,6 +87,7 @@ The test asserts these directories exist with modules in them — do not collaps
 - `src/ui/` — DOM rendering and event binding only. No data fetching or AI logic.
 - `src/services/` — UI-facing app services (capture routing, cost meter, Supabase client, dedupe scan, statement import, speech).
 - `src/agent/` — tool registry, action policy, model routing, evidence rules, prompt boundaries.
+- `src/ai/` — client-side AI glue (capture parsing, job runner).
 - `src/imports/` — bank statement format detection, column candidates, row normalizer, statement preview.
 - `src/analytics/` — budget trajectory, macro pace, habit score, insight rules, opportunity cost.
 - `src/duplicates/` — pair scoring + expense/food cluster helpers.
@@ -96,7 +103,7 @@ The test asserts these directories exist with modules in them — do not collaps
 
 ### Config and secrets
 
-- `src/config.js` resolves Supabase URL+anon key in this order: (1) `src/config.local.js` (gitignored), (2) `localStorage` keys `trackerz.supabase_url` / `trackerz.supabase_anon_key`, (3) the on-screen setup card. The same static bundle deploys anywhere.
+- `src/config.js` resolves Supabase URL+anon key in this order: (1) `src/config.local.js` (gitignored), (2) `localStorage` keys `trackerz.supabase_url` / `trackerz.supabase_anon_key`, (3) hard-coded production defaults (the live `yyoe` URL + publishable anon key are baked in, so the app works out of the box; the on-screen setup card is only a fallback for forks). `config.js` also self-heals: a browser holding the dead `qmle` ref in `localStorage` gets it wiped so the prod default takes over.
 - The Supabase **anon** key is safe in the browser only because RLS is on every user table.
 - `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and any old `NVIDIA_API_KEY` live only as Supabase Edge Function secrets — never commit them, never put them in client code.
 

@@ -253,6 +253,66 @@ export async function fetchUserPlans({ limit = 20 } = {}) {
   return data || [];
 }
 
+// Open notes/aspirations/todos (newest first) for the feed + context.
+export async function fetchNotes({ limit = 50 } = {}) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("notes")
+    .select("id, kind, body, domain, status, due_on, event_group_id, occurred_at, created_at")
+    .neq("status", "archived")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+// Durable long-term memory facts, highest-confidence first.
+export async function fetchMemoryFacts({ limit = 50 } = {}) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("memory_facts")
+    .select("id, key, value, kind, confidence, source, updated_at")
+    .order("confidence", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+// AI-made target/budget changes (the note→target cascade), newest first, for the
+// undoable feed. Only the auto-applied set_target audit rows.
+export async function fetchTargetEvents({ limit = 20 } = {}) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("audit_log")
+    .select("id, action, before, after, created_at")
+    .eq("action", "set_target")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+// Undo a target change: restore the prior amount (or delete the budget if there
+// was none before). Mirrors revertTarget() in lib/aspiration-cascade.mjs.
+export async function revertTargetEvent(auditId) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data: evt, error } = await supabase
+    .from("audit_log").select("before, after").eq("id", auditId).single();
+  if (error) throw error;
+  const kind = evt?.after?.kind || evt?.before?.kind;
+  if (!kind) return;
+  const prior = evt?.before?.amount;
+  if (prior == null) {
+    await supabase.from("budgets").delete().eq("user_id", userId).eq("kind", kind);
+  } else {
+    await supabase.from("budgets")
+      .update({ amount: prior }).eq("user_id", userId).eq("kind", kind);
+  }
+  // Remove the audit row so the undo affordance disappears from the feed.
+  await supabase.from("audit_log").delete().eq("id", auditId);
+}
+
 export async function logMealFromTemplate(template) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
@@ -359,7 +419,12 @@ export async function applyProposedAction(action) {
   let appliedTable = null;
   let appliedId = null;
   if (built) {
-    const { data, error } = await supabase.from(built.table).insert(built.row).select().single();
+    // Keyed tools (set_target_candidate, remember_fact) upsert the single
+    // canonical row; everything else inserts.
+    const q = built.conflictTarget
+      ? supabase.from(built.table).upsert(built.row, { onConflict: built.conflictTarget })
+      : supabase.from(built.table).insert(built.row);
+    const { data, error } = await q.select().single();
     if (error) throw error;
     appliedTable = built.table;
     appliedId = data.id;
@@ -403,6 +468,7 @@ export async function rejectAiAction(actionId) {
 // user-owned domain tables; RLS also enforces ownership on the server.
 const DELETABLE_TABLES = new Set([
   "ledger_entries", "food_logs", "workout_logs", "body_metrics", "wellness_logs", "hydration_logs", "user_plans",
+  "notes", "memory_facts",
 ]);
 export async function deleteRow(table, id) {
   if (!DELETABLE_TABLES.has(table)) throw new Error(`delete not allowed for ${table}`);
@@ -420,7 +486,8 @@ const USER_DATA_TABLES = [
   "wellness_logs", "workout_logs", "statement_rows", "statement_imports",
   "duplicate_candidates", "budgets", "categories", "subscriptions",
   "merchant_aliases", "category_memory", "bank_format_memory", "meal_templates",
-  "hydration_logs", "weekly_reviews", "media_assets", "raw_ingestions",
+  "hydration_logs", "weekly_reviews", "user_plans", "notes", "memory_facts",
+  "briefings", "audit_log", "media_assets", "raw_ingestions",
 ];
 
 export async function deleteAllUserData() {

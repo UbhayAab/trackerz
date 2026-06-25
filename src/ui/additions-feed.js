@@ -4,7 +4,7 @@
 // Shaping is pure (lib/additions.mjs); this module is the DOM + write side.
 
 import { buildAdditions, groupByDay } from "../../lib/additions.mjs";
-import { deleteRow } from "../services/supabase-data.js";
+import { deleteRow, revertTargetEvent, rejectAiAction } from "../services/supabase-data.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 
 function esc(value) {
@@ -35,11 +35,15 @@ export function renderAdditionsFeed(state) {
     <div class="add-day">
       <p class="add-day-head">${dayLabel(g.dayKey)}</p>
       ${g.rows.map((r) => `
-        <div class="add-row add-${r.domain}" data-add-table="${esc(r.table)}" data-add-id="${esc(r.id)}">
+        <div class="add-row add-${r.domain}${r.status === "target" ? " is-target" : ""}" data-add-table="${esc(r.table)}" data-add-id="${esc(r.id)}"${r.undoId ? ` data-undo-id="${esc(r.undoId)}"` : ""}>
           <span class="add-domain">${esc(r.domain)}</span>
           <span class="add-label">${esc(r.label)}</span>
           <span class="add-delta">${esc(r.delta)}</span>
-          <button class="add-del" type="button" aria-label="Delete ${esc(r.label)}">✕</button>
+          ${r.status === "target"
+            ? `<button class="add-undo" type="button" aria-label="Undo ${esc(r.label)}">Undo</button>`
+            : r.status === "review"
+            ? `<button class="add-dismiss" type="button" aria-label="Dismiss ${esc(r.label)}">✕</button>`
+            : `<button class="add-del" type="button" aria-label="Delete ${esc(r.label)}">✕</button>`}
         </div>`).join("")}
     </div>`).join("");
 }
@@ -51,6 +55,32 @@ export function bindAdditionsFeed() {
   const el = document.querySelector("#additionsFeed");
   if (!el) return;
   el.addEventListener("click", async (event) => {
+    const undoBtn = event.target.closest(".add-undo");
+    if (undoBtn) {
+      const rowEl = undoBtn.closest("[data-undo-id]");
+      if (!rowEl) return;
+      rowEl.classList.add("is-deleting");
+      try {
+        await revertTargetEvent(rowEl.dataset.undoId);
+        await hydrateStateFromSupabase();
+      } catch {
+        rowEl.classList.remove("is-deleting");
+      }
+      return;
+    }
+    const dismissBtn = event.target.closest(".add-dismiss");
+    if (dismissBtn) {
+      const rowEl = dismissBtn.closest("[data-add-id]");
+      if (!rowEl) return;
+      rowEl.classList.add("is-deleting");
+      try {
+        await rejectAiAction(rowEl.dataset.addId);
+        await hydrateStateFromSupabase();
+      } catch {
+        rowEl.classList.remove("is-deleting");
+      }
+      return;
+    }
     const btn = event.target.closest(".add-del");
     if (!btn) return;
     const rowEl = btn.closest("[data-add-id]");

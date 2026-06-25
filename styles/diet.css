@@ -81,3 +81,10 @@
 .additions-feed .add-del { border: 0; background: transparent; font-size: 1rem; line-height: 1; min-width: 36px; min-height: 36px; cursor: pointer; opacity: 0.55; }
 .additions-feed .add-del:active { opacity: 1; }
 .additions-feed .add-row.is-deleting { border-color: rgba(212,83,62,0.5); background: rgba(212,83,62,0.1); text-decoration: line-through; opacity: 0.6; }
+/* Needs-review captures (agent unavailable / capped) — amber so they stand out
+   and are never missed. Target changes get a blue tint; the Undo button is text. */
+.additions-feed .add-review { border-color: rgba(214,158,46,0.55); background: rgba(214,158,46,0.12); }
+.additions-feed .add-row.is-target { border-color: rgba(56,118,212,0.4); background: rgba(56,118,212,0.08); }
+.additions-feed .add-dismiss { border: 0; background: transparent; font-size: 1rem; line-height: 1; min-width: 36px; min-height: 36px; cursor: pointer; opacity: 0.55; }
+.additions-feed .add-dismiss:active { opacity: 1; }
+.additions-feed .add-undo { border: 1px solid rgba(56,118,212,0.5); background: transparent; color: inherit; font-size: 0.78rem; padding: 4px 10px; border-radius: 8px; min-height: 32px; cursor: pointer; }
