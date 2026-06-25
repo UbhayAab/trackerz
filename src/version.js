@@ -4,4 +4,4 @@
 // the badge must change. If it does NOT change, it's a browser/Pages cache issue
 // (tap the badge to force-clear caches + reload), not a code-didn't-ship issue.
 // The service worker cache name (sw.js) mirrors this so old caches are purged.
-export const APP_VERSION = "v11 · fixes";
+export const APP_VERSION = "v12 · feed visible";
