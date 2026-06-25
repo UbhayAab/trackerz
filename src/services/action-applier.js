@@ -5,6 +5,8 @@
 // tests/agent-contract.test.mjs asserts this list stays in sync with the edge
 // function's WRITE_TOOLS. No browser/Supabase imports — keep it pure.
 
+import { goalDef } from "../domain/goals.js";
+
 export const APPLIER_WRITE_TOOLS = [
   "create_expense_candidate",
   "create_income_candidate",
@@ -14,6 +16,9 @@ export const APPLIER_WRITE_TOOLS = [
   "create_workout_log_candidate",
   "create_body_metric_candidate",
   "create_wellness_note_candidate",
+  "create_note_candidate",
+  "set_target_candidate",
+  "remember_fact",
   "update_plan_candidate",
 ];
 
@@ -80,6 +85,32 @@ export function buildRowForTool(action, userId) {
         summary: args.summary || args.description || null,
         payload: (args.payload && typeof args.payload === "object" && !Array.isArray(args.payload)) ? args.payload : {},
         source: "ai",
+      } };
+    case "create_note_candidate":
+      return { table: "notes", row: {
+        ...base, kind: args.kind || "note", body: args.body || "",
+        domain: args.domain || "general", status: args.status || "open",
+        due_on: args.due_on || null, occurred_at: occurredAt,
+      } };
+    case "set_target_candidate":
+      // Upsert the single canonical budget row for this goal kind (see goals.js).
+      return { table: "budgets", conflictTarget: "user_id,kind", row: {
+        user_id: userId,
+        kind: args.kind,
+        period: goalDef(args.kind)?.period || "monthly",
+        amount: args.amount,
+        starts_on: occurredAt.slice(0, 10),
+      } };
+    case "remember_fact":
+      // Upsert durable long-term memory by key.
+      return { table: "memory_facts", conflictTarget: "user_id,key", row: {
+        user_id: userId,
+        key: args.key,
+        value: args.value != null ? String(args.value) : "",
+        kind: args.kind || "fact",
+        confidence: typeof args.confidence === "number" ? args.confidence : 0.7,
+        source: "ai",
+        updated_at: new Date().toISOString(),
       } };
     default:
       return null; // non-write tools (request_user_review, link_duplicate_candidates)

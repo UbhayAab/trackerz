@@ -77,6 +77,26 @@ export const TOOL_SCHEMAS = {
     types: { kind: "string", scope: "string", summary: "string", payload: "object" },
     enums: { kind: ["diet", "gym"] },
   },
+  create_note_candidate: {
+    required: ["body"],
+    types: { body: "string", kind: "string", domain: "string", status: "string", due_on: "string", occurred_at: "iso" },
+    enums: {
+      kind: ["note", "aspiration", "todo", "idea", null],
+      domain: ["money", "diet", "gym", "wellness", "general", null],
+      status: ["open", "done", "archived", null],
+    },
+  },
+  set_target_candidate: {
+    required: ["kind", "amount"],
+    types: { kind: "string", amount: "positive_number", reason: "string" },
+    enums: { kind: ["monthly_spend", "weekly_spend", "food_cap", "daily_calories", "daily_protein", "weekly_calories"] },
+  },
+  remember_fact: {
+    required: ["key", "value"],
+    types: { key: "string", value: "string", kind: "string", confidence: "number" },
+    enums: { kind: ["preference", "pattern", "fact", "goal", null] },
+    ranges: { confidence: [0, 1] },
+  },
 };
 
 function isIso(v) {

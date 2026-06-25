@@ -8,6 +8,7 @@ create table if not exists public.profiles (
   display_name text not null default 'Ubhay',
   timezone text not null default 'Asia/Kolkata',
   currency text not null default 'INR',
+  briefing_enabled boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -94,6 +95,12 @@ create table if not exists public.ledger_entries (
   duplicate_state text not null default 'unique',
   is_discretionary boolean not null default false,
   tags text[] not null default '{}',
+  -- Smart-matching inputs + state (see 20260625000012_dedupe_merge.sql).
+  source_type text,                                                      -- bank|file|image|audio|text|mixed (survivorship rank)
+  reference text,                                                        -- UPI ref / UTR / external ref (hard-dup signal)
+  account text,                                                          -- transfer detection (different account)
+  event_group_id uuid,                                                   -- transitive "one real event" cluster id
+  merged_into uuid references public.ledger_entries(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -154,6 +161,7 @@ create table if not exists public.food_logs (
   fat_g numeric(8,2),
   confidence numeric(5,4) not null default 0,
   duplicate_state text not null default 'unique',
+  event_group_id uuid,                                                   -- links a meal to its spend (cross-domain, never merged)
   occurred_at timestamptz not null,
   created_at timestamptz not null default now()
 );
@@ -161,7 +169,7 @@ create table if not exists public.food_logs (
 create table if not exists public.body_metrics (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
-  metric_type text not null check (metric_type in ('weight','sleep_hours','steps','water_ml')),
+  metric_type text not null check (metric_type in ('weight','sleep_hours','steps','water_ml','body_fat_pct','waist_cm')),
   value numeric(12,3) not null,
   unit text not null,
   occurred_at timestamptz not null,
@@ -317,6 +325,50 @@ create table if not exists public.user_plans (
 );
 create index if not exists ix_user_plans_lookup on public.user_plans(user_id, kind, scope, active, created_at desc);
 
+-- Jarvis memory (20260625000011_memory_and_notes.sql). memory_facts = durable
+-- long-term recall (upsert by key); notes = first-class captures whose
+-- money/diet/gym implications cascade into budgets/targets (undoable via audit_log).
+create table if not exists public.memory_facts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  key text not null,
+  value text not null,
+  kind text not null default 'fact' check (kind in ('preference','pattern','fact','goal')),
+  confidence numeric(5,4) not null default 0.7,
+  source text not null default 'ai',
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique(user_id, key)
+);
+
+create table if not exists public.notes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  ingestion_id uuid references public.raw_ingestions(id) on delete set null,
+  kind text not null default 'note' check (kind in ('note','aspiration','todo','idea')),
+  body text not null,
+  domain text not null default 'general' check (domain in ('money','diet','gym','wellness','general')),
+  status text not null default 'open' check (status in ('open','done','archived')),
+  due_on date,
+  event_group_id uuid,
+  occurred_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+-- Proactive Jarvis briefings (20260625000014_briefings.sql). One row per user per
+-- slot, written by the scheduled briefing edge fn; Home renders the latest.
+create table if not exists public.briefings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  kind text not null check (kind in ('morning','evening')),
+  for_date date not null,
+  body text not null,
+  payload jsonb not null default '{}'::jsonb,
+  seen boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique(user_id, kind, for_date)
+);
+
 create table if not exists public.invited_emails (
   email text primary key,
   invited_by uuid references public.profiles(id) on delete set null,
@@ -450,7 +502,7 @@ begin
     select unnest(array[
       'workout_logs','merchant_aliases','category_memory','subscriptions',
       'bank_format_memory','meal_templates','hydration_logs','weekly_reviews',
-      'audit_log','user_secrets','user_plans'
+      'audit_log','user_secrets','user_plans','memory_facts','notes','briefings'
     ])
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -495,3 +547,11 @@ create index if not exists ix_food_user_occurred on public.food_logs(user_id, oc
 create index if not exists ix_wellness_user_occurred on public.wellness_logs(user_id, occurred_at);
 create index if not exists ix_workout_user_occurred on public.workout_logs(user_id, occurred_at);
 create index if not exists ix_audit_user_created on public.audit_log(user_id, created_at);
+-- Smart-matching grouping + soft-delete state (20260625000012).
+create index if not exists ix_ledger_event_group on public.ledger_entries(user_id, event_group_id);
+create index if not exists ix_food_event_group on public.food_logs(user_id, event_group_id);
+create index if not exists ix_ledger_dupe_state on public.ledger_entries(user_id, duplicate_state);
+-- Jarvis memory + briefings (20260625000011 / 20260625000014).
+create index if not exists ix_memory_facts_user on public.memory_facts(user_id, kind, confidence desc, updated_at desc);
+create index if not exists ix_notes_user_status on public.notes(user_id, status, created_at desc);
+create index if not exists ix_briefings_user_date on public.briefings(user_id, for_date desc, kind);
