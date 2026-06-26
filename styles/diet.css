@@ -45,6 +45,30 @@
 #dietPlan .diet-prep .diet-item { background: rgba(245, 178, 38, 0.08); border-color: rgba(245, 178, 38, 0.25); }
 #dietPlan .diet-prep .diet-item input[type="checkbox"] { accent-color: #c98a00; }
 
+/* Date stepper — move the hub to past days for backdated logs. */
+#dietPlan .diet-datebar {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 10px;
+}
+#dietPlan .diet-step, #dietPlan .diet-today {
+  min-height: 34px; padding: 4px 12px; border-radius: 10px; cursor: pointer;
+  border: 1px solid rgba(127, 127, 127, 0.22); background: rgba(127, 127, 127, 0.05);
+  font-size: 0.85rem; line-height: 1;
+}
+#dietPlan .diet-step[disabled] { opacity: 0.35; cursor: default; }
+#dietPlan .diet-date { font-weight: 600; font-size: 0.9rem; min-width: 92px; text-align: center; }
+#dietPlan .diet-today { margin-left: auto; }
+
+/* Auto / suggested badges on items reconciled from captured logs. */
+#dietPlan .diet-name .diet-auto, #dietPlan .diet-name .diet-suggest {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  font-size: 0.64rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+  vertical-align: middle; text-decoration: none;
+}
+#dietPlan .diet-name .diet-auto { background: rgba(19, 138, 91, 0.16); color: #138a5b; }
+#dietPlan .diet-name .diet-suggest { background: rgba(245, 178, 38, 0.16); color: #c98a00; }
+#dietPlan .diet-item.is-suggested { border-style: dashed; border-color: rgba(245, 178, 38, 0.4); }
+#dietPlan .diet-item.is-suggested .diet-auto, #dietPlan .diet-item.is-done .diet-suggest { display: none; }
+
 /* Full macro + micro panel (collapsible). Functional layout only; polish in P5. */
 #dietPlan .nutrients { margin: 8px 0 4px; }
 #dietPlan .nutrients summary { cursor: pointer; font-size: 0.84rem; font-weight: 600; opacity: 0.8; }

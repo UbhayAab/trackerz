@@ -191,6 +191,26 @@ export async function fetchWorkoutLogs({ limit = 200 } = {}) {
   return data || [];
 }
 
+// Fetch every food / workout / hydration row that falls on one local calendar
+// day, for the diet hub's date stepper + auto check-off reconciler. `date` is a
+// JS Date; the day window is its local midnight → next midnight.
+export async function fetchDayLogs(date = new Date()) {
+  const supabase = await getSupabaseClient();
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const end = new Date(start);
+  end.setDate(start.getDate() + 1);
+  const inDay = (q) => q.gte("occurred_at", start.toISOString()).lt("occurred_at", end.toISOString());
+  const [food, workout, hydration] = await Promise.all([
+    inDay(supabase.from("food_logs").select("id, occurred_at, meal_name, meal_slot, description, calories_estimate, protein_g, carbs_g, fat_g")),
+    inDay(supabase.from("workout_logs").select("id, occurred_at, description, duration_min, intensity")),
+    inDay(supabase.from("hydration_logs").select("id, occurred_at, ml")),
+  ]);
+  if (food.error) throw food.error;
+  if (workout.error) throw workout.error;
+  if (hydration.error) throw hydration.error;
+  return { foodLogs: food.data || [], workoutLogs: workout.data || [], hydrationLogs: hydration.data || [] };
+}
+
 // Log one gym session = one workout_logs row. `sets` is the per-exercise array
 // [{exercise, muscle, set, reps, weight_kg, done}]; total_volume is denormalised
 // into duration-independent reporting by the UI/analytics from sets.
