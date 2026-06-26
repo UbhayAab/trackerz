@@ -1,21 +1,48 @@
-// Landing-page diet hub: today's plan as a check-off list (meals, workout,
+// Landing-page diet hub: a day's plan as a check-off list (meals, workout,
 // supplements, water) + tomorrow's prep list. Checking an item persists to
 // localStorage immediately and, when signed in, logs a real row to the matching
 // table (food_logs / workout_logs / hydration_logs) so it feeds the trackers.
 // Unchecking deletes that row. No "approve" — checking IS the commit.
+//
+// The hub is DATE-AWARE: a ◀ date ▶ stepper moves the view back to past days, so
+// a backdated capture ("on 25th June I had egg curry for dinner") shows up on the
+// right day. On every day we RECONCILE that day's logged rows against the plan —
+// a free-form/voice/LLM log that matches a plan item auto-ticks it (strong match)
+// or shows a faint "suggested" tick (weak match) you can confirm. A logged item
+// with no plan match (e.g. "cake") still feeds the gauges; it just isn't a tick.
 
-import { planForDate, MACRO_TARGETS } from "../domain/diet/plan.js";
+import { planForDate } from "../domain/diet/plan.js";
+import { reconcilePlan, logsOnDate } from "../domain/diet/reconcile.js";
 import { nutrientsSoFar, gauge } from "../domain/diet/nutrients.js";
 import { resolveDietTargets } from "../domain/goals.js";
 import { getSupabaseClient } from "../services/supabase-client.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
+import { fetchDayLogs } from "../services/supabase-data.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 
 const CONTAINER = "#dietPlan";
 const STATE_PREFIX = "trackerz.diet.v1.";
 
-function dayKey(date = new Date()) {
+// The day the hub is currently showing (defaults to today). The stepper moves it.
+let _viewDate = startOfDay(new Date());
+// Reconciled matches for the view date: { [itemId]: { source, confidence, recordId, table } }.
+let _recon = {};
+// The view date's food rows (drives the macro/micro gauges).
+let _dayFood = [];
+// Latest appState snapshot, so async re-renders can reuse budgets/foodLogs.
+let _appState = null;
+// Guards the async reconcile fetch so the subscribe→render loop can't stack it.
+let _reconInFlight = false;
+
+function startOfDay(date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate()); }
+function dayKey(date = _viewDate) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function isViewingToday() { return dayKey(_viewDate) === dayKey(startOfDay(new Date())); }
+// Noon of the view date, so a manual check on a past day logs to THAT day.
+function occurredAtFor() {
+  if (isViewingToday()) return new Date().toISOString();
+  return new Date(_viewDate.getFullYear(), _viewDate.getMonth(), _viewDate.getDate(), 12, 0, 0).toISOString();
 }
 
 function loadDayState(key) {
@@ -29,42 +56,33 @@ function canSync() {
   return Boolean(getCurrentSession()?.user?.id) && !isLocalSession();
 }
 
-// Today's actually-logged food (set from app-state on render). The macro/micro
-// scales reflect what was LOGGED today — via capture OR check-off — not just plan
-// check-offs, so anything you log moves the gauges.
-let _todayFood = [];
-function isToday(iso) {
-  if (!iso) return false;
-  const d = new Date(iso); const n = new Date();
-  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
-}
 function sumFood(key) {
-  return _todayFood.reduce((a, f) => a + Number(f[key] || 0), 0);
+  return _dayFood.reduce((a, f) => a + Number(f[key] || 0), 0);
 }
 
 // Resolve a checklist item id -> { table, payload } for Supabase logging.
 function logSpecFor(itemId, plan) {
   const userId = getCurrentSession()?.user?.id;
   if (!userId) return null;
-  const now = new Date().toISOString();
+  const at = occurredAtFor();
   if (itemId.startsWith("meal-")) {
     const meal = plan.meals.find((m) => m.id === itemId);
     if (!meal) return null;
     return { table: "food_logs", payload: {
       user_id: userId, meal_slot: meal.slot, meal_name: meal.name, description: meal.detail,
       calories_estimate: meal.macros.calories, protein_g: meal.macros.protein_g,
-      carbs_g: meal.macros.carbs_g, fat_g: meal.macros.fat_g, confidence: 1, occurred_at: now,
+      carbs_g: meal.macros.carbs_g, fat_g: meal.macros.fat_g, confidence: 1, occurred_at: at,
     } };
   }
   if (itemId.startsWith("workout-") || itemId.startsWith("walk-")) {
     return { table: "workout_logs", payload: {
       user_id: userId, description: `${plan.workout.name} (${plan.weekdayName})`,
-      duration_min: plan.workout.duration_min, intensity: plan.workout.kind, occurred_at: now,
+      duration_min: plan.workout.duration_min, intensity: plan.workout.kind, occurred_at: at,
     } };
   }
   if (itemId.startsWith("water-")) {
     const w = plan.water.find((x) => x.id === itemId);
-    return { table: "hydration_logs", payload: { user_id: userId, ml: w?.ml || 0, occurred_at: now } };
+    return { table: "hydration_logs", payload: { user_id: userId, ml: w?.ml || 0, occurred_at: at } };
   }
   return null; // supplements + prep: local-only check-offs
 }
@@ -80,12 +98,28 @@ async function deleteLog(table, id) {
   await supabase.from(table).delete().eq("id", id);
 }
 
-function item(plan, state, { id, time, name, detail, table }) {
-  const done = Boolean(state[id]?.done);
-  return `<label class="diet-item${done ? " is-done" : ""}">
-    <input type="checkbox" data-diet-id="${id}"${done ? " checked" : ""} />
+// Effective check state for an item, merging manual localStorage state with the
+// reconciled match. Manual state wins (an explicit tap/untap is intentional).
+function resolveItem(id, state) {
+  const manual = state[id];
+  if (manual && "done" in manual) {
+    return { done: Boolean(manual.done), source: manual.source || "manual", recordId: manual.recordId, table: manual.table };
+  }
+  const r = _recon[id];
+  if (r?.source === "auto") return { done: true, source: "auto", recordId: r.recordId, table: r.table };
+  if (r?.source === "suggested") return { done: false, source: "suggested", recordId: r.recordId, table: r.table };
+  return { done: false, source: null };
+}
+
+function item(plan, state, { id, time, name, detail }) {
+  const r = resolveItem(id, state);
+  const cls = [r.done ? "is-done" : "", r.source === "auto" ? "is-auto" : "", r.source === "suggested" ? "is-suggested" : ""].filter(Boolean).join(" ");
+  const badge = r.source === "auto" ? '<span class="diet-auto" title="Auto-logged from a capture">auto</span>'
+    : r.source === "suggested" ? '<span class="diet-suggest" title="Looks logged — tap to confirm">suggested</span>' : "";
+  return `<label class="diet-item${cls ? " " + cls : ""}">
+    <input type="checkbox" data-diet-id="${id}"${r.done ? " checked" : ""} />
     <span class="diet-time">${time || ""}</span>
-    <span class="diet-body"><span class="diet-name">${name}</span>${detail ? `<span class="diet-detail">${detail}</span>` : ""}</span>
+    <span class="diet-body"><span class="diet-name">${name}${badge}</span>${detail ? `<span class="diet-detail">${detail}</span>` : ""}</span>
   </label>`;
 }
 
@@ -100,16 +134,14 @@ function macroTally(plan) {
   </div>`;
 }
 
-// Full macro + micro panel driven by TODAY'S LOGGED FOOD. Calories/protein/carbs/
-// fat are summed from the real food_logs; fiber/sat-fat/micros (which logged food
-// doesn't carry) stay proportional estimates scaled to calories-vs-target.
+// Full macro + micro panel driven by the VIEW DATE'S LOGGED FOOD. Calories/protein/
+// carbs/fat are summed from the real food_logs; fiber/sat-fat/micros (which logged
+// food doesn't carry) stay proportional estimates scaled to calories-vs-target.
 function nutrientPanel(plan) {
   const cal = sumFood("calories_estimate");
   const frac = plan.macroTargets.calories ? cal / plan.macroTargets.calories : 0;
   const rows = nutrientsSoFar(plan.dietType, frac);
   const actual = { calories: cal, protein: sumFood("protein_g"), carbs: sumFood("carbs_g"), fat: sumFood("fat_g") };
-  // The macro-row TARGETS come from the scaffold (plan meals), so the panel and
-  // the meals below it always agree — no second hardcoded target source.
   const targetFromScaffold = { calories: "calories", protein: "protein_g", carbs: "carbs_g", fat: "fat_g", fiber: "fiber_g" };
   for (const r of rows) {
     if (r.key in actual) r.current = Math.round(actual[r.key] * 100) / 100;
@@ -132,31 +164,47 @@ function nutrientPanel(plan) {
       </div>`;
     }).join("")}</div>`;
   };
-  return `<details class="nutrients"><summary>Macros &amp; micros — from today's logs (${Math.round(frac * 100)}% of calorie target · micros estimated · centre = target)</summary>${["macro", "mineral", "vitamin"].map(section).join("")}</details>`;
+  return `<details class="nutrients"><summary>Macros &amp; micros — from the day's logs (${Math.round(frac * 100)}% of calorie target · micros estimated · centre = target)</summary>${["macro", "mineral", "vitamin"].map(section).join("")}</details>`;
 }
 
-function countDone(ids, state) { return ids.filter((id) => state[id]?.done).length; }
+function countDone(ids, state) { return ids.filter((id) => resolveItem(id, state).done).length; }
+
+// Date stepper. ◀ goes back a day, ▶ forward (never past today), "Today" jumps
+// back to today when you're in the past.
+function dateStepper() {
+  const today = isViewingToday();
+  const label = today ? "Today" : _viewDate.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+  return `<div class="diet-datebar">
+    <button type="button" class="diet-step" data-diet-step="-1" aria-label="Previous day">◀</button>
+    <span class="diet-date">${label}</span>
+    <button type="button" class="diet-step" data-diet-step="1" aria-label="Next day"${today ? " disabled" : ""}>▶</button>
+    ${today ? "" : '<button type="button" class="diet-today" data-diet-today>Today</button>'}
+  </div>`;
+}
 
 export function renderDietPlan(appState) {
   const el = document.querySelector(CONTAINER);
   if (!el) return;
-  if (appState && Array.isArray(appState.foodLogs)) _todayFood = appState.foodLogs.filter((f) => isToday(f.occurred_at));
-  const today = new Date();
-  const plan = planForDate(today);
-  // Single source of truth: an explicit calorie/protein GOAL (set on the Diet
-  // page, stored in budgets) overrides the scaffold-derived targets, so editing
-  // the goal anywhere moves these gauges too.
-  plan.macroTargets = resolveDietTargets(appState?.budgets, plan.macroTargets);
-  const state = loadDayState(dayKey(today));
+  if (appState) _appState = appState;
+
+  const plan = planForDate(_viewDate);
+  // When viewing today and not signed in (no fetched rows), fall back to the
+  // appState food snapshot so the local-only flow still shows gauges.
+  if (isViewingToday() && !_dayFood.length && Array.isArray(_appState?.foodLogs)) {
+    _dayFood = logsOnDate(_appState.foodLogs, _viewDate);
+  }
+
+  plan.macroTargets = resolveDietTargets(_appState?.budgets, plan.macroTargets);
+  const state = loadDayState(dayKey(_viewDate));
 
   const mealIds = plan.meals.map((m) => m.id);
   const waterIds = plan.water.map((w) => w.id);
-  const supIds = plan.supplements.map((s) => s.id);
 
   el.innerHTML = `
+    ${dateStepper()}
     <div class="panel-title-row">
       <div>
-        <p class="eyebrow">Today · ${plan.weekdayName}</p>
+        <p class="eyebrow">${isViewingToday() ? "Today" : "Showing"} · ${plan.weekdayName}</p>
         <h2>${plan.dietLabel} · ${plan.workout.name}</h2>
       </div>
       <span class="metric-badge">${countDone(mealIds, state)}/4 meals</span>
@@ -180,7 +228,7 @@ export function renderDietPlan(appState) {
     </div>
 
     <div class="diet-section">
-      <p class="diet-head">💧 Water <span class="diet-detail">${countDone(waterIds, state) ? `${plan.water.filter((w) => state[w.id]?.done).reduce((a, w) => a + w.ml, 0)} ml` : "target 3.4–3.5 L"}</span></p>
+      <p class="diet-head">💧 Water <span class="diet-detail">${countDone(waterIds, state) ? `${plan.water.filter((w) => resolveItem(w.id, state).done).reduce((a, w) => a + w.ml, 0)} ml` : "target 3.4–3.5 L"}</span></p>
       ${plan.water.map((w) => item(plan, state, { id: w.id, time: w.time, name: w.label, detail: `${w.ml} ml` })).join("")}
     </div>
 
@@ -188,8 +236,38 @@ export function renderDietPlan(appState) {
       <p class="diet-head">📋 Prep tonight — for tomorrow (${plan.tomorrowName} · ${plan.tomorrowDietLabel})</p>
       ${plan.prepForTomorrow.map((p) => item(plan, state, { id: p.id, time: "", name: p.text })).join("")}
     </div>
-    ${supIds.length ? "" : ""}
   `;
+
+  // When fresh app state arrives (e.g. a capture just landed) and we're on today,
+  // reconcile that day's logs so new captures auto-tick their plan items.
+  if (appState && isViewingToday() && canSync() && !_reconInFlight) reconcileViewDate();
+}
+
+// Fetch the view date's logged rows and reconcile them into _recon, then re-render
+// so auto/suggested ticks appear. Best-effort: failures leave manual state intact.
+async function reconcileViewDate() {
+  if (!canSync()) { _recon = {}; return; }
+  if (_reconInFlight) return;
+  _reconInFlight = true;
+  try {
+    const logs = await fetchDayLogs(_viewDate);
+    _dayFood = logs.foodLogs;
+    const plan = planForDate(_viewDate);
+    _recon = reconcilePlan(plan, logs);
+  } catch {
+    _recon = {};
+  } finally {
+    _reconInFlight = false;
+  }
+  renderDietPlan();
+}
+
+function goToDate(date) {
+  _viewDate = startOfDay(date);
+  _recon = {};
+  _dayFood = [];
+  renderDietPlan();
+  reconcileViewDate();
 }
 
 let bound = false;
@@ -198,35 +276,64 @@ export function bindDietPlan() {
   bound = true;
   const el = document.querySelector(CONTAINER);
   if (!el) return;
+
+  // Date stepper.
+  el.addEventListener("click", (event) => {
+    const step = event.target.closest("[data-diet-step]");
+    if (step) {
+      const delta = Number(step.dataset.dietStep);
+      const next = new Date(_viewDate); next.setDate(_viewDate.getDate() + delta);
+      if (delta > 0 && startOfDay(next) > startOfDay(new Date())) return; // no future
+      goToDate(next);
+      return;
+    }
+    if (event.target.closest("[data-diet-today]")) goToDate(new Date());
+  });
+
   el.addEventListener("change", async (event) => {
     const cb = event.target.closest("input[type=checkbox][data-diet-id]");
     if (!cb) return;
     const id = cb.dataset.dietId;
-    const key = dayKey();
+    const key = dayKey(_viewDate);
     const state = loadDayState(key);
-    const plan = planForDate(new Date());
+    const plan = planForDate(_viewDate);
+    const match = _recon[id]; // an existing logged row this item matched
 
     if (cb.checked) {
-      state[id] = { done: true };
-      saveDayState(key, state);
-      const spec = canSync() ? logSpecFor(id, plan) : null;
-      if (spec) {
-        try {
-          const rec = await insertLog(spec);
-          state[id] = { done: true, recordId: rec.id, table: spec.table };
-          saveDayState(key, state);
-        } catch { /* keep the local check even if the sync write fails */ }
+      // If a real row already backs this item (auto/suggested), accept it — don't
+      // insert a duplicate; remember its id so unchecking can delete it.
+      if (match?.recordId) {
+        state[id] = { done: true, source: match.source, recordId: match.recordId, table: match.table };
+        saveDayState(key, state);
+      } else {
+        state[id] = { done: true, source: "manual" };
+        saveDayState(key, state);
+        const spec = canSync() ? logSpecFor(id, plan) : null;
+        if (spec) {
+          try {
+            const rec = await insertLog(spec);
+            state[id] = { done: true, source: "manual", recordId: rec.id, table: spec.table };
+            saveDayState(key, state);
+          } catch { /* keep the local check even if the sync write fails */ }
+        }
       }
     } else {
       const prev = state[id];
-      delete state[id];
+      const recordId = prev?.recordId || match?.recordId;
+      const table = prev?.table || match?.table;
+      // Persist an explicit "off" so a reconciled auto-match doesn't re-tick it.
+      state[id] = { done: false, source: "manual" };
       saveDayState(key, state);
-      if (prev?.recordId && prev?.table && canSync()) {
-        try { await deleteLog(prev.table, prev.recordId); } catch { /* best effort */ }
+      if (recordId && table && canSync()) {
+        try { await deleteLog(table, recordId); } catch { /* best effort */ }
+        delete _recon[id];
       }
     }
-    // Re-hydrate so the additions feed + glance metrics on Home update too.
-    if (canSync()) hydrateStateFromSupabase().catch(() => {});
-    renderDietPlan();
+    if (canSync()) {
+      hydrateStateFromSupabase().catch(() => {});
+      reconcileViewDate();
+    } else {
+      renderDietPlan();
+    }
   });
 }
