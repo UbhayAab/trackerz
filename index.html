@@ -39,14 +39,15 @@
           <div class="capture-actions capture-actions-big">
             <label class="file-chip file-chip-icon" aria-label="Camera">
               <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
-              <span aria-hidden="true">📷</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L8 6.5H4.5A1.5 1.5 0 0 0 3 8v10.5A1.5 1.5 0 0 0 4.5 20h15a1.5 1.5 0 0 0 1.5-1.5V8a1.5 1.5 0 0 0-1.5-1.5H16L14.5 4Z" /><circle cx="12" cy="13" r="3.3" /></svg>
             </label>
             <label class="file-chip file-chip-icon" aria-label="Files">
               <input id="fileInput" type="file" multiple accept="image/*,audio/*,.csv,.xls,.xlsx,.pdf,.txt" hidden />
-              <span aria-hidden="true">📎</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.05 12.25 20.2a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 0 1 4.24 4.24l-9.2 9.19a1 1 0 0 1-1.41-1.41l8.49-8.48" /></svg>
             </label>
             <button id="voiceButton" class="secondary-button voice-button" type="button">
-              <span aria-hidden="true">🎤</span> Voice
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+              <span class="voice-label">Voice</span>
             </button>
             <button id="submitCapture" class="primary-button submit-button" type="button">Process</button>
           </div>

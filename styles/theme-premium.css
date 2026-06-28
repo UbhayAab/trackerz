@@ -109,8 +109,12 @@ main > section + section { margin-top: var(--sp-3); }
   display: grid;
   place-items: center;
 }
-.file-chip-icon { font-size: 1.35rem; }
+.file-chip-icon { font-size: 1.35rem; color: var(--ink-soft); }
+.file-chip-icon svg { width: 23px; height: 23px; }
 .file-chip:hover { background: var(--chip); }
+.file-chip-icon:hover { color: var(--accent); border-color: var(--accent); }
+.voice-button { display: inline-flex; align-items: center; gap: 6px; }
+.voice-button svg { width: 18px; height: 18px; }
 
 /* ---- Pills + badges: neutral, quiet ---- */
 .status-pill,
