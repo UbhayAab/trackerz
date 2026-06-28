@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { expandToolCalls, looksLikeFood, mealSlotFromTime, extractAmount, resolveOccurredAt } from "../lib/fan-out-expander.mjs";
+import { expandToolCalls, looksLikeFood, looksLikePurchase, mealSlotFromTime, extractAmount, resolveOccurredAt } from "../lib/fan-out-expander.mjs";
 
 const NOW = "2026-06-26T10:00:00+05:30"; // a fixed "today" for deterministic dates
 const has = (calls, name) => calls.filter((t) => t.name === name);
@@ -15,6 +15,14 @@ assert.ok(looksLikeFood("rose milk and mushroom sandwich"));
 assert.ok(!looksLikeFood("fuel"));
 assert.ok(!looksLikeFood("Amazon order"));
 assert.ok(!looksLikeFood("call the bank tomorrow"));
+
+// buying provisions is a purchase; actually eating is not
+assert.ok(looksLikePurchase("Just bought curd and paneer 640"));
+assert.ok(looksLikePurchase("curd and cheese for the week 641"));
+assert.ok(looksLikePurchase("grocery run 2300"));
+assert.ok(!looksLikePurchase("had 4 eggs and 1 roti"), "eating is not a purchase");
+assert.ok(!looksLikePurchase("bought a sandwich and ate it"), "consumption cue overrides");
+assert.ok(!looksLikePurchase("spent 120 on rose milk and sandwich"), "spent-on-prepared-food is not a grocery run");
 
 assert.equal(mealSlotFromTime("2026-06-23T13:00:00+05:30"), "lunch");
 assert.equal(mealSlotFromTime("2026-06-23T08:00:00+05:30"), "breakfast");
@@ -128,6 +136,36 @@ const review = (reason = "domain unclear") => [{ name: "request_user_review", ar
   assert.equal(food.arguments.meal_slot, "snack");
   assert.ok(food.arguments.description.includes("coffee"));
   assert.equal(has(r, "request_user_review").length, 0);
+}
+
+// ---------------------------------------------------------------------------
+// BUYING vs EATING — a grocery purchase is an expense, never a meal
+// ---------------------------------------------------------------------------
+
+// Model emits expense + (wrong) food log for a grocery run -> food dropped.
+{
+  const r = expandToolCalls(
+    [{ name: "create_expense_candidate", arguments: { amount: 640, merchant: "groceries", description: "curd and paneer", occurred_at: NOW, is_discretionary: false }, confidence: 0.9 },
+     { name: "create_food_log_candidate", arguments: { description: "curd and paneer", occurred_at: NOW }, confidence: 0.85 }],
+    { evidence: "Just bought curd and paneer 640", now: NOW },
+  );
+  assert.equal(has(r, "create_expense_candidate").length, 1, "expense kept");
+  assert.equal(has(r, "create_food_log_candidate").length, 0, "grocery is not a meal");
+}
+
+// "curd and cheese for the week 641" -> no food fan-out / salvage.
+{
+  const r = expandToolCalls(
+    [{ name: "create_expense_candidate", arguments: { amount: 641, merchant: "curd and cheese", occurred_at: NOW }, confidence: 0.8 }],
+    { evidence: "Just bought curd and cheese for the week 641", now: NOW },
+  );
+  assert.equal(has(r, "create_food_log_candidate").length, 0, "no phantom meal from a weekly grocery buy");
+}
+
+// But cooking + eating some of it IS a meal.
+{
+  const r = expandToolCalls(review(), { evidence: "dinner: base veg + 40 g paneer and curd", now: NOW });
+  assert.equal(has(r, "create_food_log_candidate").length, 1, "an eaten meal still logs");
 }
 
 // ---------------------------------------------------------------------------
