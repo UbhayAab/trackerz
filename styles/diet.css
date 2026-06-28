@@ -112,3 +112,19 @@
 .additions-feed .add-dismiss { border: 0; background: transparent; font-size: 1rem; line-height: 1; min-width: 36px; min-height: 36px; cursor: pointer; opacity: 0.55; }
 .additions-feed .add-dismiss:active { opacity: 1; }
 .additions-feed .add-undo { border: 1px solid rgba(56,118,212,0.5); background: transparent; color: inherit; font-size: 0.78rem; padding: 4px 10px; border-radius: 8px; min-height: 32px; cursor: pointer; }
+
+/* Workout exercises as readable rows: name left, sets×reps / duration as an
+   accent chip on the right — instead of one run-on " · " string. */
+#dietPlan .workout-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
+#dietPlan .workout-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: rgba(127, 127, 127, 0.05);
+}
+#dietPlan .workout-name { font-weight: var(--weight-medium); color: var(--ink); overflow-wrap: anywhere; }
+#dietPlan .workout-meta {
+  flex: none; white-space: nowrap; font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold); font-size: var(--fs-xs);
+  color: var(--accent); background: var(--accent-soft);
+  border-radius: var(--radius-pill); padding: 3px 10px;
+}

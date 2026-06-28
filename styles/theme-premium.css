@@ -57,6 +57,7 @@ main > section + section { margin-top: var(--sp-3); }
 .metric-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
+  background: var(--panel);
   box-shadow: var(--shadow-sm);
   padding: var(--sp-4);
 }
@@ -370,3 +371,22 @@ main > section + section { margin-top: var(--sp-3); }
 }
 :root[data-theme="dark"] .data-table tbody tr:hover { background: rgba(47, 185, 133, 0.08); }
 :root[data-theme="dark"] .table-action:hover { color: var(--accent); border-color: var(--accent); }
+:root[data-theme="dark"] .map-chip.is-missing { background: rgba(217, 164, 65, 0.14); border-color: rgba(217, 164, 65, 0.4); }
+:root[data-theme="dark"] .secondary-button,
+:root[data-theme="dark"] .voice-button,
+:root[data-theme="dark"] .table-action { background: var(--panel-2); }
+
+/* ============================================================================
+   Layout safety — kill the horizontal overflow that shifts the page off-centre
+   and makes it look "zoomed in". Nothing should be able to exceed the viewport
+   width; long unbroken strings (emails, UIDs, URLs) wrap instead of stretching.
+   ========================================================================== */
+html, body { max-width: 100%; overflow-x: hidden; }
+.app-shell, .page-shell { width: 100%; max-width: 100%; overflow-x: clip; }
+main, .command-grid, .dashboard-grid, .summary-rail { min-width: 0; }
+/* Topbar children must be allowed to shrink so a long title/email can't push width. */
+.topbar { gap: var(--sp-2); }
+.topbar > div { min-width: 0; }
+.topbar h1, .topbar-title, .topbar .eyebrow { overflow-wrap: anywhere; }
+/* Account/identity strings (settings) wrap rather than stretch the layout. */
+#accountEmail, #accountUid { overflow-wrap: anywhere; word-break: break-all; }

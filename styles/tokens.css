@@ -38,6 +38,8 @@
   --line: #eae9e3;
   --line-strong: #dcdbd3;
   --chip: #f0f0eb;
+  --panel-warm: #fbf6ec;
+  --surface: #ffffff;
   --charcoal: #17191e;
 
   /* ---- Accent: ONE deliberate colour, used sparingly (primary action + money) ---- */
@@ -94,6 +96,8 @@
   --line: rgba(255, 255, 255, 0.09);
   --line-strong: rgba(255, 255, 255, 0.16);
   --chip: #252c28;
+  --panel-warm: #21231c;
+  --surface: #181d1a;
   --charcoal: #eaece9;     /* "ink" surface flips to light in dark mode */
 
   --accent: #2fb985;
