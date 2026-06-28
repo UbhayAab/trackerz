@@ -124,7 +124,7 @@
   min-height: 44px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: #ffffff;
+  background: var(--panel);
   color: var(--ink);
   font-weight: var(--weight-semibold);
   transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
@@ -151,7 +151,7 @@
 
 .secondary-button {
   border-color: var(--line);
-  background: #ffffff;
+  background: var(--panel);
   color: var(--ink);
 }
 
@@ -208,7 +208,7 @@
   width: min(360px, calc(100vw - 24px));
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--panel);
   box-shadow: var(--shadow);
   padding: 14px;
 }
@@ -354,7 +354,7 @@
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--panel);
   color: var(--ink);
   font-weight: var(--weight-semibold);
   font-size: 0.95rem;

@@ -109,7 +109,7 @@
   margin: 3px 5px 3px 0;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--panel);
   color: var(--ink);
   font-size: 0.76rem;
   font-weight: var(--weight-semibold);
@@ -134,7 +134,7 @@
   gap: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: #ffffff;
+  background: var(--panel);
   padding: 14px;
 }
 

@@ -125,7 +125,7 @@
   resize: vertical;
   padding: 16px;
   color: var(--ink);
-  background: #ffffff;
+  background: var(--panel);
   outline: none;
   font-size: 1.02rem;
   line-height: 1.5;
@@ -238,7 +238,7 @@
   gap: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: #ffffff;
+  background: var(--panel);
   padding: 14px;
   transition: opacity 160ms ease;
 }
@@ -285,7 +285,7 @@
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 6px 10px;
-  background: #ffffff;
+  background: var(--panel);
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: var(--weight-semibold);

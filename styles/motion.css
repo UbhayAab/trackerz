@@ -1,0 +1,103 @@
+/* ============================================================================
+   Motion layer. Fast, intentional, calm. Animate only transform + opacity.
+   All entrances/transforms collapse under prefers-reduced-motion. See
+   docs/design-system.md for the budget.
+   ========================================================================== */
+
+@keyframes tz-fade-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes tz-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes tz-pop {
+  0%   { opacity: 0; transform: scale(.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ---- Section entrances: staggered fade + rise on first paint. Capped at 6. */
+main > section {
+  animation: tz-fade-rise var(--dur-entrance) var(--ease-emphasized) both;
+}
+main > section:nth-child(1) { animation-delay: 0ms; }
+main > section:nth-child(2) { animation-delay: calc(var(--stagger) * 1); }
+main > section:nth-child(3) { animation-delay: calc(var(--stagger) * 2); }
+main > section:nth-child(4) { animation-delay: calc(var(--stagger) * 3); }
+main > section:nth-child(5) { animation-delay: calc(var(--stagger) * 4); }
+main > section:nth-child(n + 6) { animation-delay: calc(var(--stagger) * 5); }
+
+/* ---- Utility classes for JS-rendered content ---- */
+.tz-enter { animation: tz-fade-rise var(--dur-base) var(--ease-emphasized) both; }
+.tz-fade-in { animation: tz-fade var(--dur-base) var(--ease-standard) both; }
+.tz-pop { animation: tz-pop var(--dur-fast) var(--ease-spring) both; }
+
+/* Staggered list/table-row reveal (set on a container; children fade in). */
+.tz-stagger > * { animation: tz-fade var(--dur-base) var(--ease-standard) both; }
+.tz-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.tz-stagger > *:nth-child(2) { animation-delay: calc(var(--stagger) * 1); }
+.tz-stagger > *:nth-child(3) { animation-delay: calc(var(--stagger) * 2); }
+.tz-stagger > *:nth-child(4) { animation-delay: calc(var(--stagger) * 3); }
+.tz-stagger > *:nth-child(5) { animation-delay: calc(var(--stagger) * 4); }
+.tz-stagger > *:nth-child(n + 6) { animation-delay: calc(var(--stagger) * 5); }
+
+/* ---- Smooth, contained theme cross-fade on the surfaces that change ---- */
+body,
+.command-panel, .ai-panel, .analytics-panel, .cost-panel, .flow-panel,
+.pipeline-panel, .capture-panel, .metric-card, .summary-tile,
+.data-table-wrap, .dropzone, .status-pill, .bottom-nav, .nav-item,
+.primary-button, .secondary-button, .ghost-button, .settings-row {
+  transition:
+    background-color var(--dur-base) var(--ease-standard),
+    border-color var(--dur-base) var(--ease-standard),
+    color var(--dur-base) var(--ease-standard);
+}
+
+/* ---- Card hover lift (devices with a real pointer only) ---- */
+@media (hover: hover) {
+  .metric-card, .summary-tile {
+    transition:
+      transform var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard),
+      background-color var(--dur-base) var(--ease-standard),
+      border-color var(--dur-base) var(--ease-standard);
+  }
+  .metric-card:hover, .summary-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+  }
+}
+
+/* ---- Theme toggle control (injected into the topbar by theme.js) ---- */
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 38px; height: 38px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard),
+              transform var(--dur-instant) var(--ease-standard);
+}
+.theme-toggle:hover { background: var(--chip); color: var(--ink); }
+.theme-toggle:active { transform: translateY(1px); }
+.theme-toggle svg { width: 18px; height: 18px; }
+.topbar-actions { display: inline-flex; align-items: center; gap: var(--sp-2); }
+
+/* ============================================================================
+   Reduced motion — strip entrances and per-frame transforms. Keep instant
+   opacity only. Non-negotiable.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.001ms !important;
+  }
+  main > section { animation: none; }
+  .metric-card:hover, .summary-tile:hover { transform: none; }
+}
