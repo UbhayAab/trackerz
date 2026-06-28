@@ -164,7 +164,7 @@
 }
 
 .capture-actions .file-chip:hover {
-  background: #ecebe4;
+  background: var(--chip);
   border-color: var(--line-strong);
 }
 
@@ -346,7 +346,7 @@
 
 .quick-chip:hover,
 .flow-filter:hover {
-  background: #ecebe4;
+  background: var(--chip);
   border-color: var(--line);
 }
 

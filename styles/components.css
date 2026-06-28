@@ -74,7 +74,7 @@
 .insight-good .insight-dot { background: #15a06b; }
 .insight-warning { border-left: 3px solid #d97706; }
 .insight-warning .insight-dot { background: #d97706; }
-.insight-critical { border-left: 3px solid #dc2626; background: #fef2f2; }
+.insight-critical { border-left: 3px solid #dc2626; background: color-mix(in srgb, var(--risk) 10%, var(--panel)); }
 .insight-critical .insight-dot { background: #dc2626; }
 .insight-empty { color: var(--muted); border-style: dashed; grid-template-columns: 1fr; }
 
@@ -157,7 +157,7 @@
 
 .secondary-button:hover {
   border-color: var(--ink-soft);
-  background: #fafaf6;
+  background: var(--panel-2);
 }
 
 .mode-card.active,
@@ -341,7 +341,7 @@
   margin: 10px 0 4px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fbfcfa;
+  background: var(--panel-2);
   padding: 12px;
 }
 
@@ -364,7 +364,7 @@
 }
 
 .oauth-button:hover {
-  background: #f6f6f7;
+  background: var(--chip);
   border-color: var(--ink);
 }
 

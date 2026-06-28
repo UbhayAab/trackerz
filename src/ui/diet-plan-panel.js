@@ -123,6 +123,26 @@ function item(plan, state, { id, time, name, detail }) {
   </label>`;
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+}
+
+// One exercise string -> a readable row: name on the left, the sets×reps or
+// duration pulled out as an accent chip on the right.
+function formatExercise(raw) {
+  const s = String(raw).trim();
+  let name = s, meta = "";
+  const sr = s.match(/(\d+)\s*[x×]\s*(\d+)\s*$/i);
+  const dur = s.match(/(\d+)\s*min\b/i);
+  if (sr) { name = s.slice(0, sr.index).trim(); meta = `${sr[1]}×${sr[2]}`; }
+  else if (dur) { meta = `${dur[1]} min`; name = s.replace(dur[0], "").replace(/\s{2,}/g, " ").trim(); }
+  return `<li class="workout-row"><span class="workout-name">${escapeHtml(name)}</span>${meta ? `<span class="workout-meta">${escapeHtml(meta)}</span>` : ""}</li>`;
+}
+
+function workoutMeta(w) {
+  return [w.duration_min ? `${w.duration_min} min` : "", w.kind || ""].filter(Boolean).join(" · ");
+}
+
 function macroTally(plan) {
   const cal = Math.round(sumFood("calories_estimate"));
   const protein = Math.round(sumFood("protein_g"));
@@ -219,7 +239,8 @@ export function renderDietPlan(appState) {
 
     <div class="diet-section">
       <p class="diet-head">🏋️ ${plan.workout.name} <span class="diet-detail">${plan.workout.rules || ""}</span></p>
-      ${item(plan, state, { id: plan.workout.id, time: "", name: plan.workout.items.join(" · ") })}
+      ${item(plan, state, { id: plan.workout.id, time: "", name: "Log this workout", detail: workoutMeta(plan.workout) })}
+      <ul class="workout-list">${plan.workout.items.map(formatExercise).join("")}</ul>
     </div>
 
     <div class="diet-section">
