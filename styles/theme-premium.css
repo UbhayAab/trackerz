@@ -189,3 +189,151 @@ main > section + section { margin-top: var(--sp-3); }
 
 /* ---- Version stamp: quieter ---- */
 .version-stamp { font-size: 0.62rem; color: var(--muted-soft); }
+
+/* ============================================================================
+   Button states — explicit press + disabled (default/hover above; here:
+   active/disabled). A pressed button sinks 1px and drops its shadow.
+   ========================================================================== */
+.primary-button:active,
+.submit-button:active,
+.secondary-button:active,
+.voice-button:active,
+.ghost-button:active { transform: translateY(1px); box-shadow: none; }
+.primary-button:disabled,
+.submit-button:disabled,
+.secondary-button:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+/* Ghost (secondary, zero-fill) action. */
+.ghost-button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-soft);
+  border-radius: 12px;
+  padding: 11px 16px;
+  font-weight: var(--weight-semibold);
+  font-family: inherit;
+  cursor: pointer;
+}
+.ghost-button:hover { background: var(--chip); }
+
+/* ============================================================================
+   Statement importer — premium dropzone + result card. Four states on the
+   wrapper: idle / dragover / parsing / parsed (+ inline error).
+   ========================================================================== */
+.importer { display: grid; gap: var(--sp-4); }
+
+.dropzone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: var(--sp-2);
+  text-align: center;
+  padding: var(--sp-6) var(--sp-4);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .12s ease;
+}
+.dropzone:hover { border-color: var(--accent); background: var(--accent-soft); }
+.dropzone:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dropzone.is-dragover {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+.dropzone-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dropzone-icon {
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+  transition: transform .18s ease;
+}
+.dropzone:hover .dropzone-icon { transform: translateY(-2px); }
+.dropzone-icon svg { width: 22px; height: 22px; }
+.dropzone-title { font-weight: var(--weight-semibold); font-size: var(--fs-md); color: var(--ink); letter-spacing: -0.01em; }
+.dropzone-hint { font-size: var(--fs-sm); color: var(--muted); }
+.dropzone-link { color: var(--accent); font-weight: var(--weight-semibold); }
+.dropzone-file {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm); font-weight: var(--weight-semibold); color: var(--ink);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.dropzone-file::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.importer[data-state="parsing"] .dropzone,
+.importer[data-state="importing"] .dropzone { pointer-events: none; opacity: 0.75; }
+
+/* result card */
+.import-result { display: grid; gap: var(--sp-3); }
+.import-result[hidden] { display: none; }
+
+.import-summary {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.import-summary-label { display: block; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: var(--weight-semibold); }
+.import-summary-value { display: block; font-size: var(--fs-2xl); line-height: 1.1; font-weight: var(--weight-bold); letter-spacing: -.025em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.import-summary-sub { font-size: var(--fs-xs); color: var(--muted); }
+.import-summary-figures { display: grid; gap: 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.import-summary-figures .fig-debit { color: var(--risk); font-weight: var(--weight-semibold); }
+.import-summary-figures .fig-credit { color: var(--accent); font-weight: var(--weight-semibold); }
+.import-summary-figures em { color: var(--muted); font-style: normal; font-weight: var(--weight-medium); font-size: var(--fs-xs); margin-left: 6px; text-transform: uppercase; letter-spacing: .04em; }
+
+.import-mapping { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.map-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: var(--radius-pill);
+  background: var(--chip); border: 1px solid var(--line);
+  font-size: var(--fs-xs); color: var(--muted); font-weight: var(--weight-semibold);
+}
+.map-chip b { color: var(--ink); font-weight: var(--weight-semibold); }
+.map-chip.is-missing { color: var(--sun); border-color: color-mix(in srgb, var(--sun) 45%, var(--line)); background: #fbf4e6; }
+
+.import-foot-note { font-size: var(--fs-xs); color: var(--muted); margin: 0; }
+.import-error {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid color-mix(in srgb, var(--risk) 40%, var(--line));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--risk) 7%, var(--panel));
+  color: var(--risk); font-size: var(--fs-sm); font-weight: var(--weight-medium);
+}
+.import-footer { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+.import-footer[hidden] { display: none; }
+
+/* ============================================================================
+   Toast — slide-up confirmation chips (success / error). Lives above the nav.
+   ========================================================================== */
+.toast-host {
+  position: fixed; left: 0; right: 0;
+  bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+  display: grid; justify-items: center; gap: var(--sp-2);
+  padding: 0 var(--sp-4); z-index: 60; pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  max-width: min(440px, 92vw);
+  padding: 11px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--charcoal); color: #fff;
+  font-size: var(--fs-sm); font-weight: var(--weight-medium);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(140%); opacity: 0;
+  transition: transform .34s cubic-bezier(.22,1,.36,1), opacity .2s ease;
+}
+.toast.is-in { transform: translateY(0); opacity: 1; }
+.toast .toast-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.toast.is-error .toast-dot { background: #ff6b5e; }
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: opacity .2s ease; transform: none; }
+}
