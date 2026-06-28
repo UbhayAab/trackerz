@@ -199,4 +199,58 @@ const review = (reason = "domain unclear") => [{ name: "request_user_review", ar
   assert.equal(has(r, "create_expense_candidate").length, 1, "no duplicate expense");
 }
 
+// ---------------------------------------------------------------------------
+// EAT vs BUY — a grocery/stock purchase is an expense ONLY, never calories.
+// ---------------------------------------------------------------------------
+
+// "groceries for the week" -> expense salvaged, NO food_log (it wasn't eaten).
+{
+  const r = expandToolCalls(review(), { evidence: "groceries for the week — paneer and rice, paid 800", now: NOW });
+  assert.equal(one(r, "create_expense_candidate").arguments.amount, 800);
+  assert.equal(has(r, "create_food_log_candidate").length, 0, "groceries are not a meal");
+}
+
+// Even if the MODEL mis-logs groceries as food, the buy intent strips it.
+{
+  const r = expandToolCalls(
+    [{ name: "create_food_log_candidate", arguments: { description: "paneer", occurred_at: NOW }, confidence: 0.7 }],
+    { evidence: "bought paneer and bread, groceries for the week", now: NOW },
+  );
+  assert.equal(has(r, "create_food_log_candidate").length, 0, "model's grocery food_log is stripped on buy intent");
+}
+
+// A genuine eaten meal still fans out (regression guard for the buy gate).
+{
+  const r = expandToolCalls(review(), { evidence: "spent 250 on lunch at a cafe", now: NOW });
+  assert.ok(one(r, "create_expense_candidate"));
+  assert.ok(one(r, "create_food_log_candidate"), "eaten meal still logs calories");
+}
+
+// ---------------------------------------------------------------------------
+// GYM salvage — workout free text becomes a workout_log, even without "gym".
+// ---------------------------------------------------------------------------
+
+// "did Workout A ..." review-only -> a workout_log, review dropped.
+{
+  const r = expandToolCalls(review(), { evidence: "did Workout A, bench 3x10 60kg then leg press 2x12", now: NOW });
+  const w = one(r, "create_workout_log_candidate");
+  assert.ok(w.arguments.description.toLowerCase().includes("bench"));
+  assert.equal(has(r, "request_user_review").length, 0, "review dropped once the workout is captured");
+}
+
+// Cardio counts too.
+assert.ok(one(expandToolCalls(review(), { evidence: "ran 5k this morning", now: NOW }), "create_workout_log_candidate"));
+
+// Don't double a workout the model already emitted.
+{
+  const r = expandToolCalls(
+    [{ name: "create_workout_log_candidate", arguments: { description: "leg day", occurred_at: NOW }, confidence: 0.9 }],
+    { evidence: "did legs today, squat 60kg 3x8", now: NOW },
+  );
+  assert.equal(has(r, "create_workout_log_candidate").length, 1, "no duplicate workout");
+}
+
+// A grocery "run" is NOT a workout.
+assert.equal(has(expandToolCalls(review(), { evidence: "grocery run at dmart - 1200", now: NOW }), "create_workout_log_candidate").length, 0);
+
 console.log("fan-out-expander tests passed");

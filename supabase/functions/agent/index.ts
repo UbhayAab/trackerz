@@ -515,6 +515,21 @@ function looksLikePurchase(text: string): boolean {
   return PURCHASE_CUE.test(t) || FOR_LATER_CUE.test(t);
 }
 
+// Gym detection (mirror of looksLikeGym in lib/capture-intent.mjs). Exercise free
+// text is a workout even without the word "gym". "grocery run"/"errand run" are NOT.
+const GYM_CUE = /\b(workout|work out|gym|did legs|leg day|chest day|back day|push day|pull day|arm day|trained|training|lifted|bench|squat|deadlift|rdl|lat pulldown|cable row|leg press|leg curl|leg extension|shoulder press|overhead press|ohp|lateral raise|pushdown|db curl|dumbbell curl|bicep curl|goblet squat|incline press|machine (?:chest|shoulder) press|plank|dead bug)\b/i;
+const CARDIO_CUE = /\b(ran|run|running|jog\w*|walked|walking|treadmill|cycl\w*|elliptical|cardio|skipping|jump rope|swam|swim|steps)\b/i;
+const CARDIO_FALSE_FRIENDS = /\b(?:grocery|milk|beer|coffee|supply|errand)\s+run\b|\brun\s+(?:an?\s+)?errands?\b/;
+const GYM_SET_REP = /\d+\s*[x×]\s*\d+/i;
+function looksLikeGym(text: string): boolean {
+  const t = String(text || "").toLowerCase();
+  if (!t.trim()) return false;
+  if (GYM_CUE.test(t)) return true;
+  if (CARDIO_CUE.test(t.replace(CARDIO_FALSE_FRIENDS, " "))) return true;
+  if (GYM_SET_REP.test(t)) return true;
+  return false;
+}
+
 // ---- amount + date salvage (mirror of lib/fan-out-expander.mjs) ----
 const MONEY_CUE = /(?:spent|spend|paid|pay|bought|buy|cost|costs|rs\.?|inr|rupees?|₹)\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i;
 const MONEY_SUFFIX = /([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:rs\.?|inr|rupees?|₹|bucks)\b/i;
@@ -642,6 +657,16 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   // 3b. A clear grocery purchase: drop any food_log (even one the model emitted) —
   //     the user bought provisions, they did not eat them. Keeps the expense.
   if (purchase) out = out.filter((tc) => tc?.name !== "create_food_log_candidate");
+
+  // 3c. Salvage a WORKOUT the model missed: gym free-text is a workout even without
+  //     the word "gym" ("did Workout A", "bench 3x10 60kg", "ran 5k").
+  if (looksLikeGym(ev) && !out.some((tc) => tc?.name === "create_workout_log_candidate")) {
+    out.push({
+      name: "create_workout_log_candidate",
+      arguments: { description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
+      confidence: 0.6,
+    });
+  }
 
   // 4. Once anything real was captured, drop the now-stale review request (unless
   //    it's a genuine safety flag). This is what clears "needs a look".

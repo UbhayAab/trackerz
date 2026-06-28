@@ -16,7 +16,7 @@ Run from the repo root (`trackerz/`):
 # Local static server (http://127.0.0.1:4173)
 npm run serve
 
-# Run all tests (the suite — each file is a standalone `node:assert` script, no test runner)
+# Run all tests (the suite is ~28 files chained with &&; each is a standalone `node:assert` script, no test runner)
 npm test
 
 # Run a single test file
@@ -44,7 +44,7 @@ GitHub Pages deploy is automatic on push to `main` via `.github/workflows/pages.
 
 These exist but are not in the `npm test` suite and must be run individually:
 
-- `tests/diet-domain.test.mjs`, `tests/money-intelligence.test.mjs`, `tests/wellness-domain.test.mjs` — domain logic
+- `tests/diet-domain.test.mjs`, `tests/diet-reconcile.test.mjs`, `tests/money-intelligence.test.mjs`, `tests/wellness-domain.test.mjs` — domain logic
 - `tests/dedupe-matrix.test.mjs`, `tests/period-aggregator.test.mjs` — analytics
 - `tests/fuzz-corpus.test.mjs`, `tests/safety.test.mjs` — fuzzing and safety invariants
 - `tests/e2e-live-db.test.mjs`, `tests/e2e-gemini-vision.test.mjs` — require live Supabase/Gemini credentials
@@ -53,10 +53,16 @@ These exist but are not in the `npm test` suite and must be run individually:
 
 ### Two-environment split
 
-- **Browser (static)**: every `.js` in `src/` and every `.mjs` in `lib/` runs in the browser. Pages under `pages/*.html` and `index.html` each load exactly one entry module from `src/pages/`. There is no build step — module specifiers are real relative paths.
+- **Browser (static)**: every `.js` in `src/` (~105 modules) and every `.mjs` in `lib/` runs in the browser. The HTML pages are `index.html` plus `pages/{analytics,diagnostics,diet,gym,money,settings}.html` and `pages/share-target.html` (Web Share Target endpoint); each loads exactly one entry module from `src/pages/`. There is no build step — module specifiers are real relative paths.
 - **Edge Function**: `supabase/functions/agent/index.ts` runs in Deno on Supabase. This is the only place that holds `GEMINI_API_KEY` / `SUPABASE_SERVICE_ROLE_KEY`. The browser never sees those.
 
-`lib/agent-core.mjs` and `lib/flow-catalog.mjs` are pure modules imported by both browser code and tests — keep them dependency-free (no DOM, no Supabase).
+Everything in `lib/` is a pure module imported by both browser code and tests — keep them dependency-free (no DOM, no Supabase). Several of them have an **inline mirror inside the edge function** (`supabase/functions/agent/index.ts`) because Deno can't import browser-relative paths; when you change one of these, update the edge mirror too:
+- `agent-core.mjs`, `flow-catalog.mjs` — agent primitives + the flow catalog.
+- `context-builder.mjs` — assembles the "memory context" block injected into every AI reasoning call (fixed-priority sections under a char cap; LAST7 is O(1)).
+- `fan-out-expander.mjs` — deterministic fan-out + salvage + backdate: guarantees one real event lands in every tracker it belongs to even when the model under-emits or bails to review.
+- `food-nutrition.mjs` — lookup table of everyday foods; when `estimateNutrition(text).recognized` is true its totals are AUTHORITATIVE and override the model (DeepSeek reasoning is only used for non-everyday items).
+- `additions.mjs` — shapes recent domain rows into the Home feed's day-over-day "additions" list.
+- `aspiration-cascade.mjs` — maps a free-text goal note to budget/target changes plus the undo math.
 
 ### The capture pipeline (the spine of the app)
 
