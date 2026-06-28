@@ -164,25 +164,26 @@ function showSignInCard() {
   });
 }
 
+// The account control IS the existing topbar Settings link, collapsed to a
+// compact avatar (the user's initial) — no sprawling email in the bar. Account
+// details + sign-out live on the Settings page the link already points to.
 function renderAuthPill(session) {
   const topbar = document.querySelector(".topbar");
   if (!topbar) return;
-  let pill = document.getElementById(PILL_ID);
-  if (!pill) {
-    pill = document.createElement("button");
-    pill.id = PILL_ID;
-    pill.type = "button";
-    pill.className = "status-pill auth-pill";
-    topbar.appendChild(pill);
-  }
+  // Remove any old full-email pill from a previous build.
+  document.getElementById(PILL_ID)?.remove();
+
+  const link = topbar.querySelector(".icon-link");
+  if (!link) return;
   if (session?.user) {
-    const mode = isLocalSession(session) ? "local" : "sync";
-    pill.textContent = `${session.user.email || "signed in"} (${mode})`;
-    pill.title = "Click to sign out";
-    pill.onclick = () => signOut();
+    const email = session.user.email || "";
+    const mode = isLocalSession(session) ? " · local" : "";
+    link.textContent = (email.trim()[0] || "U").toUpperCase();
+    link.classList.add("account-avatar");
+    link.title = `${email || "signed in"}${mode}`;
+    link.setAttribute("aria-label", `Account & settings (${email || "signed in"})`);
   } else {
-    pill.textContent = "signed out";
-    pill.onclick = null;
+    link.classList.remove("account-avatar");
   }
 }
 

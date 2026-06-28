@@ -5,6 +5,7 @@ import { runCapture } from "../services/agent-runner.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { startLiveTranscription, stopLiveTranscription, isLiveTranscriptionSupported } from "../services/speech.js";
 import { enqueueCapture } from "../services/offline-queue.js";
+import { showToast } from "./toast.js";
 
 let recorder = null;
 let chunks = [];
@@ -128,15 +129,19 @@ async function handleSubmit() {
     );
     await hydrateStateFromSupabase();
     updateOptimistic(optimisticId, { status: "done", detail: "Saved. Review the action queue." });
+    const had = allFiles.length > 0;
+    showToast(had ? `Processed ${allFiles.length} file(s) — check the feed` : "Capture saved");
     updateState((state) => {
       state.activeJob = null;
       state.parseLog.unshift("Tables updated. Review queue and metrics refreshed.");
     });
   } catch (err) {
-    updateOptimistic(optimisticId, { status: "error", detail: err.message || String(err) });
+    const msg = err?.message || String(err);
+    updateOptimistic(optimisticId, { status: "error", detail: msg });
+    showToast(`Capture failed — ${msg}`, { kind: "error", duration: 6000 });
     updateState((state) => {
       state.activeJob = null;
-      state.parseLog.unshift(`Capture failed: ${err.message || err}`);
+      state.parseLog.unshift(`Capture failed: ${msg}`);
     });
   } finally {
     resetForm();
@@ -183,6 +188,12 @@ function updateOptimistic(id, { status, detail }) {
   if (status === "done") setTimeout(() => row.remove(), 6000);
 }
 
+function setVoiceLabel(button, text) {
+  const label = button.querySelector(".voice-label");
+  if (label) label.textContent = text;
+  else button.textContent = text;
+}
+
 function activeMode() {
   const active = document.querySelector(".mode-card.active");
   return active?.dataset.mode || "auto";
@@ -211,7 +222,7 @@ async function handleVoiceClick() {
     stopLiveTranscription(recognitionHandle);
     recognitionHandle = null;
     stopWaveform();
-    button.textContent = "Record voice";
+    setVoiceLabel(button, "Voice");
     return;
   }
 
@@ -266,7 +277,7 @@ async function handleVoiceClick() {
     });
 
     recorder.start();
-    button.textContent = "Stop voice";
+    setVoiceLabel(button, "Stop");
     updateState((state) => {
       state.parseLog.unshift(isLiveTranscriptionSupported()
         ? "Recording with live transcription. Tap Stop voice when done."
