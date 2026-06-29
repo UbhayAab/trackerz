@@ -11,6 +11,12 @@
 }
 #workoutLog .wl-ex.is-done,
 #workoutLog .wl-note.is-done { background: var(--accent-soft); border-color: rgba(15,122,82,.3); }
+/* Auto-checked from a captured workout (functional hooks; polish in the design pass). */
+#workoutLog .wl-ex.is-suggested { border-style: dashed; }
+#workoutLog .wl-auto,
+#workoutLog .wl-suggest { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 999px; }
+#workoutLog .wl-auto { background: rgba(15,122,82,.16); color: var(--accent, #138a5b); }
+#workoutLog .wl-suggest { background: rgba(214,158,46,.18); color: #c98a00; }
 
 #workoutLog .wl-ex-row { display: flex; align-items: center; gap: 11px; padding: 10px 12px; }
 #workoutLog .wl-ex-main { flex: 1; min-width: 0; }

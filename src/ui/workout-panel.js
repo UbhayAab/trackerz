@@ -9,6 +9,7 @@
 //   "Log session" button, no per-set forms.
 
 import { planForDate, prescribedExercises } from "../domain/diet/plan.js";
+import { reconcileExercises } from "../domain/diet/reconcile.js";
 import { logWorkoutSession, logBodyMetric, deleteRow } from "../services/supabase-data.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
@@ -29,6 +30,20 @@ function shortDate(iso) { return new Date(iso).toLocaleDateString("en-IN", { wee
 function dayKey(date = new Date()) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 function loadDay(key) { try { return JSON.parse(globalThis.localStorage?.getItem(STATE_PREFIX + key) || "{}"); } catch { return {}; } }
 function saveDay(key, s) { try { globalThis.localStorage?.setItem(STATE_PREFIX + key, JSON.stringify(s)); } catch { /* private mode */ } }
+
+// Resolve an exercise's effective state: a manual check/uncheck (localStorage has
+// an explicit `done`) ALWAYS wins; otherwise a captured-workout auto-match ticks it
+// (with an "auto"/"suggested" badge). Mirrors the diet hub's resolveItem.
+function resolveExState(exKey, day, recon) {
+  const manual = day[exKey];
+  if (manual && "done" in manual) {
+    return { done: manual.done, source: manual.source || "manual", recordId: manual.recordId, weight: manual.weight };
+  }
+  const r = recon[exKey];
+  if (r?.source === "auto") return { done: true, source: "auto", recordId: r.recordId, weight: manual?.weight };
+  if (r?.source === "suggested") return { done: false, source: "suggested", recordId: r.recordId, weight: manual?.weight };
+  return { done: false, source: null, weight: manual?.weight };
+}
 
 export function sessionVolume(sets = []) { return Math.round((sets || []).reduce((a, s) => a + num(s.reps) * num(s.weight_kg), 0)); }
 
@@ -55,9 +70,16 @@ export function weeklyVolumeByMuscle(workoutLogs, now = new Date()) {
 function latestMetric(b, t) { const r = (b || []).filter((x) => x.metric_type === t); return r.length ? r[0] : null; }
 function metricTrend(b, t) { const r = (b || []).filter((x) => x.metric_type === t); return r.length < 2 ? null : round(num(r[0].value) - num(r[1].value)); }
 
-// One exercise card: prefilled weight + steppers + a single ✓ to log.
-function exerciseCard(ex, day, workoutLogs) {
-  const st = day[ex.key] || {};
+// A badge when an exercise was ticked from a CAPTURED workout (not a manual tap).
+function sourceBadge(source) {
+  if (source === "auto") return `<span class="wl-auto" title="auto-checked from a captured workout">auto</span>`;
+  if (source === "suggested") return `<span class="wl-suggest" title="possible match from a captured workout — tap to confirm">?</span>`;
+  return "";
+}
+
+// One exercise card: prefilled weight + steppers + a single ✓ to log. `st` is the
+// resolved state (manual tap wins; else captured-workout auto/suggested match).
+function exerciseCard(ex, st, workoutLogs) {
   const done = Boolean(st.done);
   const last = lastSetFor(workoutLogs, ex.name);
   const isTimed = ex.repsUnit === "sec";
@@ -69,11 +91,11 @@ function exerciseCard(ex, day, workoutLogs) {
       <span class="wl-wt"><b>${weight}</b> kg</span>
       <button type="button" class="wl-step" data-step="1" data-ex="${ex.key}" aria-label="more weight">+</button>
     </div>`;
-  return `<div class="wl-ex${done ? " is-done" : ""}" data-ex="${ex.key}" data-name="${esc(ex.name)}" data-muscle="${esc(ex.muscle)}" data-sets="${ex.sets}" data-reps="${ex.reps}" data-unit="${ex.repsUnit}">
+  return `<div class="wl-ex${done ? " is-done" : ""}${st.source === "suggested" ? " is-suggested" : ""}" data-ex="${ex.key}" data-name="${esc(ex.name)}" data-muscle="${esc(ex.muscle)}" data-sets="${ex.sets}" data-reps="${ex.reps}" data-unit="${ex.repsUnit}">
     <div class="wl-ex-row">
       <button type="button" class="wl-check" data-ex="${ex.key}" aria-pressed="${done}" aria-label="log ${esc(ex.name)}">${done ? "✓" : ""}</button>
       <div class="wl-ex-main">
-        <div class="wl-ex-head"><span class="wl-muscle wl-muscle-${esc(ex.muscle)}">${esc(ex.muscle)}</span><strong>${esc(ex.name)}</strong></div>
+        <div class="wl-ex-head"><span class="wl-muscle wl-muscle-${esc(ex.muscle)}">${esc(ex.muscle)}</span><strong>${esc(ex.name)}</strong>${sourceBadge(st.source)}</div>
         <div class="wl-ex-sub"><span class="wl-prescribe">${ex.sets}×${ex.reps}${isTimed ? "s" : ""}</span><span class="wl-last">${esc(lastLabel)}</span></div>
       </div>
       ${stepper}
@@ -81,12 +103,12 @@ function exerciseCard(ex, day, workoutLogs) {
   </div>`;
 }
 
-function noteCard(ex, day) {
-  const done = Boolean((day[ex.key] || {}).done);
+function noteCard(ex, st) {
+  const done = Boolean(st.done);
   return `<div class="wl-note${done ? " is-done" : ""}" data-ex="${ex.key}" data-name="${esc(ex.name)}" data-muscle="${esc(ex.muscle)}" data-note="1">
     <button type="button" class="wl-check" data-ex="${ex.key}" aria-pressed="${done}" aria-label="mark done">${done ? "✓" : ""}</button>
     <span class="wl-muscle wl-muscle-${esc(ex.muscle)}">${esc(ex.muscle)}</span>
-    <span class="wl-note-txt">${esc(ex.name)}</span>
+    <span class="wl-note-txt">${esc(ex.name)}</span>${sourceBadge(st.source)}
   </div>`;
 }
 
@@ -124,7 +146,11 @@ export function renderWorkoutPanel(appState) {
   const plan = planForDate(new Date());
   const exercises = prescribedExercises(plan.workout);
   const day = loadDay(dayKey());
-  const doneCount = exercises.filter((e) => e.loggable && day[e.key]?.done).length;
+  // Auto-check exercises from a captured workout (manual taps still win).
+  const recon = reconcileExercises(plan.workout, _state.workoutLogs, new Date());
+  const view = {};
+  for (const ex of exercises) view[ex.key] = resolveExState(ex.key, day, recon);
+  const doneCount = exercises.filter((e) => e.loggable && view[e.key].done).length;
   const total = exercises.filter((e) => e.loggable).length;
 
   host.innerHTML = `
@@ -134,7 +160,7 @@ export function renderWorkoutPanel(appState) {
     </div>
     <p class="muted small">${esc(plan.workout.rules || "")} · nudge the weight, tap ✓ to log.</p>
     <div class="wl-exercises">
-      ${exercises.map((ex) => (ex.loggable ? exerciseCard(ex, day, _state.workoutLogs) : noteCard(ex, day))).join("")}
+      ${exercises.map((ex) => (ex.loggable ? exerciseCard(ex, view[ex.key], _state.workoutLogs) : noteCard(ex, view[ex.key]))).join("")}
     </div>
     ${muscleSummary(_state.workoutLogs)}
     <div class="wl-recent"><p class="diet-head">🗓️ Recent sessions</p>${recentSessions(_state.workoutLogs)}</div>
@@ -198,9 +224,13 @@ async function unlogExercise(exKey) {
   const key = dayKey();
   const day = loadDay(key);
   const prev = day[exKey];
-  delete day[exKey];
+  // Tombstone (not delete): a manual uncheck must STICK and block a captured-workout
+  // auto-match from re-ticking it on the next render.
+  day[exKey] = { done: false, source: "manual", weight: prev?.weight };
   saveDay(key, day);
   renderWorkoutPanel();
+  // Only remove a row this panel logged manually — never delete the user's captured
+  // workout just because they un-ticked an auto-suggestion.
   if (prev?.recordId && canSync()) {
     try { await deleteRow("workout_logs", prev.recordId); await hydrateStateFromSupabase().catch(() => {}); } catch { /* best effort */ }
   }
