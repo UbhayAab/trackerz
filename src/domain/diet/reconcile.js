@@ -10,7 +10,7 @@
 // Anything not matched is simply absent (and the logged row still shows up in the
 // day's macro gauges / feed — a non-plan food like cake just isn't a check-off).
 
-import { isoWeekday } from "./plan.js";
+import { isoWeekday, prescribedExercises, muscleFor } from "./plan.js";
 
 const AUTO_THRESHOLD = 0.6;
 const SUGGEST_THRESHOLD = 0.3;
@@ -112,6 +112,43 @@ function reconcileWorkout(plan, workoutLogs) {
   const rows = workoutLogs || [];
   if (!rows.length || !plan.workout) return out;
   out[plan.workout.id] = { source: "auto", confidence: 1, recordId: rows[0].id, table: "workout_logs" };
+  return out;
+}
+
+// Per-EXERCISE gym auto-check: match a captured workout's logged sets to the
+// prescribed exercises so "did legs — leg press 3×12, leg curl 3×12" ticks those
+// exercises on the gym checklist (the diet hub's analogue, but per ex.key not the
+// whole-day workout item). Gated by muscle group so "leg press" (quads) never
+// ticks "leg curl" (hamstrings); scored by prescribed-name token coverage so a
+// single shared generic word ("press") stays a suggestion, not an auto-tick.
+export function reconcileExercises(workout, workoutLogs, date) {
+  const out = {};
+  const prescribed = prescribedExercises(workout).filter((e) => e.loggable);
+  if (!prescribed.length) return out;
+  // Flatten the day's logged sets, carrying their parent workout_logs row id.
+  const logged = [];
+  for (const w of logsOnDate(workoutLogs, date)) {
+    for (const s of Array.isArray(w.sets) ? w.sets : []) {
+      const nm = s && (s.exercise || s.name);
+      if (nm) logged.push({ name: nm, muscle: s.muscle || muscleFor(nm), recordId: w.id });
+    }
+  }
+  if (!logged.length) return out;
+  for (const ex of prescribed) {
+    const exTokens = new Set(tokenize(ex.name));
+    if (!exTokens.size) continue;
+    let best = null;
+    for (const s of logged) {
+      // Muscle gate: only compare same-muscle lifts (or when a muscle is unknown).
+      if (ex.muscle && s.muscle && ex.muscle !== s.muscle) continue;
+      const hits = overlap(exTokens, new Set(tokenize(s.name)));
+      if (!hits) continue;
+      const score = hits / exTokens.size; // fraction of the prescribed name covered
+      if (!best || score > best.score) best = { score, recordId: s.recordId };
+    }
+    const source = best && classify(best.score);
+    if (source) out[ex.key] = { source, confidence: Number(best.score.toFixed(3)), recordId: best.recordId, table: "workout_logs" };
+  }
   return out;
 }
 
