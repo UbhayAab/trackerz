@@ -4,7 +4,7 @@ import {
   fetchMealTemplates, fetchUserPlans, fetchWorkoutLogs,
   fetchNotes, fetchMemoryFacts, fetchTargetEvents,
 } from "../services/supabase-data.js";
-import { setDietPlanOverride, planForDate } from "../domain/diet/plan.js";
+import { setDietPlanOverride, setDatedPlanOverrides, parsePlanScope, planForDate } from "../domain/diet/plan.js";
 import { resolveDietTargets } from "../domain/goals.js";
 import { estimateNutrition } from "../../lib/food-nutrition.mjs";
 import { isLocalSession } from "../services/auth.js";
@@ -58,9 +58,25 @@ export async function hydrateStateFromSupabase() {
         f.fat_g = est.totals.fat_g;
       }
     }
-    // Latest permanent diet plan (if any) overrides the fixed default in the hub.
-    const dietOverride = userPlans.find((p) => p.kind === "diet" && p.scope === "permanent");
-    setDietPlanOverride(dietOverride?.payload || null);
+    // Apply plan overrides from user_plans. A "permanent" diet plan replaces the
+    // standing hub plan; a date-scoped plan (comma-separated dates, e.g. "next 4
+    // Mondays") rewrites exactly those days for diet OR gym. userPlans is newest-
+    // first, so the first match for a date/permanent wins.
+    let permanentDiet = null;
+    const datedDiet = new Map();
+    const datedGym = new Map();
+    for (const p of userPlans) {
+      if (p.active === false) continue;
+      const { kind: scopeKind, dates } = parsePlanScope(p.scope);
+      if (scopeKind === "permanent") {
+        if (p.kind === "diet" && !permanentDiet) permanentDiet = p.payload;
+      } else if (scopeKind === "dates") {
+        const target = p.kind === "gym" ? datedGym : datedDiet;
+        for (const d of dates) if (!target.has(d)) target.set(d, p.payload);
+      }
+    }
+    setDietPlanOverride(permanentDiet);
+    setDatedPlanOverrides({ diet: datedDiet, gym: datedGym });
 
     // Detect subscriptions from the ledger and persist them (best-effort), then
     // use the freshest view for insights + dashboards.
