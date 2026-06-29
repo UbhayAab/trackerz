@@ -1076,6 +1076,68 @@ function isGrounded(toolName: string, args: any = {}, evidence = ""): boolean {
   }
 }
 
+// ---- [STAGE 9] sanity [ranges] (mirror of lib/sanity-guards.mjs) ----
+// Value-plausibility tagger the schema/grounding stages cannot express (a 50,000-cal
+// meal, a Rs 5,40,000 OCR slip, a year-3025 date). TAG ONLY — never blocks/rejects;
+// runs on already-valid calls and only annotates. Caps are deliberately generous.
+const SANITY_TARGET_CAPS: Record<string, number> = { daily_calories: 6000, weekly_calories: 42000, daily_protein: 400, monthly_spend: 5000000, weekly_spend: 5000000, food_cap: 5000000 };
+const SANITY_METRIC_RULES: Record<string, { lo: number; hi: number; flag: string }> = {
+  weight: { lo: 20, hi: 300, flag: "weight_out_of_range" },
+  sleep_hours: { lo: 0, hi: 24, flag: "sleep_hours_impossible" },
+  steps: { lo: 0, hi: 100000, flag: "steps_implausible" },
+  water_ml: { lo: 0, hi: 15000, flag: "water_implausible" },
+};
+function sanityCheck(toolName: string, args: any, nowIso: string): { ok: boolean; flags: string[] } {
+  const flags: string[] = [];
+  try {
+    if (!args || typeof args !== "object" || Array.isArray(args)) return { ok: true, flags: [] };
+    let nowMs = Date.parse(typeof nowIso === "string" ? nowIso : "");
+    if (Number.isNaN(nowMs)) nowMs = Date.now();
+    const fin = (v: any) => typeof v === "number" && Number.isFinite(v);
+    const amt = (v: any, cap: number) => { if (fin(v) && Math.abs(v) > cap) flags.push("amount_too_large"); };
+    const dt = (o: any) => {
+      if (typeof o !== "string" || o === "") return;
+      const t = Date.parse(o);
+      if (Number.isNaN(t)) return;
+      if (t > nowMs + 86400000) flags.push("future_date");
+      else if (t < nowMs - 157680000000) flags.push("ancient_date");
+    };
+    switch (toolName) {
+      case "create_expense_candidate": amt(args.amount, 200000); dt(args.occurred_at); break;
+      case "create_income_candidate":
+      case "create_transfer_candidate":
+      case "create_statement_row_candidate": amt(args.amount, 5000000); dt(args.occurred_at); break;
+      case "create_food_log_candidate": {
+        if (fin(args.calories_estimate) && (args.calories_estimate < 0 || args.calories_estimate > 6000)) flags.push("calories_implausible");
+        const bad = (v: any, hi: number) => fin(v) && (v < 0 || v > hi);
+        if (bad(args.protein_g, 400) || bad(args.carbs_g, 800) || bad(args.fat_g, 400)) flags.push("macros_implausible");
+        dt(args.occurred_at); break;
+      }
+      case "create_workout_log_candidate":
+        if (fin(args.duration_min) && (args.duration_min < 0 || args.duration_min > 600)) flags.push("duration_implausible");
+        dt(args.occurred_at); break;
+      case "create_body_metric_candidate": {
+        const rule = SANITY_METRIC_RULES[args.metric_type];
+        if (rule && fin(args.value) && (args.value < rule.lo || args.value > rule.hi)) flags.push(rule.flag);
+        dt(args.occurred_at); break;
+      }
+      case "set_target_candidate": {
+        const cap = SANITY_TARGET_CAPS[args.kind];
+        if (cap !== undefined && fin(args.amount) && args.amount > cap) {
+          if (args.kind === "daily_calories" || args.kind === "weekly_calories") flags.push("calories_implausible");
+          else if (args.kind === "daily_protein") flags.push("protein_implausible");
+          else flags.push("amount_too_large");
+        }
+        break;
+      }
+      default: return { ok: true, flags: [] };
+    }
+  } catch (_e) {
+    return { ok: true, flags: [] };
+  }
+  return { ok: flags.length === 0, flags };
+}
+
 async function applyTool(supabase: ReturnType<typeof adminClient>, userId: string, ingestionId: string, tc: ToolCall) {
   const args = tc.arguments as any;
   const occurredAt = args.occurred_at || new Date().toISOString();
@@ -1247,6 +1309,12 @@ async function persistRunAndActions(
     // is tagged low_evidence so the client feed can mark it for a quick look.
     if (!isGrounded(tc.name, tc.arguments, evidence)) {
       groundingNote = "low_evidence";
+    }
+    // [STAGE 9] sanity: implausible values (Rs 5,40,000 OCR slip, 50,000-cal meal,
+    // year-3025 date) still commit but are tagged so the feed flags them for review.
+    const sanity = sanityCheck(tc.name, tc.arguments, new Date().toISOString());
+    if (!sanity.ok) {
+      groundingNote = groundingNote ? `${groundingNote},${sanity.flags.join(",")}` : sanity.flags.join(",");
     }
     if (status === "auto_applied") {
       try {
