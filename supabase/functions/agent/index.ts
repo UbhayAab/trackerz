@@ -117,7 +117,9 @@ Rules:
   • Credit card: "...HDFC Bank Credit Card ending 1234 for Rs 540.00 at SWIGGY on 21-06-2026..." -> create_expense_candidate { amount:540, payment_mode:"card", merchant:"SWIGGY", occurred_at, is_discretionary:true }.
   • UPI / account debit: "Rs.250.00 has been debited from a/c **1234 to VPA name@bank on 21-06-26. UPI Ref 412345678901." -> create_expense_candidate { amount:250, payment_mode:"upi", merchant:"name@bank or the payee name", occurred_at, tags:["412345678901"] }.
   Money LEAVING the account (debited/spent/paid/withdrawn) is an expense; money ARRIVING (credited/received/refund/salary) is income; movement between the user's OWN accounts is a transfer. Never count the "available balance" figure as the transaction amount.
-- PLAN UPDATE: if the user pastes a whole diet/gym PLAN, or asks to change their plan ("update my diet", "new plan from gpt", "make Thursdays rest"), emit update_plan_candidate { kind:"diet"|"gym", scope:"permanent" for a lasting change OR a "YYYY-MM-DD" date for a one-day temporary change (when they say "just today/tomorrow/this Thursday/temporary/only this week"), summary: one short line, payload: the parsed plan as JSON. For diet payload use { meals:[{time,slot,name,detail,calories,protein_g,carbs_g,fat_g}], targets:{calories,protein_g,carbs_g,fat_g} }; for gym use { days:{Mon:{...},Tue:{...}} }. A plan is a TEMPLATE — do NOT also emit individual food/expense/workout log events for it.
+- LOG vs CHANGE-REQUEST — DECIDE THIS FIRST. If the user is COMMANDING a change to their setup, do NOT log an event and do NOT tick anything; ROUTE it: (a) changing the diet/gym PLAN or SCHEDULE ("change my gym today", "here is my new schedule", "make Thursdays rest", "for the next 4 Mondays I'll have paneer salad", "stop doing Workout A") -> update_plan_candidate, NEVER a workout/food log. (b) changing a BUDGET/TARGET ("raise my protein goal to 180", "set my spend cap to 40000", "adjust my calorie budget to 1800") -> set_target_candidate, NEVER a Rs 0 expense. (c) a QUESTION ("how much did I spend?", "am I on track?") -> request_user_review with reason "query". Only emit a food/workout/expense LOG when the user reports something that ACTUALLY HAPPENED.
+- MADE vs BOUGHT vs ATE (cost decides the money side): "bought paneer and cheese for 50" -> expense ONLY (purchased, not eaten). "made paneer sabzi which costed me 50" -> BOTH a food_log AND an expense of 50. "just made paneer sabzi" (NO amount stated) -> food_log ONLY, NO expense (never invent a cost). Cooking/eating is a food_log; a stated price is the only thing that adds an expense.
+- PLAN UPDATE: if the user pastes a whole diet/gym PLAN, or asks to change their plan ("update my diet", "new plan from gpt", "make Thursdays rest"), emit update_plan_candidate { kind:"diet"|"gym", scope:"permanent" for a lasting change OR a "YYYY-MM-DD" date for a one-day temporary change OR a comma-separated list of dates "YYYY-MM-DD,YYYY-MM-DD,..." for a recurring temporary change ("next 4 Mondays and Wednesdays" -> the 8 concrete dates, computed from the current time), summary: one short line, payload: the parsed plan as JSON. For diet payload use { meals:[{time,slot,name,detail,calories,protein_g,carbs_g,fat_g}], targets:{calories,protein_g,carbs_g,fat_g} }; for gym use { days:{Mon:{...},Tue:{...}} }. A plan is a TEMPLATE — do NOT also emit individual food/expense/workout log events for it.
 - NOTES / ASPIRATIONS / TODOS: a plan, intention, reminder, or goal that is NOT a logged event is a note → create_note_candidate { body, kind:"note"|"aspiration"|"todo"|"idea", domain:"money"|"diet"|"gym"|"wellness"|"general", due_on?:"YYYY-MM-DD" }. e.g. "remind me to book the dentist Friday" → todo; "I want to save more this year" → aspiration.
 - TARGET CASCADE: when an aspiration/goal has a clear money/diet/gym implication, ALSO emit set_target_candidate { kind, amount } to adjust the relevant budget/target (it is a single canonical row, upserted, and undoable). Mapping: "save 50k this month" → set_target_candidate { kind:"monthly_spend", amount: a lower cap consistent with the goal }; "lean bulk to 90kg" → set_target_candidate { kind:"daily_calories", amount:2300 } AND { kind:"daily_protein", amount:180 }; "cut / lose weight" → { kind:"daily_calories", amount:1700 }. Valid kinds: monthly_spend, weekly_spend, food_cap, daily_calories, daily_protein, weekly_calories. Emit BOTH the note and the target change.
 - REMEMBER DURABLE FACTS: when the user states a lasting preference, pattern, or personal fact useful for future captures ("my usual lunch is egg curry and 2 rotis", "I get paid on the 1st", "I dislike oats", "gym is Mon/Wed/Fri"), emit remember_fact { key, value, kind:"preference"|"pattern"|"fact"|"goal" }. Use a short stable snake_case key (usual_lunch, payday, gym_days). These facts are fed back to you as MEMORY on later captures.
@@ -517,8 +519,8 @@ function looksLikePurchase(text: string): boolean {
 
 // Gym detection (mirror of looksLikeGym in lib/capture-intent.mjs). Exercise free
 // text is a workout even without the word "gym". "grocery run"/"errand run" are NOT.
-const GYM_CUE = /\b(workout|work out|gym|did legs|leg day|chest day|back day|push day|pull day|arm day|trained|training|lifted|bench|squat|deadlift|rdl|lat pulldown|cable row|leg press|leg curl|leg extension|shoulder press|overhead press|ohp|lateral raise|pushdown|db curl|dumbbell curl|bicep curl|goblet squat|incline press|machine (?:chest|shoulder) press|plank|dead bug)\b/i;
-const CARDIO_CUE = /\b(ran|run|running|jog\w*|walked|walking|treadmill|cycl\w*|elliptical|cardio|skipping|jump rope|swam|swim|steps)\b/i;
+const GYM_CUE = /\b(workout|work out|gym|gym session|session|did legs|leg day|did chest|chest day|did back|back day|did push|push day|did pull|pull day|did shoulders|did arms|arm day|trained|training|lifted|lift|worked out|hit the gym|bench|bench press|chest press|incline db press|incline press|machine (?:chest|shoulder) press|squat|goblet squat|deadlift|romanian deadlift|rdl|lat pulldown|cable row|seated cable row|leg press|leg curl|leg extension|shoulder press|overhead press|ohp|lateral raise|triceps pushdown|pushdown|db curl|dumbbell curl|bicep curl|plank|dead bug)\b/i;
+const CARDIO_CUE = /\b(ran|run|running|jog\w*|walk|walked|walking|brisk walk|cooldown walk|treadmill|cycl\w*|elliptical|cardio|skipping|jump rope|swam|swim|steps)\b/i;
 const CARDIO_FALSE_FRIENDS = /\b(?:grocery|milk|beer|coffee|supply|errand)\s+run\b|\brun\s+(?:an?\s+)?errands?\b/;
 const GYM_SET_REP = /\d+\s*[x×]\s*\d+/i;
 function looksLikeGym(text: string): boolean {
@@ -528,6 +530,24 @@ function looksLikeGym(text: string): boolean {
   if (CARDIO_CUE.test(t.replace(CARDIO_FALSE_FRIENDS, " "))) return true;
   if (GYM_SET_REP.test(t)) return true;
   return false;
+}
+
+// Request router (mirror of lib/request-router.mjs). A capture is a LOG or a
+// COMMAND that must change the scaffolding (plan/budget) — never a checklist tick.
+const PLAN_CHANGE_CUES = ["change my plan", "update my plan", "change my schedule", "update my schedule", "change the schedule", "change the plan", "edit my plan", "modify my plan", "adjust my plan", "adjust my schedule", "set my plan", "my new plan", "my new diet", "new schedule", "new plan", "new routine", "new split", "here is my schedule", "here's my schedule", "here is my new", "here's my new", "here is my latest", "here's my latest", "latest schedule", "latest plan", "dump of my", "switch my plan", "switch my diet", "change my diet", "update my diet", "change my workout", "update my workout", "change my gym", "update my gym", "change my routine", "from now on", "going forward", "starting today", "starting tomorrow", "starting monday", "for the next", "rest day", "make it a rest", "replace", "swap out", "swap my", "won't do", "wont do", "no longer do", "stop doing", "not do the schedule", "instead of", "reschedule", "rework my", "redo my plan", "i'll be having", "i will be having", "i'll have", "i will have"];
+const BUDGET_CHANGE_CUES = ["change my budget", "adjust my budget", "set my budget", "update my budget", "increase my budget", "decrease my budget", "raise my budget", "lower my budget", "set my target", "change my target", "adjust my target", "raise my target", "lower my target", "set my goal", "change my goal", "raise my goal", "lower my goal", "calorie budget", "calorie target", "calorie goal", "protein target", "protein goal", "protein budget", "spend cap", "spending cap", "food cap", "food budget", "money budget", "monthly budget", "weekly budget", "daily budget", "budget cap", "set my calorie", "set my protein", "set my spend", "change my cap", "adjust my cap", "raise my cap", "lower my cap", "budget to", "target to", "cap it at", "cap to", "goal to", "make my budget", "make my target", "increase my cap", "decrease my cap"];
+const QUERY_CUES = ["how much", "how many", "what did i", "what have i", "what's my", "whats my", "what is my", "show me", "how am i doing", "am i on track", "how's my", "hows my", "when did i", "why did i", "summary of", "give me a report", "how far", "how close", "do i have", "can i afford", "what's left", "whats left", "how's it going"];
+const LOG_OVERRIDE_CUES = ["also i ate", "also had", "also did", "i ate", "i just ate", "just had", "i had", "and i ate", "and had", "today i did", "also spent", "also paid"];
+function routerHasAny(t: string, words: string[]): boolean {
+  return words.some((w) => (/[^a-z0-9]/.test(w) ? t.includes(w) : new RegExp(`\\b${w}\\b`).test(t)));
+}
+function isChangeRequest(text = ""): boolean {
+  const t = String(text || "").toLowerCase();
+  if (!t.trim()) return false;
+  return routerHasAny(t, BUDGET_CHANGE_CUES) || routerHasAny(t, PLAN_CHANGE_CUES) || routerHasAny(t, QUERY_CUES);
+}
+function carriesLoggedEvent(text = ""): boolean {
+  return routerHasAny(String(text || "").toLowerCase(), LOG_OVERRIDE_CUES);
 }
 
 // ---- amount + date salvage (mirror of lib/fan-out-expander.mjs) ----
@@ -611,12 +631,16 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   let out = [...toolCalls];
   // A grocery run is an expense, not a meal — suppress all food synthesis below.
   const purchase = looksLikePurchase(evidence);
+  // A CHANGE REQUEST / QUERY ("change my plan", "raise my budget", "how much…") is
+  // not a loggable event — suppress all deterministic log-salvage so we never write
+  // a row or tick a checklist for a command. A mixed "…also I ate dal" keeps it on.
+  const command = isChangeRequest(evidence) && !carriesLoggedEvent(evidence);
   const hasExpense = () => out.some((tc) => tc?.name === "create_expense_candidate");
   const hasFood = () => out.some((tc) => tc?.name === "create_food_log_candidate");
 
   // 1. Fan-out: model-emitted food-merchant expense -> matching food_log.
-  //    Skipped for a grocery purchase (buying food ≠ eating it).
-  if (!purchase) for (const tc of toolCalls) {
+  //    Skipped for a grocery purchase (buying food ≠ eating it) or a command.
+  if (!purchase && !command) for (const tc of toolCalls) {
     if (tc.name !== "create_expense_candidate") continue;
     const a = (tc.arguments || {}) as any;
     if (!looksLikeFood(`${a.merchant || ""} ${a.description || ""}`)) continue;
@@ -635,7 +659,7 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
 
   // 2. Salvage an EXPENSE the model missed (only with an explicit money cue).
   const amount = extractAmount(ev);
-  if (amount != null && !hasExpense()) {
+  if (amount != null && !hasExpense() && !command) {
     out.push({
       name: "create_expense_candidate",
       arguments: { amount, currency: "INR", merchant: spendTargetFrom(ev), description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, is_discretionary: true, _auto_expanded: true },
@@ -646,7 +670,7 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   // 3. Salvage FOOD the model missed (even alongside an expense), so a food+spend
   //    capture lands in BOTH trackers and never sits in review. Not for a grocery
   //    purchase — that's an expense, not something eaten.
-  if (!purchase && looksLikeFood(ev) && !hasFood()) {
+  if (!purchase && !command && looksLikeFood(ev) && !hasFood()) {
     out.push({
       name: "create_food_log_candidate",
       arguments: { meal_slot: mealSlotFromTime(occurredAt), description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
@@ -660,7 +684,7 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
 
   // 3c. Salvage a WORKOUT the model missed: gym free-text is a workout even without
   //     the word "gym" ("did Workout A", "bench 3x10 60kg", "ran 5k").
-  if (looksLikeGym(ev) && !out.some((tc) => tc?.name === "create_workout_log_candidate")) {
+  if (!command && looksLikeGym(ev) && !out.some((tc) => tc?.name === "create_workout_log_candidate")) {
     out.push({
       name: "create_workout_log_candidate",
       arguments: { description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },

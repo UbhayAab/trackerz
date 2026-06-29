@@ -253,4 +253,43 @@ assert.ok(one(expandToolCalls(review(), { evidence: "ran 5k this morning", now: 
 // A grocery "run" is NOT a workout.
 assert.equal(has(expandToolCalls(review(), { evidence: "grocery run at dmart - 1200", now: NOW }), "create_workout_log_candidate").length, 0);
 
+// ---------------------------------------------------------------------------
+// CHANGE REQUEST / QUERY suppression — a command must NOT synthesize any log
+// (no ledger / food / workout row, nothing to tick). The brain routes it to
+// update_plan_candidate / set_target_candidate instead.
+// ---------------------------------------------------------------------------
+
+// "change my gym schedule today: [workout]" -> the gym salvage must NOT fire
+// (this is the bug: it was tick-marking the gym checklist).
+{
+  const r = expandToolCalls(review(), { evidence: "change my gym schedule today: bench 3x10 60kg, squats 3x8", now: NOW });
+  assert.equal(has(r, "create_workout_log_candidate").length, 0, "a schedule change is not a logged workout");
+}
+
+// "for the next 4 Mondays I'll have paneer salad" -> no food log / no tick.
+{
+  const r = expandToolCalls(review(), { evidence: "for the next 4 Mondays I'll have paneer salad", now: NOW });
+  assert.equal(has(r, "create_food_log_candidate").length, 0, "a plan change is not an eaten meal");
+}
+
+// "adjust my calorie budget to 1800" -> no expense / no food log (it's a budget).
+{
+  const r = expandToolCalls(review(), { evidence: "adjust my calorie budget to 1800", now: NOW });
+  assert.equal(has(r, "create_expense_candidate").length, 0, "a budget change is not a ₹ expense");
+  assert.equal(has(r, "create_food_log_candidate").length, 0);
+}
+
+// A QUERY logs nothing.
+{
+  const r = expandToolCalls(review(), { evidence: "how much did I spend on food this month", now: NOW });
+  assert.equal(has(r, "create_expense_candidate").length, 0);
+  assert.equal(has(r, "create_food_log_candidate").length, 0);
+}
+
+// MIXED: a change that ALSO logs a real event keeps salvage on for the log half.
+{
+  const r = expandToolCalls(review(), { evidence: "change my plan to PPL, also I ate dal and 2 rotis for lunch", now: NOW });
+  assert.equal(has(r, "create_food_log_candidate").length, 1, "the eaten meal in a mixed message still logs");
+}
+
 console.log("fan-out-expander tests passed");
