@@ -26,11 +26,11 @@ export function sumMealMacros(meals) {
 
 // Resolve targets: scaffold sum drives calories/protein/carbs/fat (when > 0);
 // fiber_g/water_ml fall back to the constant; an explicit override wins outright.
-function resolveTargets(meals) {
+function resolveTargets(meals, overridePayload) {
   const out = { ...MACRO_TARGETS };
   const scaffold = sumMealMacros(meals);
   for (const k of ["calories", "protein_g", "carbs_g", "fat_g"]) if (scaffold[k] > 0) out[k] = scaffold[k];
-  Object.assign(out, _dietOverride?.targets || {});
+  Object.assign(out, overridePayload?.targets || {});
   return out;
 }
 
@@ -42,9 +42,62 @@ let _dietOverride = null;
 export function setDietPlanOverride(payload) {
   _dietOverride = (payload && typeof payload === "object" && !Array.isArray(payload)) ? payload : null;
 }
-function overrideMeals() {
-  if (!Array.isArray(_dietOverride?.meals) || !_dietOverride.meals.length) return null;
-  return _dietOverride.meals.map((m, i) => ({
+
+// Date-scoped overrides: "for the next 4 Mondays I'll have paneer salad" rewrites
+// exactly those dates' plan (NOT a log/tick). Keyed by local "YYYY-MM-DD". sync.js
+// builds these from user_plans rows whose scope is a comma-separated date list.
+let _dietDated = new Map();
+let _gymDated = new Map();
+export function setDatedPlanOverrides({ diet, gym } = {}) {
+  _dietDated = toDateMap(diet);
+  _gymDated = toDateMap(gym);
+}
+function toDateMap(src) {
+  if (src instanceof Map) return src;
+  const m = new Map();
+  if (src && typeof src === "object") for (const [k, v] of Object.entries(src)) m.set(k, v);
+  return m;
+}
+
+// Local "YYYY-MM-DD" (matches the diet hub + reconcile day keys — NOT UTC).
+export function localDateKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// A user_plans.scope is "permanent" (standing plan), a comma-separated date list
+// (recurring/temporary override), or empty (treated permanent). Returns the kind +
+// the validated, de-duped dates. Pure.
+export function parsePlanScope(scope) {
+  const s = String(scope || "").trim();
+  if (!s || s === "permanent") return { kind: "permanent", dates: [] };
+  const dates = [...new Set(s.split(",").map((x) => x.trim()).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)))];
+  return dates.length ? { kind: "dates", dates } : { kind: "none", dates: [] };
+}
+
+// Build a workout object from a date-scoped gym override payload (items list, or a
+// per-weekday {days:{Mon:{...}}} map). Returns null when the payload has no usable
+// workout so planForDate falls back to the standing cycle.
+function gymWorkoutFromPayload(payload, wd) {
+  if (!payload || typeof payload !== "object") return null;
+  let spec = payload;
+  if (payload.days && typeof payload.days === "object") {
+    const short = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][wd];
+    spec = payload.days[short] || payload.days[WEEKDAY_NAMES[wd]] || null;
+  }
+  const items = Array.isArray(spec?.items) ? spec.items : null;
+  if (!items || !items.length) return null;
+  return {
+    id: "workout-custom", name: spec.name || "Custom workout", kind: spec.kind || "gym",
+    duration_min: Number(spec.duration_min) || 50, items, rules: spec.rules || "",
+  };
+}
+
+function overrideMeals(payload) {
+  if (!Array.isArray(payload?.meals) || !payload.meals.length) return null;
+  return payload.meals.map((m, i) => ({
     id: `meal-ov-${i}`,
     time: m.time || "",
     slot: ["breakfast", "lunch", "snack", "dinner", "other"].includes(m.slot) ? m.slot : "other",
@@ -154,19 +207,25 @@ export function planForDate(date = new Date()) {
   const tomorrow = new Date(date);
   tomorrow.setDate(date.getDate() + 1);
   const wdT = isoWeekday(tomorrow);
-  const meals = overrideMeals() || mealsFor(dietType);
+  // Resolution order: a date-scoped override for THIS day wins, then the standing
+  // permanent override, then the fixed weekday default.
+  const key = localDateKey(date);
+  const dietPayload = _dietDated.get(key) || _dietOverride;
+  const meals = overrideMeals(dietPayload) || mealsFor(dietType);
+  const datedWorkout = gymWorkoutFromPayload(_gymDated.get(key), wd);
   return {
     date,
     weekday: wd,
     weekdayName: WEEKDAY_NAMES[wd],
     dietType,
     dietLabel: dietType === "paneer-soy" ? "Paneer-Soy day" : "Soybean day",
-    workout: WORKOUTS[WORKOUT_BY_WEEKDAY[wd]],
+    workout: datedWorkout || WORKOUTS[WORKOUT_BY_WEEKDAY[wd]],
     meals,
-    customDiet: Boolean(_dietOverride),
+    customDiet: Boolean(dietPayload),
+    customWorkout: Boolean(datedWorkout),
     supplements: supplementsFor(wd),
     water: WATER,
-    macroTargets: resolveTargets(meals),
+    macroTargets: resolveTargets(meals, dietPayload),
     tomorrowName: WEEKDAY_NAMES[wdT],
     tomorrowDietLabel: dietTypeForWeekday(wdT) === "paneer-soy" ? "Paneer-Soy day" : "Soybean day",
     prepForTomorrow: prepForTomorrow(dietTypeForWeekday(wdT)),
