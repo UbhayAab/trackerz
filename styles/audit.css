@@ -1,0 +1,157 @@
+/* Query-audit page: a date-stamped timeline of raw captures + what the AI did
+   with each. Neutral chrome; one accent per outcome (applied=accent, review=sun,
+   rejected/errored=risk, queued=wellness). Tokens from styles/tokens.css. */
+
+.topbar-links {
+  display: inline-flex;
+  gap: var(--sp-3);
+  align-items: center;
+}
+
+.audit-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: flex-end;
+  margin-bottom: var(--sp-4);
+}
+.audit-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.audit-controls select,
+.audit-controls input {
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+}
+.audit-search-label { flex: 1 1 180px; }
+.audit-search-label input { width: 100%; }
+
+.audit-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+.audit-totals strong { color: var(--ink); font-weight: var(--weight-semibold); }
+
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-height: 68vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: var(--sp-1);
+}
+.audit-day { display: flex; flex-direction: column; gap: var(--sp-3); }
+.audit-day-head {
+  position: sticky;
+  top: 0;
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--muted);
+  background: var(--paper);
+  padding: var(--sp-2) 0;
+  z-index: 1;
+}
+
+.audit-entry {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  box-shadow: var(--shadow-sm);
+}
+.audit-entry.audit-applied   { border-left-color: var(--accent); }
+.audit-entry.audit-review    { border-left-color: var(--sun); }
+.audit-entry.audit-rejected,
+.audit-entry.audit-errored   { border-left-color: var(--risk); }
+.audit-entry.audit-queued    { border-left-color: var(--wellness); }
+
+.audit-entry-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.audit-time { font-size: var(--fs-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
+.audit-source {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--muted-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.audit-badge {
+  font-size: var(--fs-xs);
+  font-weight: var(--weight-semibold);
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+  color: var(--ink-soft);
+}
+.audit-badge.audit-applied  { background: var(--accent-soft); color: var(--accent-strong); }
+.audit-badge.audit-review   { background: var(--panel-warm); color: var(--sun); }
+.audit-badge.audit-rejected,
+.audit-badge.audit-errored  { background: var(--food-soft); color: var(--risk); }
+.audit-badge.audit-queued   { background: var(--wellness-soft); color: var(--wellness); }
+
+.audit-raw {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-base);
+  color: var(--ink);
+  line-height: var(--lh);
+  overflow-wrap: anywhere;
+}
+.audit-io-tag {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-soft);
+  margin-right: var(--sp-1);
+}
+.audit-summary { margin: 0; }
+
+.audit-actions { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.audit-action {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--line);
+}
+.audit-action.audit-applied { border-left-color: var(--accent); }
+.audit-action.audit-rejected, .audit-action.audit-errored { border-left-color: var(--risk); }
+.audit-action.audit-review { border-left-color: var(--sun); }
+.audit-args { color: var(--ink); overflow-wrap: anywhere; flex: 1 1 auto; }
+.audit-action code {
+  font-size: var(--fs-xs);
+  background: var(--chip);
+  padding: 1px var(--sp-2);
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+}
+.audit-action.audit-applied  code { color: var(--accent-strong); }
+.audit-action.audit-rejected code,
+.audit-action.audit-errored  code { color: var(--risk); }
+.audit-action-meta { color: var(--muted); font-size: var(--fs-xs); }

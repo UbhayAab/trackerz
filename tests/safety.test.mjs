@@ -63,13 +63,21 @@ eq(stripInjections("dal rice + curd, walked 7k"), "dal rice + curd, walked 7k");
 
 const safeAction = { name: "create_expense_candidate", confidence: 0.95, evidenceId: "ingest-1", risk: "normal" };
 eq(decideActionPolicy(safeAction).mode, "auto_apply");
+ok(decideActionPolicy(safeAction).reasons.length === 0, "clean action carries no flags");
 
-const lowConf = { name: "create_expense_candidate", confidence: 0.5, evidenceId: "ingest-1" };
-eq(decideActionPolicy(lowConf).mode, "review");
+// No approve gate (capture-first): a non-blocked action ALWAYS auto-applies, but
+// low confidence / missing evidence / high risk must be surfaced as `reasons` so
+// the UI flags the row for a quick look — the user deletes anything wrong instead
+// of approving everything up front.
+const lowConf = decideActionPolicy({ name: "create_expense_candidate", confidence: 0.5, evidenceId: "ingest-1" });
+eq(lowConf.mode, "auto_apply");
+ok(lowConf.reasons.includes("low_confidence"), "low confidence is flagged for review");
 
-const noEvidence = { name: "create_expense_candidate", confidence: 0.95 };
-eq(decideActionPolicy(noEvidence).mode, "review");
+const noEvidence = decideActionPolicy({ name: "create_expense_candidate", confidence: 0.95 });
+eq(noEvidence.mode, "auto_apply");
+ok(noEvidence.reasons.includes("missing_evidence"), "missing evidence is flagged for review");
 
+// Destructive / unknown tools are the ONE hard gate — always blocked.
 const unknown = { name: "drop_table", confidence: 0.99, evidenceId: "x" };
 eq(decideActionPolicy(unknown).mode, "block");
 

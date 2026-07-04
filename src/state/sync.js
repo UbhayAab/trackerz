@@ -5,6 +5,7 @@ import {
   fetchNotes, fetchMemoryFacts, fetchTargetEvents,
 } from "../services/supabase-data.js";
 import { setDietPlanOverride, setDatedPlanOverrides, parsePlanScope, planForDate } from "../domain/diet/plan.js";
+import { isPlanDelta } from "../../lib/plan-merge.mjs";
 import { resolveDietTargets } from "../domain/goals.js";
 import { estimateNutrition } from "../../lib/food-nutrition.mjs";
 import { isLocalSession } from "../services/auth.js";
@@ -62,6 +63,9 @@ export async function hydrateStateFromSupabase() {
     // standing hub plan; a date-scoped plan (comma-separated dates, e.g. "next 4
     // Mondays") rewrites exactly those days for diet OR gym. userPlans is newest-
     // first, so the first match for a date/permanent wins.
+    // Each date collects an ARRAY of rows so a one-shot delta ("add a salad bowl")
+    // can fold onto an earlier full plan (or the standing scaffold). Permanent
+    // deltas are ignored — permanent changes must be full replacements.
     let permanentDiet = null;
     const datedDiet = new Map();
     const datedGym = new Map();
@@ -69,12 +73,15 @@ export async function hydrateStateFromSupabase() {
       if (p.active === false) continue;
       const { kind: scopeKind, dates } = parsePlanScope(p.scope);
       if (scopeKind === "permanent") {
-        if (p.kind === "diet" && !permanentDiet) permanentDiet = p.payload;
+        if (p.kind === "diet" && !permanentDiet && !isPlanDelta(p.payload)) permanentDiet = p.payload;
       } else if (scopeKind === "dates") {
         const target = p.kind === "gym" ? datedGym : datedDiet;
-        for (const d of dates) if (!target.has(d)) target.set(d, p.payload);
+        for (const d of dates) { if (!target.has(d)) target.set(d, []); target.get(d).push(p.payload); }
       }
     }
+    // userPlans is newest-first; fold oldest->newest so a later delta stacks on an
+    // earlier full replace for the same date.
+    for (const m of [datedDiet, datedGym]) for (const [k, v] of m) m.set(k, v.slice().reverse());
     setDietPlanOverride(permanentDiet);
     setDatedPlanOverrides({ diet: datedDiet, gym: datedGym });
 
