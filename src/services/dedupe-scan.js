@@ -25,7 +25,11 @@ export async function runCrossSourceDedupe({ since } = {}) {
     .select("id, amount, currency, merchant, description, occurred_at, direction, ingestion_id")
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: false });
-  if (recentErr) return { pairs: 0, error: recentErr };
+  // This scan silently returning {pairs:0} looks identical whether it found nothing
+  // or it errored — that already cost one duplicate-detection feature going dark
+  // for 3+ weeks unnoticed (found 2026-07-04). Log every failure loudly so the next
+  // one is visible in devtools instead of indistinguishable from "no duplicates".
+  if (recentErr) { console.error("[dedupe-scan] fetch recent ledger_entries failed:", recentErr); return { pairs: 0, error: recentErr }; }
   if (!recent?.length) return { pairs: 0 };
 
   const earliest = recent.reduce((min, r) => (r.occurred_at < min ? r.occurred_at : min), recent[0].occurred_at);
@@ -37,7 +41,7 @@ export async function runCrossSourceDedupe({ since } = {}) {
     .select("id, amount, currency, merchant, description, occurred_at, direction, ingestion_id")
     .gte("occurred_at", windowStart)
     .lte("occurred_at", windowEnd);
-  if (candErr) return { pairs: 0, error: candErr };
+  if (candErr) { console.error("[dedupe-scan] fetch candidate ledger_entries failed:", candErr); return { pairs: 0, error: candErr }; }
 
   const inserts = [];
   const seenPairs = new Set();
@@ -71,6 +75,6 @@ export async function runCrossSourceDedupe({ since } = {}) {
   const { error: insErr } = await supabase
     .from("duplicate_candidates")
     .insert(inserts);
-  if (insErr) return { pairs: 0, error: insErr };
+  if (insErr) { console.error("[dedupe-scan] insert into duplicate_candidates failed:", insErr); return { pairs: 0, error: insErr }; }
   return { pairs: inserts.length };
 }
