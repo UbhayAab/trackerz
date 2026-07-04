@@ -102,7 +102,7 @@ Rules:
 - create_expense_candidate.arguments: { amount, currency, merchant, description, payment_mode, occurred_at, is_discretionary }.
   is_discretionary=true for non-essential spend (eating out, entertainment, impulse shopping, subscriptions, food delivery).
   is_discretionary=false for groceries, fuel, utilities, rent, medical, transport, EMI/loan.
-- create_food_log_candidate.arguments: { meal_slot, description, calories_estimate, protein_g, carbs_g, fat_g, occurred_at }.
+- create_food_log_candidate.arguments: { meal_slot, description, calories_estimate, protein_g, carbs_g, fat_g, occurred_at }. meal_slot MUST be exactly one of "breakfast" | "lunch" | "snack" | "dinner" | "other" — never a compound like "evening_snack" or "mid_morning_snack"; a snack at any time of day is just "snack".
 - A bare food/drink mention with NO payment ("had coffee and 5 cookies", "ate 3 rotis dal", "2 boiled eggs", "5 choc chip cookies") IS a diet event → ALWAYS emit create_food_log_candidate. Calorie/macro estimates for logged food are EXPECTED and are NOT "inventing". NEVER route clear food/drink to request_user_review.
 - A capture with BOTH food AND a spend amount ("spent 120 on rose milk and sandwich", "had 4 eggs and 1 roti - 120", "paid 250 for lunch") is TWO events → emit create_expense_candidate AND create_food_log_candidate. A number written as "- 120", "120", "Rs 120" or "spent/paid 120" next to a purchase IS the spend amount in INR. These are trivial captures — NEVER request_user_review for them.
 - BUYING vs EATING: purchasing groceries / raw ingredients / provisions ("bought paneer and curd 640", "grocery run", "curd and cheese for the week") is an EXPENSE ONLY — emit create_expense_candidate (is_discretionary=false for groceries) and do NOT create a food log. The user has NOT eaten it. Only create a food log for food actually CONSUMED — "ate / had / drank", a named meal, or a prepared item eaten now ("spent 120 on a sandwich and rose milk"). When they later cook and eat some of what they bought ("dinner: base veg + 40 g paneer"), THAT is the food log.
@@ -271,6 +271,19 @@ function validateToolArguments(name: string, args: Record<string, unknown> | und
     if (typeof args[key] === "number" && ((args[key] as number) < lo || (args[key] as number) > hi)) errors.push(`range:${key}:${lo}-${hi}`);
   }
   return { ok: errors.length === 0, errors };
+}
+
+// The model occasionally invents a plausible-sounding but out-of-enum meal_slot
+// ("evening_snack", "mid_morning_snack") despite the prompt's closed list. Left
+// alone, that fails validateToolArguments and the WHOLE food log silently lands in
+// ai_actions.status='rejected' — never a food_logs row, never surfaced for review,
+// the event just vanishes. Snap the obvious near-miss onto the real enum instead of
+// losing a genuine capture over a naming technicality.
+function normalizeMealSlot(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const t = v.trim().toLowerCase();
+  if (t.includes("snack")) return "snack";
+  return v;
 }
 
 // -------- rate limiting + cost cap --------
@@ -492,6 +505,9 @@ function parseToolCalls(raw: string) {
   for (const tc of parsed.tool_calls || []) {
     if (!tc || typeof tc.name !== "string" || !ALLOWED_TOOLS.has(tc.name)) { rejected.push({ tc, errors: ["unknown_tool"] }); continue; }
     if (typeof tc.confidence !== "number" || tc.confidence < 0 || tc.confidence > 1) { rejected.push({ tc, errors: ["bad_confidence"] }); continue; }
+    if (tc.name === "create_food_log_candidate" && tc.arguments && typeof tc.arguments === "object") {
+      (tc.arguments as Record<string, unknown>).meal_slot = normalizeMealSlot((tc.arguments as Record<string, unknown>).meal_slot);
+    }
     const v = validateToolArguments(tc.name, tc.arguments || {});
     if (!v.ok) { rejected.push({ tc, errors: v.errors }); continue; }
     validCalls.push(tc);

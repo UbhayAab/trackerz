@@ -111,15 +111,27 @@ function resolveItem(id, state) {
   return { done: false, source: null };
 }
 
+// A meal auto/suggested-ticked from a real capture is matched by NAME (token
+// overlap), not by portion size — "3 eggs and 2 rotis" ticks the same "Egg curry +
+// 2 rotis" plan slot as "4 whole eggs" would. Showing the plan's fixed detail text
+// next to that tick claims you ate the planned portion regardless of what you
+// actually logged. Once a real row backs the tick, show what was ACTUALLY logged.
+function foodDescriptionFor(recordId) {
+  const row = _dayFood.find((f) => f.id === recordId);
+  return row?.description || null;
+}
+
 function item(plan, state, { id, time, name, detail }) {
   const r = resolveItem(id, state);
   const cls = [r.done ? "is-done" : "", r.source === "auto" ? "is-auto" : "", r.source === "suggested" ? "is-suggested" : ""].filter(Boolean).join(" ");
   const badge = r.source === "auto" ? '<span class="diet-auto" title="Auto-logged from a capture">auto</span>'
     : r.source === "suggested" ? '<span class="diet-suggest" title="Looks logged — tap to confirm">suggested</span>' : "";
+  const actual = r.table === "food_logs" && r.recordId ? foodDescriptionFor(r.recordId) : null;
+  const shownDetail = actual || detail;
   return `<label class="diet-item${cls ? " " + cls : ""}">
     <input type="checkbox" data-diet-id="${id}"${r.done ? " checked" : ""} />
     <span class="diet-time">${time || ""}</span>
-    <span class="diet-body"><span class="diet-name">${name}${badge}</span>${detail ? `<span class="diet-detail">${detail}</span>` : ""}</span>
+    <span class="diet-body"><span class="diet-name">${name}${badge}</span>${shownDetail ? `<span class="diet-detail">${actual ? "Logged: " : ""}${escapeHtml(shownDetail)}</span>` : ""}</span>
   </label>`;
 }
 
