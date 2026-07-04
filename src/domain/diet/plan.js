@@ -33,6 +33,16 @@ export function setDietPlanOverride(payload) {
   _dietOverride = (payload && typeof payload === "object" && !Array.isArray(payload)) ? payload : null;
 }
 
+// A permanent GYM override from user_plans, mirroring _dietOverride/
+// setDietPlanOverride exactly. Without this, a standing schedule change
+// ("here's my Monday-Friday gym schedule") writes successfully but was never
+// read back — planForDate() only ever folded DATE-SCOPED gym rows onto the
+// fixed weekday scaffold, with no path for a lasting replacement.
+let _gymOverride = null;
+export function setGymPlanOverride(payload) {
+  _gymOverride = (payload && typeof payload === "object" && !Array.isArray(payload)) ? payload : null;
+}
+
 // Date-scoped overrides: "for the next 4 Mondays I'll have paneer salad" rewrites
 // exactly those dates' plan (NOT a log/tick). Keyed by local "YYYY-MM-DD". Each
 // value is a single payload OR an array of payloads (a full replace and/or one or
@@ -129,13 +139,16 @@ export function planForDate(date = new Date()) {
   }
   const meals = (dietPayload && overrideMeals(dietPayload)) || mealsFor(dietType);
 
-  // Gym: this date's rows fold onto the standing workout (no permanent gym plan).
+  // Gym: a permanent override and/or this date's rows fold onto the scaffold —
+  // same shape as diet above. A full payload replaces the standing schedule; a
+  // delta merges onto it (or onto the fixed weekday scaffold if no override).
   const datedGymRows = normRows(_gymDated.get(key));
-  let datedWorkout = null;
-  if (datedGymRows.length) {
-    const gymPayload = foldPlanPayloads("gym", scaffoldGymPayload(date), datedGymRows);
-    datedWorkout = gymWorkoutFromPayload(gymPayload, wd);
+  let gymPayload = null;
+  if (_gymOverride || datedGymRows.length) {
+    const gymBase = _gymOverride || scaffoldGymPayload(date);
+    gymPayload = datedGymRows.length ? foldPlanPayloads("gym", gymBase, datedGymRows) : _gymOverride;
   }
+  const datedWorkout = gymPayload ? gymWorkoutFromPayload(gymPayload, wd) : null;
 
   return {
     date,
