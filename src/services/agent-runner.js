@@ -90,9 +90,15 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
   } else {
     onStage?.(stage("dedupe", { detail: `${agentResp.toolCalls.length || 0} tool call(s) proposed.` }), 4);
   }
-  const dedupeResult = await runCrossSourceDedupe({ since: ingestion.created_at }).catch(() => ({ pairs: 0 }));
+  const dedupeResult = await runCrossSourceDedupe({ since: ingestion.created_at }).catch((err) => ({ pairs: 0, error: err }));
   if (dedupeResult.pairs > 0) {
     onStage?.(stage("dedupe", { detail: `${dedupeResult.pairs} possible duplicate(s) flagged.` }), 4);
+  } else if (dedupeResult.error) {
+    // Surfaced, not swallowed: a thrown exception here used to look identical to
+    // "scanned cleanly, found nothing" — the duplicate-candidates pipeline went
+    // dark for weeks with zero signal anywhere. See dedupe-scan.js.
+    console.error("[agent-runner] dedupe scan failed:", dedupeResult.error);
+    onStage?.(stage("dedupe", { detail: `Dedupe check failed (${dedupeResult.error.message || "see console"}) — capture still saved.` }), 4);
   }
   onStage?.(stage("writing"), 5);
   onStage?.(stage("done"), 6);
