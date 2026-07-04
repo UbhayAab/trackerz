@@ -479,6 +479,54 @@ export async function fetchDuplicates({ limit = 50 } = {}) {
   return data || [];
 }
 
+// fetchDuplicates() only carries table+id references — the audit page needs the
+// actual amount/merchant/description to show the user what the pair IS. Only
+// ledger_entries pairs exist today (dedupe-scan.js is money-only); resolve
+// whichever tables show up so this doesn't silently break if that ever changes.
+export async function fetchOpenDuplicatesWithRecords({ limit = 50 } = {}) {
+  const candidates = await fetchDuplicates({ limit });
+  if (!candidates.length) return [];
+  const supabase = await getSupabaseClient();
+  const byTable = new Map();
+  for (const c of candidates) {
+    for (const [table, id] of [[c.record_a_table, c.record_a_id], [c.record_b_table, c.record_b_id]]) {
+      if (!byTable.has(table)) byTable.set(table, new Set());
+      byTable.get(table).add(id);
+    }
+  }
+  const recordsByKey = new Map(); // `${table}:${id}` -> row
+  for (const [table, idSet] of byTable) {
+    if (table !== "ledger_entries") continue; // no other domain populates this table yet
+    const { data, error } = await supabase
+      .from("ledger_entries")
+      .select("id, amount, merchant, description, occurred_at, duplicate_state")
+      .in("id", [...idSet]);
+    if (error) throw error;
+    for (const row of data || []) recordsByKey.set(`${table}:${row.id}`, row);
+  }
+  return candidates.map((c) => ({
+    ...c,
+    a: recordsByKey.get(`${c.record_a_table}:${c.record_a_id}`) || null,
+    b: recordsByKey.get(`${c.record_b_table}:${c.record_b_id}`) || null,
+  }));
+}
+
+// Merge = one of the pair was a real repeat capture of the same event: delete
+// the loser, keep the survivor, close out the candidate. Dismiss = not actually
+// a duplicate (e.g. a genuine recurring expense): just close the candidate.
+export async function resolveDuplicateMerge({ candidateId, dropTable, dropId }) {
+  await deleteRow(dropTable, dropId);
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.from("duplicate_candidates").update({ status: "resolved" }).eq("id", candidateId);
+  if (error) throw error;
+}
+
+export async function dismissDuplicate(candidateId) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.from("duplicate_candidates").update({ status: "dismissed" }).eq("id", candidateId);
+  if (error) throw error;
+}
+
 export async function applyAiAction(actionId) {
   const supabase = await getSupabaseClient();
   const { error } = await supabase

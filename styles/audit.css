@@ -155,3 +155,32 @@
 .audit-action.audit-rejected code,
 .audit-action.audit-errored  code { color: var(--risk); }
 .audit-action-meta { color: var(--muted); font-size: var(--fs-xs); }
+
+/* Possible-duplicates panel: a pair of captures to compare, pick which to keep. */
+.dupe-list { display: flex; flex-direction: column; gap: var(--sp-4); }
+.dupe-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--sun);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  box-shadow: var(--shadow-sm);
+}
+.dupe-meta { display: flex; gap: var(--sp-3); align-items: baseline; margin-bottom: var(--sp-2); }
+.dupe-score { font-size: var(--fs-xs); font-weight: var(--weight-semibold); color: var(--sun); }
+.dupe-reason { font-size: var(--fs-xs); color: var(--muted-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+.dupe-pair { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.dupe-side {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+}
+.dupe-side.is-keep { border-color: var(--accent); background: var(--accent-soft); }
+.dupe-side input { accent-color: var(--accent); }
+.dupe-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
