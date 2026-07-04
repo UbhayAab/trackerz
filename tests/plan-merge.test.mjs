@@ -112,6 +112,23 @@ assert.equal(applyDietDelta(dietBase(), { op: "remove_meal", match: "banana" }).
   const rm = applyGymDelta(gymBase(), { op: "remove_exercise", match: "bench" });
   assert.deepEqual(rm.items, ["Leg press 2×12"]);
 }
+// ---- replace_exercise: swap ONE exercise in place, keep the rest/order ----
+{
+  const hit = applyGymDelta(gymBase(), { op: "replace_exercise", match: "bench", exercise: "Incline DB press 2×10" });
+  assert.deepEqual(hit.items, ["Leg press 2×12", "Incline DB press 2×10"], "swapped in place, order preserved");
+}
+{
+  const miss = applyGymDelta(gymBase(), { op: "replace_exercise", match: "deadlift", exercise: "RDL 2×10" });
+  assert.deepEqual(miss.items, ["Leg press 2×12", "Bench 2×10"], "no match -> unchanged (not appended, unlike replace_meal)");
+}
+{
+  const noMatch = applyGymDelta(gymBase(), { op: "replace_exercise", exercise: "RDL 2×10" });
+  assert.deepEqual(noMatch.items, ["Leg press 2×12", "Bench 2×10"], "missing match -> no-op");
+}
+{
+  const noExercise = applyGymDelta(gymBase(), { op: "replace_exercise", match: "bench" });
+  assert.deepEqual(noExercise.items, ["Leg press 2×12", "Bench 2×10"], "missing exercise -> no-op");
+}
 assert.deepEqual(applyGymDelta(gymBase(), { op: "nope" }).items, ["Leg press 2×12", "Bench 2×10"], "unknown op -> unchanged");
 // normWorkout defaults for a bare replace
 {

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import {
   parsePlanScope, localDateKey, planForDate,
-  setDietPlanOverride, setDatedPlanOverrides,
+  setDietPlanOverride, setGymPlanOverride, setDatedPlanOverrides,
 } from "../src/domain/diet/plan.js";
 
 // --- parsePlanScope ---------------------------------------------------------
@@ -24,7 +24,7 @@ assert.equal(localDateKey(new Date(2026, 6, 6)), "2026-07-06"); // month is 0-ba
 assert.equal(localDateKey(new Date(2026, 0, 9)), "2026-01-09");
 
 // --- planForDate resolves dated override on its date, falls back off-date ----
-function reset() { setDietPlanOverride(null); setDatedPlanOverrides({}); }
+function reset() { setDietPlanOverride(null); setGymPlanOverride(null); setDatedPlanOverrides({}); }
 
 const MON = new Date(2026, 6, 6);   // a date we'll override
 const TUE = new Date(2026, 6, 7);   // an off-list date
@@ -59,6 +59,48 @@ assert.equal(planForDate(TUE).meals[0].name, "Standing custom meal");
 setDatedPlanOverrides({ diet: { [monKey]: { meals: [{ name: "Paneer salad", slot: "dinner", calories: 400 }] } } });
 assert.equal(planForDate(MON).meals[0].name, "Paneer salad", "dated beats permanent on its date");
 assert.equal(planForDate(TUE).meals[0].name, "Standing custom meal", "permanent still applies off-date");
+
+// --- permanent GYM override (the exact bug: "here's my Monday-Friday gym
+// schedule" must actually show up, and stay off-date on days it doesn't cover) --
+reset();
+setGymPlanOverride({
+  name: "Push", kind: "gym", duration_min: 45, items: ["Bench press 3×8", "OHP 3×10"],
+});
+assert.equal(planForDate(MON).customWorkout, true, "a flat permanent gym override applies");
+assert.equal(planForDate(MON).workout.name, "Push");
+assert.equal(planForDate(TUE).workout.name, "Push", "flat override applies every day, not just Monday");
+
+// A per-weekday {days:{...}} permanent payload -- the literal "Monday to Friday"
+// shape the SYSTEM_PROMPT documents. Sat/Sun aren't covered -> falls back to the
+// fixed scaffold default, not blank/broken.
+reset();
+setGymPlanOverride({
+  days: {
+    Mon: { name: "Push", items: ["Bench press 3×8"] },
+    Tue: { name: "Pull", items: ["Bent row 3×8"] },
+    Wed: { name: "Legs", items: ["Squat 3×8"] },
+    Thu: { name: "Push", items: ["Incline press 3×8"] },
+    Fri: { name: "Pull", items: ["Lat pulldown 3×8"] },
+  },
+});
+const SAT = new Date(2026, 6, 11); // Saturday, not in the Mon-Fri schedule
+const SUN = new Date(2026, 6, 12);
+assert.equal(planForDate(MON).workout.name, "Push", "Monday gets its named day");
+assert.equal(planForDate(new Date(2026, 6, 7)).workout.name, "Pull", "Tuesday gets its named day");
+assert.equal(planForDate(new Date(2026, 6, 8)).workout.name, "Legs", "Wednesday gets its named day");
+assert.equal(planForDate(SAT).customWorkout, false, "Saturday isn't in the Mon-Fri schedule -> falls back to scaffold");
+assert.ok(planForDate(SAT).workout.name, "fallback workout still has a name, not blank");
+assert.equal(planForDate(SUN).customWorkout, false, "Sunday likewise falls back");
+
+// --- dated gym override wins over permanent on its date; a DELTA on a date
+// folds onto the PERMANENT override as its base (not the fixed scaffold) -------
+reset();
+setGymPlanOverride({ name: "Push", kind: "gym", duration_min: 45, items: ["Bench press 3×8", "OHP 3×10"] });
+setDatedPlanOverrides({ gym: { [monKey]: [{ op: "add_exercise", exercise: "Dips 3×10" }] } });
+const gymDeltaOnPermanent = planForDate(MON);
+assert.equal(gymDeltaOnPermanent.workout.name, "Push", "delta preserves the permanent override's identity");
+assert.deepEqual(gymDeltaOnPermanent.workout.items, ["Bench press 3×8", "OHP 3×10", "Dips 3×10"], "delta folds onto the PERMANENT base, not the fixed weekday scaffold");
+assert.equal(planForDate(TUE).workout.name, "Push", "off-date still shows the plain permanent override");
 
 // --- one-shot DELTA edits fold onto the scaffold for that date --------------
 reset();
