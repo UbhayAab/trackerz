@@ -1,19 +1,62 @@
 import { bootWithAuth } from "./bootstrap.js";
 import { renderNav } from "../ui/navigation.js";
-import { fetchRawQueryAudit } from "../services/supabase-data.js";
+import {
+  fetchRawQueryAudit, fetchOpenDuplicatesWithRecords, resolveDuplicateMerge, dismissDuplicate,
+} from "../services/supabase-data.js";
 import {
   buildAuditEntries, filterAuditEntries, auditTotals,
   renderAuditLog, auditTotalsHtml, ACTION_FILTERS,
 } from "../ui/audit-log.js";
+import { renderDuplicatesPanel, bindDuplicatesPanel } from "../ui/duplicates-panel.js";
 
 let allEntries = [];
+let duplicateRows = [];
 
 bootWithAuth(async () => {
   renderNav();
   populateActionFilter();
   bindControls();
-  await load();
+  bindDuplicatesPanel(document.getElementById("dupeList"), {
+    onMerge: handleMergeDuplicate,
+    onDismiss: handleDismissDuplicate,
+  });
+  await Promise.all([load(), loadDuplicates()]);
 });
+
+async function loadDuplicates() {
+  const host = document.getElementById("dupeList");
+  if (!host) return;
+  try {
+    duplicateRows = await fetchOpenDuplicatesWithRecords();
+    renderDuplicatesPanel(host, duplicateRows);
+  } catch (err) {
+    host.innerHTML = `<p class="audit-rejected">Failed to load duplicates: ${String(err?.message || err)}</p>`;
+  }
+}
+
+async function handleMergeDuplicate(id, picked) {
+  const row = duplicateRows.find((r) => r.id === id);
+  if (!row) return;
+  const dropSide = picked === "a" ? "b" : "a";
+  const drop = row[dropSide];
+  if (!drop) { await dismissDuplicate(id); await loadDuplicates(); return; } // nothing left to drop
+  const dropTable = dropSide === "a" ? row.record_a_table : row.record_b_table;
+  try {
+    await resolveDuplicateMerge({ candidateId: id, dropTable, dropId: drop.id });
+  } catch (err) {
+    alert(`Could not merge: ${err?.message || err}`);
+  }
+  await Promise.all([loadDuplicates(), load()]);
+}
+
+async function handleDismissDuplicate(id) {
+  try {
+    await dismissDuplicate(id);
+  } catch (err) {
+    alert(`Could not dismiss: ${err?.message || err}`);
+  }
+  await loadDuplicates();
+}
 
 function populateActionFilter() {
   const sel = document.getElementById("auditAction");
