@@ -1,0 +1,54 @@
+/* Proactive briefing card at the top of Home. Calm, single accent per slot
+   (morning = accent green, evening = sun). Tokens from styles/tokens.css. */
+
+.briefing-strip:empty { display: none; }
+
+.briefing-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-4);
+  box-shadow: var(--shadow-sm);
+}
+.briefing-card.briefing-evening { border-left-color: var(--sun); }
+
+.briefing-body {
+  margin: 0;
+  padding-right: var(--sp-5);
+  font-size: var(--fs-base);
+  color: var(--ink);
+  line-height: var(--lh);
+}
+
+.briefing-nudges {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.briefing-nudges li {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  background: var(--chip);
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+}
+
+.briefing-dismiss {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  line-height: 1;
+  padding: var(--sp-1);
+}
+.briefing-dismiss:hover { color: var(--ink); }

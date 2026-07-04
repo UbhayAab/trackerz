@@ -356,6 +356,41 @@ export async function logMealFromTemplate(template) {
   return data;
 }
 
+// ---- proactive briefings ----
+
+// The one briefing row for a given slot + date (unique per user,kind,for_date).
+export async function fetchBriefingFor({ kind, forDate }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("briefings")
+    .select("id, kind, for_date, body, payload, seen, created_at")
+    .eq("kind", kind)
+    .eq("for_date", forDate)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+// Upsert today's briefing so it persists (not regenerated on every open).
+export async function upsertBriefing({ kind, for_date, body, payload = {} }) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("briefings")
+    .upsert({ user_id: userId, kind, for_date, body, payload }, { onConflict: "user_id,kind,for_date" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function markBriefingSeen(id) {
+  if (!id) return;
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.from("briefings").update({ seen: true }).eq("id", id);
+  if (error) throw error;
+}
+
 export async function fetchOpenAiActions({ limit = 50 } = {}) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
@@ -366,6 +401,30 @@ export async function fetchOpenAiActions({ limit = 50 } = {}) {
     .limit(limit);
   if (error) throw error;
   return data || [];
+}
+
+// Raw-query audit: every capture in the last `sinceDays`, plus the AI run that
+// processed it and the tool calls it produced. Three small windowed queries,
+// joined client-side by buildAuditEntries() (pure) — avoids depending on
+// PostgREST embeds and keeps the join unit-testable.
+export async function fetchRawQueryAudit({ sinceDays = 7, limit = 200 } = {}) {
+  const supabase = await getSupabaseClient();
+  const cutoff = new Date(Date.now() - sinceDays * 86_400_000).toISOString();
+  const [ing, runs, actions] = await Promise.all([
+    supabase.from("raw_ingestions")
+      .select("id, source_type, capture_mode, raw_text, occurred_at, status, created_at")
+      .gte("created_at", cutoff).order("created_at", { ascending: false }).limit(limit),
+    supabase.from("ai_runs")
+      .select("id, ingestion_id, provider, model, prompt_tokens, output_tokens, estimated_cost_usd, latency_ms, status, error_message, created_at")
+      .gte("created_at", cutoff).limit(limit * 3),
+    supabase.from("ai_actions")
+      .select("id, ingestion_id, ai_run_id, tool_name, arguments, confidence, status, applied_record_table, applied_record_id, created_at")
+      .gte("created_at", cutoff).limit(limit * 8),
+  ]);
+  if (ing.error) throw ing.error;
+  if (runs.error) throw runs.error;
+  if (actions.error) throw actions.error;
+  return { ingestions: ing.data || [], runs: runs.data || [], actions: actions.data || [] };
 }
 
 export async function fetchOpenImports({ limit = 20 } = {}) {
