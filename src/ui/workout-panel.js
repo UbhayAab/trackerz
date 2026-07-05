@@ -8,18 +8,19 @@
 //   un-tapping deletes it. Bodyweight + composition save on blur. No batch
 //   "Log session" button, no per-set forms.
 
-import { planForDate, prescribedExercises } from "../domain/diet/plan.js";
+import { planForDate, prescribedExercises, weeklyWorkoutCount } from "../domain/diet/plan.js";
 import { reconcileExercises } from "../domain/diet/reconcile.js";
 import { logWorkoutSession, logBodyMetric, deleteRow } from "../services/supabase-data.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { goalDisplayValue } from "../domain/goals.js";
 
 const WORKOUT_HOST = "#workoutLog";
 const BODY_HOST = "#bodyComposition";
 const STATE_PREFIX = "trackerz.gym.v1.";
 const STEP = 2.5; // kg per tap — the usual plate jump
 
-let _state = { workoutLogs: [], bodyMetrics: [] };
+let _state = { workoutLogs: [], bodyMetrics: [], budgets: [] };
 
 function canSync() { return Boolean(getCurrentSession()?.user?.id) && !isLocalSession(); }
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
@@ -138,7 +139,7 @@ function muscleSummary(workoutLogs) {
 }
 
 export function renderWorkoutPanel(appState) {
-  if (appState) _state = { workoutLogs: appState.workoutLogs || [], bodyMetrics: appState.bodyMetrics || [] };
+  if (appState) _state = { workoutLogs: appState.workoutLogs || [], bodyMetrics: appState.bodyMetrics || [], budgets: appState.budgets || [] };
   const host = document.querySelector(WORKOUT_HOST);
   const bodyHost = document.querySelector(BODY_HOST);
   if (!host) return;
@@ -152,12 +153,15 @@ export function renderWorkoutPanel(appState) {
   for (const ex of exercises) view[ex.key] = resolveExState(ex.key, day, recon);
   const doneCount = exercises.filter((e) => e.loggable && view[e.key].done).length;
   const total = exercises.filter((e) => e.loggable).length;
+  const weeklyTarget = goalDisplayValue(_state.budgets, "weekly_workouts");
+  const weeklyDone = weeklyWorkoutCount(_state.workoutLogs);
 
   host.innerHTML = `
     <div class="panel-title-row">
       <div><p class="eyebrow">Today · ${esc(plan.weekdayName)}</p><h2>${esc(plan.workout.name)}</h2></div>
       <span class="metric-badge">${total ? `${doneCount}/${total} done` : plan.workout.kind}</span>
     </div>
+    ${weeklyTarget ? `<p class="muted small wl-weekly-goal">${weeklyDone} / ${weeklyTarget} workouts this week (last 7 days)</p>` : ""}
     <p class="muted small">${esc(plan.workout.rules || "")} · nudge the weight, tap ✓ to log.</p>
     <div class="wl-exercises">
       ${exercises.map((ex) => (ex.loggable ? exerciseCard(ex, view[ex.key], _state.workoutLogs) : noteCard(ex, view[ex.key]))).join("")}

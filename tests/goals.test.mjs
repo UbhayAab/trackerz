@@ -32,6 +32,15 @@ import { GOALS, goalDef, goalValue, goalDisplayValue, resolveDietTargets, active
   assert.equal(goalDisplayValue(budgets, "weekly_spend"), goalDef("weekly_spend").default);
 }
 
+// weekly_workouts (gym goal): resolves like any other kind, no diet-specific
+// fallback branch needed -- generic goalValue/goalDisplayValue is the whole story.
+{
+  assert.equal(goalDef("weekly_workouts").domain, "gym");
+  assert.equal(goalDisplayValue([], "weekly_workouts"), goalDef("weekly_workouts").default, "unset -> seed default");
+  assert.equal(goalValue([{ kind: "weekly_workouts", amount: 5 }], "weekly_workouts"), 5);
+  assert.equal(goalDisplayValue([{ kind: "weekly_workouts", amount: 5 }], "weekly_workouts"), 5, "set value wins over default");
+}
+
 // resolveDietTargets: an explicit goal OVERRIDES the scaffold target.
 {
   const scaffold = { calories: 1765, protein_g: 151, carbs_g: 153, fat_g: 67 };

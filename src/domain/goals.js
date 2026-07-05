@@ -19,6 +19,7 @@ export const GOALS = [
   { kind: "daily_calories", label: "Daily calories", period: "daily", domain: "diet", unit: "kcal", default: MACRO_TARGETS.calories },
   { kind: "daily_protein", label: "Daily protein", period: "daily", domain: "diet", unit: "g", default: MACRO_TARGETS.protein_g },
   { kind: "weekly_calories", label: "Weekly calorie budget", period: "weekly", domain: "diet", unit: "kcal", default: MACRO_TARGETS.calories * 7 },
+  { kind: "weekly_workouts", label: "Workouts per week", period: "weekly", domain: "gym", unit: "sessions", default: 4 },
 ];
 
 const GOAL_BY_KIND = Object.fromEntries(GOALS.map((g) => [g.kind, g]));

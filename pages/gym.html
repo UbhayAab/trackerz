@@ -25,6 +25,19 @@
           <div class="panel-title-row"><div><p class="eyebrow">Today</p><h2>Workout</h2></div></div>
           <p class="muted small">Per-exercise sets/reps/weight logging lands here (P3).</p>
         </section>
+        <section class="command-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">Goal</p>
+              <h2>Weekly workout target</h2>
+            </div>
+            <span class="status-pill muted">editable scaffold</span>
+          </div>
+          <div class="budget-grid">
+            <label class="settings-row"><span>Workouts per week</span><input id="weeklyWorkoutsBudget" data-budget-kind="weekly_workouts" type="number" inputmode="numeric" /></label>
+          </div>
+          <p id="gymBudgetStatus" class="agent-detail">Counted over the trailing 7 days, not a calendar week.</p>
+        </section>
         <section class="command-panel" id="bodyComposition" aria-label="Body composition">
           <div class="panel-title-row"><div><p class="eyebrow">Body</p><h2>Composition</h2></div></div>
           <p class="muted small">Weight, body-fat and circumference tracking lands here (P3).</p>
