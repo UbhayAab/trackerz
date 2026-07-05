@@ -131,6 +131,13 @@ check("wellness mood at high edge", validateToolArguments("create_wellness_note_
 check("body weight valid", validateToolArguments("create_body_metric_candidate", { metric_type: "weight", value: 75.3, unit: "kg", occurred_at: new Date().toISOString() }).ok);
 check("body bad type", !validateToolArguments("create_body_metric_candidate", { metric_type: "bmi", value: 24, unit: "kg/m2", occurred_at: new Date().toISOString() }).ok);
 
+// target/goal (money, diet, and gym kinds share one tool)
+check("target weekly_workouts valid", validateToolArguments("set_target_candidate", { kind: "weekly_workouts", amount: 5 }).ok);
+check("target daily_protein valid", validateToolArguments("set_target_candidate", { kind: "daily_protein", amount: 180 }).ok);
+check("target bad kind rejected", !validateToolArguments("set_target_candidate", { kind: "workouts_per_month", amount: 12 }).ok);
+check("target missing amount rejected", !validateToolArguments("set_target_candidate", { kind: "weekly_workouts" }).ok);
+check("target zero amount rejected", !validateToolArguments("set_target_candidate", { kind: "weekly_workouts", amount: 0 }).ok);
+
 // ---- huge input / unicode / weird amounts ----
 
 const huge = "paid 240 zomato ".repeat(2000); // ~32KB

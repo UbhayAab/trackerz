@@ -216,3 +216,17 @@ export function prescribedExercises(workout) {
     return { key: `ex${i}`, name: text, raw: text, kind: "note", sets: 0, reps: 0, repsUnit: "", muscle: muscleFor(text), loggable: false };
   });
 }
+
+// Sessions logged in the trailing 7 days (rolling window, same day-window
+// convention as habit-score.js's windowDays() — not a calendar Mon-Sun week,
+// so the count never resets mid-week). Feeds the "weekly_workouts" goal.
+export function weeklyWorkoutCount(workoutLogs = [], todayISO) {
+  const anchor = todayISO ? new Date(todayISO) : new Date();
+  anchor.setHours(0, 0, 0, 0);
+  const start = anchor.getTime() - 6 * 86_400_000;
+  const end = anchor.getTime() + 86_400_000 - 1;
+  return (workoutLogs || []).filter((w) => {
+    const t = new Date(w.occurred_at).getTime();
+    return !Number.isNaN(t) && t >= start && t <= end;
+  }).length;
+}

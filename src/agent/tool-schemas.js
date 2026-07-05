@@ -89,7 +89,7 @@ export const TOOL_SCHEMAS = {
   set_target_candidate: {
     required: ["kind", "amount"],
     types: { kind: "string", amount: "positive_number", reason: "string" },
-    enums: { kind: ["monthly_spend", "weekly_spend", "food_cap", "daily_calories", "daily_protein", "weekly_calories"] },
+    enums: { kind: ["monthly_spend", "weekly_spend", "food_cap", "daily_calories", "daily_protein", "weekly_calories", "weekly_workouts"] },
   },
   remember_fact: {
     required: ["key", "value"],

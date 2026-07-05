@@ -2,7 +2,7 @@
 // loggable exercises (sets × reps + muscle group).
 
 import assert from "node:assert";
-import { planForDate, prescribedExercises, muscleFor } from "../src/domain/diet/plan.js";
+import { planForDate, prescribedExercises, muscleFor, weeklyWorkoutCount } from "../src/domain/diet/plan.js";
 
 // muscleFor keyword mapping
 {
@@ -58,6 +58,23 @@ import { planForDate, prescribedExercises, muscleFor } from "../src/domain/diet/
   assert.equal(ex[0].sets, 2);
   assert.equal(ex[0].reps, 10);
   assert.equal(ex[0].muscle, "core");
+}
+
+// weeklyWorkoutCount: rolling 7-day window anchored on `todayISO`, not a
+// calendar week -- feeds the "weekly_workouts" goal.
+{
+  const today = "2026-07-08T09:00:00+05:30"; // a Wednesday
+  const logs = [
+    { occurred_at: "2026-07-08T18:00:00+05:30" }, // today
+    { occurred_at: "2026-07-06T18:00:00+05:30" }, // 2 days ago
+    { occurred_at: "2026-07-02T18:00:00+05:30" }, // 6 days ago -> inside the window
+    { occurred_at: "2026-07-01T18:00:00+05:30" }, // 7 days ago -> outside (window is today-6..today)
+    { occurred_at: "2026-06-01T18:00:00+05:30" }, // long ago
+  ];
+  assert.equal(weeklyWorkoutCount(logs, today), 3, "counts only the trailing 7 days, inclusive of today");
+  assert.equal(weeklyWorkoutCount([], today), 0, "no logs -> 0");
+  assert.equal(weeklyWorkoutCount(undefined, today), 0, "missing logs array -> 0, not a throw");
+  assert.equal(weeklyWorkoutCount([{ occurred_at: "not-a-date" }], today), 0, "unparseable date is ignored, not counted");
 }
 
 console.log("plan-exercises.test.mjs: all assertions passed");
