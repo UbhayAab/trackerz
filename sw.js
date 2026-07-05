@@ -4,8 +4,10 @@
 // 3. Stale-while-revalidate for CSS/JS/icons.
 // 4. Offline capture queue: POSTs to /__offline-capture__ are saved to
 //    IndexedDB and replayed via Background Sync when the SW comes back.
+// 5. Jarvis Web Push: shows briefs/nudges sent by the jarvis edge function
+//    (payload: { title, body, url }) and focuses/opens the app on tap.
 
-const VERSION = "trackerz-v17-20260629";
+const VERSION = "trackerz-v18-20260706";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -88,4 +90,35 @@ self.addEventListener("message", (event) => {
       caches.open(VERSION).then((cache) => cache.addAll(event.data.urls).catch(() => null))
     );
   }
+});
+
+// Jarvis Web Push → OS notification.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; }
+  catch { data = { body: event.data ? event.data.text() : "" }; }
+  const title = data.title || "Trackerz";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      icon: "./icons/icon-192.svg",
+      badge: "./icons/icon-192.svg",
+      tag: data.tag || "jarvis",
+      data: { url: data.url || "./" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "./";
+  event.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const win of wins) {
+        if ("focus" in win) { await win.focus(); return; }
+      }
+      await self.clients.openWindow(url);
+    })()
+  );
 });

@@ -1,12 +1,14 @@
-// Proactive briefings orchestrator (client-side, no cron). On Home load we pick
-// the slot from the local hour, and if today's briefing for that slot doesn't
-// exist yet we build it from current app state + the day's plan and upsert it
-// into the `briefings` table (RLS-safe) so it persists and isn't regenerated on
-// every open. The pure text composition lives in src/analytics/briefing.js.
+// Proactive briefings orchestrator. The scheduled `jarvis` edge function
+// (pg_cron → pg_net, see 20260706000015_jarvis_engine.sql) writes the real
+// morning/evening briefings server-side before the app is even opened; Home
+// shows the freshest server row and subscribes to Realtime so a brief landing
+// mid-session appears live. The client-side generator below survives purely as
+// the OFFLINE fallback. Pure text composition lives in src/analytics/briefing.js.
 
 import { planForDate, localDateKey } from "../domain/diet/plan.js";
 import { buildBriefing } from "../analytics/briefing.js";
-import { fetchBriefingFor, upsertBriefing, markBriefingSeen } from "./supabase-data.js";
+import { fetchBriefingFor, fetchLatestBriefing, upsertBriefing, markBriefingSeen } from "./supabase-data.js";
+import { getSupabaseClient } from "./supabase-client.js";
 
 export function briefingSlot(now = new Date()) {
   return now.getHours() < 12 ? "morning" : "evening";
@@ -48,18 +50,47 @@ export function snapshotFromState(state = {}, now = new Date()) {
   };
 }
 
-// Return today's briefing for the current slot, generating + persisting it once.
-// Best-effort: returns null if Supabase is unavailable (offline) so the caller
-// can simply render nothing.
+// Return today's briefing: the freshest server-written row wins (the jarvis fn
+// runs before the user wakes up); only when nothing exists for today do we fall
+// back to generating one client-side from hydrated state (offline resilience).
+// Best-effort: returns null if Supabase is unavailable so the caller renders nothing.
 export async function ensureTodayBriefing(state, now = new Date()) {
   try {
-    const slot = briefingSlot(now);
     const forDate = localDateKey(now);
-    const existing = await fetchBriefingFor({ kind: slot, forDate });
-    if (existing) return existing;
+    const latest = await fetchLatestBriefing(forDate);
+    if (latest) return latest;
+    const slot = briefingSlot(now);
     const brief = buildBriefing(slot, snapshotFromState(state, now));
     const saved = await upsertBriefing({ kind: slot, for_date: forDate, body: brief.body, payload: brief.payload });
     return saved || brief;
+  } catch {
+    return null;
+  }
+}
+
+// Live arrival: re-render when the jarvis fn inserts/updates today's briefing
+// while the app is open (Realtime publication added in 20260706000015).
+// Returns the channel (or null when offline/signed out); caller may ignore it.
+export async function watchTodayBriefings(onBriefing, now = new Date()) {
+  try {
+    const supabase = await getSupabaseClient();
+    const { data } = await supabase.auth.getUser();
+    const uid = data?.user?.id;
+    if (!uid) return null;
+    const forDate = localDateKey(now);
+    return supabase
+      .channel("jarvis-briefings")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "briefings", filter: `user_id=eq.${uid}` },
+        (payload) => {
+          const row = payload.new;
+          if (row && row.for_date === forDate && !row.seen && (row.kind === "morning" || row.kind === "evening")) {
+            onBriefing(row);
+          }
+        },
+      )
+      .subscribe();
   } catch {
     return null;
   }

@@ -91,6 +91,28 @@ function edgeLooksLikeGym(text) {
   if (GYM_SET_REP.test(t)) return true;
   return false;
 }
+// --- 4. jarvis-brief block parity (lib/jarvis-brief.mjs ↔ jarvis edge fn) ----
+// The whole brain block is copied verbatim into supabase/functions/jarvis/index.ts
+// between the same markers. Compare the full text between markers, byte for byte.
+function mirrorBlock(src, file) {
+  const start = src.indexOf("JARVIS-BRIEF MIRROR START");
+  const end = src.indexOf("JARVIS-BRIEF MIRROR END");
+  assert.ok(start !== -1 && end !== -1 && end > start, `jarvis mirror markers missing in ${file}`);
+  const afterStartLine = src.indexOf("\n", start) + 1;
+  const endLineStart = src.lastIndexOf("\n", end) + 1;
+  return src.slice(afterStartLine, endLineStart);
+}
+{
+  const jarvisEdgePath = "supabase/functions/jarvis/index.ts";
+  const jarvisLib = readFileSync("lib/jarvis-brief.mjs", "utf8");
+  const jarvisEdge = readFileSync(jarvisEdgePath, "utf8");
+  assert.equal(
+    mirrorBlock(jarvisEdge, jarvisEdgePath),
+    mirrorBlock(jarvisLib, "lib/jarvis-brief.mjs"),
+    "DRIFT in JARVIS-BRIEF mirror block: lib/jarvis-brief.mjs and the jarvis edge fn have diverged",
+  );
+}
+
 const GYM_CORPUS = [
   "did Workout A", "did chest and back", "worked out today", "bench 3x10 60kg",
   "squat 60kg 3x8", "leg press 2x12", "ran 5k", "walked 35 min", "brisk walk",
