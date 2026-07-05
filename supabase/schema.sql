@@ -9,6 +9,10 @@ create table if not exists public.profiles (
   timezone text not null default 'Asia/Kolkata',
   currency text not null default 'INR',
   briefing_enabled boolean not null default true,
+  -- Jarvis delivery preferences (20260706000015_jarvis_engine.sql).
+  push_enabled boolean not null default true,
+  email_brief boolean not null default true,
+  quiet_hours jsonb not null default '{"start":"22:30","end":"06:45"}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -355,18 +359,42 @@ create table if not exists public.notes (
   created_at timestamptz not null default now()
 );
 
--- Proactive Jarvis briefings (20260625000014_briefings.sql). One row per user per
--- slot, written by the scheduled briefing edge fn; Home renders the latest.
+-- Proactive Jarvis briefings (20260625000014 + 20260706000015). One row per user
+-- per slot, written by the scheduled `jarvis` edge fn; Home renders the latest.
 create table if not exists public.briefings (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
-  kind text not null check (kind in ('morning','evening')),
+  kind text not null check (kind in ('morning','evening','closeout','weekly')),
   for_date date not null,
   body text not null,
   payload jsonb not null default '{}'::jsonb,
   seen boolean not null default false,
   created_at timestamptz not null default now(),
   unique(user_id, kind, for_date)
+);
+
+-- Jarvis daily habit ledger (20260706000015_jarvis_engine.sql): one row per user
+-- per local day, written by the nightly close-out; feeds streaks + weekly review.
+create table if not exists public.habit_days (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  day date not null,
+  flags jsonb not null default '{}'::jsonb,
+  streaks jsonb not null default '{}'::jsonb,
+  summary jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique(user_id, day)
+);
+
+-- Web Push subscriptions (20260706000015): one row per browser/device endpoint.
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  endpoint text not null unique,
+  keys jsonb not null,
+  ua text,
+  created_at timestamptz not null default now(),
+  last_ok_at timestamptz
 );
 
 create table if not exists public.invited_emails (
@@ -502,7 +530,8 @@ begin
     select unnest(array[
       'workout_logs','merchant_aliases','category_memory','subscriptions',
       'bank_format_memory','meal_templates','hydration_logs','weekly_reviews',
-      'audit_log','user_secrets','user_plans','memory_facts','notes','briefings'
+      'audit_log','user_secrets','user_plans','memory_facts','notes','briefings',
+      'habit_days','push_subscriptions'
     ])
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -555,3 +584,71 @@ create index if not exists ix_ledger_dupe_state on public.ledger_entries(user_id
 create index if not exists ix_memory_facts_user on public.memory_facts(user_id, kind, confidence desc, updated_at desc);
 create index if not exists ix_notes_user_status on public.notes(user_id, status, created_at desc);
 create index if not exists ix_briefings_user_date on public.briefings(user_id, for_date desc, kind);
+create index if not exists ix_habit_days_user_day on public.habit_days(user_id, day desc);
+create index if not exists ix_push_subs_user on public.push_subscriptions(user_id);
+
+-- ============================================================================
+-- Jarvis engine scheduler (20260706000015_jarvis_engine.sql): pg_cron fires
+-- jarvis_ping() at three IST slots; it reads JARVIS_CRON_SECRET from app_secrets
+-- and pg_net-POSTs to the `jarvis` edge function, which closes out the day,
+-- writes habit_days/weekly_reviews/briefings, and delivers email + Web Push.
+-- ============================================================================
+
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+
+create or replace function public.jarvis_ping(action text)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $jping$
+declare
+  secret text;
+  req_id bigint;
+begin
+  select value into secret from public.app_secrets where name = 'JARVIS_CRON_SECRET';
+  if secret is null then
+    raise warning 'jarvis_ping: JARVIS_CRON_SECRET missing from app_secrets — skipping %', action;
+    return null;
+  end if;
+  select net.http_post(
+    url := 'https://yyoewdcijplkhxleejtm.supabase.co/functions/v1/jarvis',
+    body := jsonb_build_object('action', action),
+    headers := jsonb_build_object('content-type', 'application/json', 'x-jarvis-secret', secret),
+    timeout_milliseconds := 30000
+  ) into req_id;
+  return req_id;
+end$jping$;
+
+revoke all on function public.jarvis_ping(text) from public;
+revoke all on function public.jarvis_ping(text) from anon, authenticated;
+
+-- Three IST slots (cron is UTC; IST = UTC+5:30): close-out 00:05 IST, morning
+-- brief 07:00 IST, evening nudge 20:30 IST.
+do $jcron$
+declare j record;
+begin
+  for j in select jobid from cron.job where jobname in ('jarvis_closeout','jarvis_morning','jarvis_evening')
+  loop
+    perform cron.unschedule(j.jobid);
+  end loop;
+end$jcron$;
+
+select cron.schedule('jarvis_closeout', '35 18 * * *', $$select public.jarvis_ping('closeout')$$);
+select cron.schedule('jarvis_morning',  '30 1 * * *',  $$select public.jarvis_ping('morning')$$);
+select cron.schedule('jarvis_evening',  '0 15 * * *',  $$select public.jarvis_ping('evening')$$);
+
+-- Live in-app arrival: publish briefings inserts over Supabase Realtime.
+do $jpub$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'briefings'
+  ) then
+    alter publication supabase_realtime add table public.briefings;
+  end if;
+exception when others then
+  -- Realtime is a nice-to-have (live strip refresh); never block the migration.
+  raise warning 'could not add briefings to supabase_realtime: %', sqlerrm;
+end$jpub$;

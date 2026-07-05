@@ -1,0 +1,46 @@
+name: Jarvis heartbeat
+
+# Redundant scheduler for the Jarvis engine. pg_cron inside Supabase is the
+# primary clock; this fires the same idempotent actions a few minutes later
+# (each run upserts on (user, kind, date) and skips if the row already exists),
+# so it only matters when pg_cron missed — and the traffic doubles as a
+# keep-alive for the free-tier project. Requires the JARVIS_CRON_SECRET repo
+# secret (same value as the app_secrets row).
+
+on:
+  schedule:
+    - cron: "50 18 * * *" # 00:20 IST — close out the just-ended day
+    - cron: "45 1 * * *"  # 07:15 IST — morning brief
+    - cron: "15 15 * * *" # 20:45 IST — evening nudge
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "closeout | morning | evening | status"
+        default: "morning"
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fire jarvis
+        env:
+          JARVIS_CRON_SECRET: ${{ secrets.JARVIS_CRON_SECRET }}
+        run: |
+          if [ -z "$JARVIS_CRON_SECRET" ]; then
+            echo "::warning::JARVIS_CRON_SECRET repo secret not set — heartbeat skipped."
+            exit 0
+          fi
+          case "${{ github.event.inputs.action }}" in
+            closeout|morning|evening|status) ACTION="${{ github.event.inputs.action }}" ;;
+            *)
+              HOUR=$(date -u +%H)
+              if [ "$HOUR" -ge 18 ]; then ACTION=closeout
+              elif [ "$HOUR" -lt 8 ]; then ACTION=morning
+              else ACTION=evening
+              fi ;;
+          esac
+          echo "action=$ACTION"
+          curl -sS -X POST "https://yyoewdcijplkhxleejtm.supabase.co/functions/v1/jarvis" \
+            -H "content-type: application/json" \
+            -H "x-jarvis-secret: $JARVIS_CRON_SECRET" \
+            -d "{\"action\":\"$ACTION\"}" | head -c 2000

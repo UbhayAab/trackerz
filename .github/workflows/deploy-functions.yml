@@ -31,6 +31,13 @@ jobs:
             exit 0
           fi
           supabase functions deploy agent --project-ref "$PROJECT_REF"
+      - name: Deploy jarvis function
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "jarvis not deployed (missing token)"
+            exit 0
+          fi
+          supabase functions deploy jarvis --project-ref "$PROJECT_REF"
       - name: Deploy gmail-sync function (if present)
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ ! -d supabase/functions/gmail-sync ]; then

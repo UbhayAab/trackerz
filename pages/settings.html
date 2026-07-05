@@ -74,17 +74,21 @@
         <section class="command-panel">
           <div class="panel-title-row">
             <div>
-              <p class="eyebrow">AI schedule</p>
-              <h2>12 AM daily summary</h2>
+              <p class="eyebrow">Jarvis</p>
+              <h2>Proactive briefings</h2>
             </div>
-            <span id="scheduleStatus" class="status-pill muted">enabled</span>
+            <span id="scheduleStatus" class="status-pill muted">loading</span>
           </div>
           <div class="budget-grid">
-            <label class="settings-row"><span>Nightly summary</span><input id="nightlySummaryToggle" type="checkbox" checked /></label>
-            <label class="settings-row"><span>Aggressive autopilot</span><input id="autopilotToggle" type="checkbox" checked /></label>
-            <label class="settings-row"><span>Daily AI cap ($)</span><input id="dailyCapInput" type="number" min="1" value="2" /></label>
+            <label class="settings-row"><span>Jarvis engine (close-out 00:05 · brief 07:00 · nudge 20:30)</span><input id="nightlySummaryToggle" type="checkbox" checked /></label>
+            <label class="settings-row"><span>Email the morning brief</span><input id="emailBriefToggle" type="checkbox" checked /></label>
+            <label class="settings-row"><span>Notify this device (Web Push)</span><input id="pushBriefToggle" type="checkbox" /></label>
           </div>
-          <p id="settingsStatus" class="agent-detail">At 12 AM, the backend job will summarize money, calories, protein, duplicates, and tomorrow's priorities.</p>
+          <div class="data-actions">
+            <button id="briefNowBtn" class="primary-button" type="button">Brief me now</button>
+          </div>
+          <p id="jarvisDetail" class="agent-detail">Runs on the server even when the app is closed: the day is closed out just after midnight, the morning brief lands at 7:00 with yesterday closed + today's plan + safe-to-spend, and the evening nudge flags what's still fixable. Quiet hours 22:30–06:45.</p>
+          <p id="settingsStatus" class="agent-detail"></p>
         </section>
 
         <section class="command-panel">

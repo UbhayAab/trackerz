@@ -15,6 +15,15 @@
 }
 .briefing-card.briefing-evening { border-left-color: var(--sun); }
 
+.briefing-eyebrow {
+  margin: 0 0 2px;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.briefing-card.briefing-evening .briefing-eyebrow { color: var(--sun); }
+
 .briefing-body {
   margin: 0;
   padding-right: var(--sp-5);

@@ -10,7 +10,7 @@ import { bootWithAuth } from "./bootstrap.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { registerServiceWorker, bindInstallPrompt, bindOnlineDrain } from "../services/pwa.js";
 import { runCapture } from "../services/agent-runner.js";
-import { ensureTodayBriefing } from "../services/briefing.js";
+import { ensureTodayBriefing, watchTodayBriefings } from "../services/briefing.js";
 import { renderBriefingStrip } from "../ui/briefing-strip.js";
 
 registerServiceWorker();
@@ -33,10 +33,13 @@ bootWithAuth(async () => {
   renderDietPlan();
   bindOnlineDrain(runCapture);
   await hydrateStateFromSupabase();
-  // Proactive briefing: generated once per slot/day from the freshly hydrated
-  // state, then shown at the top of Home. Best-effort — silent when offline.
+  // Proactive briefing: the jarvis edge fn writes it server-side on schedule —
+  // show the freshest row (client-generating only as offline fallback), and
+  // keep the strip live so a brief landing mid-session appears immediately.
   try {
+    const host = document.getElementById("briefingStrip");
     const briefing = await ensureTodayBriefing(getState(), new Date());
-    renderBriefingStrip(document.getElementById("briefingStrip"), briefing);
+    renderBriefingStrip(host, briefing);
+    watchTodayBriefings((row) => renderBriefingStrip(host, row));
   } catch { /* briefing is a nudge, never block the page */ }
 });

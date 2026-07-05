@@ -371,6 +371,21 @@ export async function fetchBriefingFor({ kind, forDate }) {
   return data || null;
 }
 
+// The freshest briefing for a date regardless of kind — the scheduled jarvis fn
+// writes morning/evening rows server-side, so Home shows whichever landed last.
+export async function fetchLatestBriefing(forDate) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("briefings")
+    .select("id, kind, for_date, body, payload, seen, created_at")
+    .eq("for_date", forDate)
+    .in("kind", ["morning", "evening"])
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
 // Upsert today's briefing so it persists (not regenerated on every open).
 export async function upsertBriefing({ kind, for_date, body, payload = {} }) {
   const supabase = await getSupabaseClient();

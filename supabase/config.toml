@@ -2,3 +2,9 @@ project_id = "yyoewdcijplkhxleejtm"
 
 [functions.agent]
 verify_jwt = true
+
+# jarvis is called by pg_cron/pg_net with an x-jarvis-secret header (checked
+# in-function) and by the app with a user JWT; the publishable API key is not a
+# JWT, so platform verify_jwt must stay off.
+[functions.jarvis]
+verify_jwt = false
