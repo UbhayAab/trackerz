@@ -2,7 +2,7 @@
   width: min(100%, 860px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: 16px 14px calc(env(safe-area-inset-bottom, 0px) + 100px);
+  padding: var(--sp-4) 14px calc(env(safe-area-inset-bottom, 0px) + 100px);
 }
 
 .topbar,
@@ -12,13 +12,20 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--sp-4);
 }
 
 .topbar {
-  padding: 6px 2px 14px;
+  padding: var(--sp-2) 2px var(--sp-3);
 }
 
+.topbar-title,
+.topbar h1 {
+  font-size: var(--fs-xl);
+  letter-spacing: -0.02em;
+}
+
+/* ---- Panels: one consistent card. Hairline border IS the separator. ---- */
 .analytics-panel,
 .ai-panel,
 .cost-panel,
@@ -27,9 +34,8 @@
 .command-panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 16px;
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
 }
 
 .view-tabs,
@@ -40,103 +46,95 @@
 .pipeline-panel,
 .command-panel,
 .analysis-grid {
-  margin-top: 14px;
+  margin-top: var(--sp-3);
 }
 
 .command-grid,
 .analysis-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: var(--sp-3);
+}
+
+/* Section rhythm. */
+main > section + section {
+  margin-top: var(--sp-3);
+}
+
+.panel-title-row {
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+.panel-title-row h2 {
+  letter-spacing: -0.015em;
 }
 
 .page-shell {
   width: min(100%, 980px);
 }
 
+/* ---- Page hero: solid tokened surface, strong type hierarchy.
+   Kicker (uppercase --text-3) above a large, tight-tracked heading. ---- */
 .page-hero {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 18px;
-  min-height: 140px;
-  margin-bottom: 16px;
+  gap: var(--sp-4);
+  min-height: 132px;
+  margin-bottom: var(--sp-4);
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(135deg, rgba(26, 141, 98, 0.14), transparent 42%),
-    linear-gradient(215deg, rgba(208, 71, 51, 0.1), transparent 44%),
-    #ffffff;
-  box-shadow: var(--shadow-sm);
-  padding: 20px;
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  padding: var(--sp-5);
+}
+
+.page-hero .eyebrow {
+  margin-bottom: var(--sp-2);
 }
 
 .page-hero h2 {
   max-width: 680px;
-  font-size: 1.45rem;
+  font-size: var(--fs-2xl);
   font-weight: var(--weight-semibold);
   line-height: 1.12;
-}
-
-.capture-hero {
-  background:
-    linear-gradient(135deg, rgba(39, 111, 194, 0.16), transparent 42%),
-    linear-gradient(215deg, rgba(240, 184, 63, 0.18), transparent 44%),
-    var(--panel);
-}
-
-.money-hero {
-  background:
-    linear-gradient(135deg, rgba(19, 138, 91, 0.18), transparent 48%),
-    var(--panel);
-}
-
-.diet-hero {
-  background:
-    linear-gradient(135deg, rgba(217, 77, 61, 0.15), transparent 48%),
-    var(--panel);
-}
-
-.insights-hero,
-.settings-hero {
-  background:
-    linear-gradient(135deg, rgba(39, 111, 194, 0.16), transparent 48%),
-    linear-gradient(215deg, rgba(19, 138, 91, 0.12), transparent 42%),
-    var(--panel);
+  letter-spacing: -0.02em;
 }
 
 .budget-grid {
   display: grid;
-  gap: 10px;
-  margin-top: 14px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
 }
 
 .summary-rail {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin: 14px 0;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0;
 }
 
 .summary-tile {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--panel);
-  box-shadow: var(--shadow);
-  padding: 12px;
+  padding: var(--sp-3);
 }
 
 .summary-tile span {
   display: block;
-  color: var(--muted);
-  font-size: 0.74rem;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
   font-weight: var(--weight-semibold);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
 }
 
 .summary-tile strong {
   display: block;
-  margin-top: 8px;
-  font-size: 1.2rem;
+  margin-top: var(--sp-2);
+  font-size: var(--fs-lg);
   font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }

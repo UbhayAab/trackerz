@@ -41,6 +41,21 @@
         <section class="command-panel">
           <div class="panel-title-row">
             <div>
+              <p class="eyebrow">Media pipeline</p>
+              <h2>Camera &amp; voice self-test</h2>
+            </div>
+          </div>
+          <p class="muted small">Camera test draws a fake receipt image, uploads it, and shows exactly what Gemini reads back — no rows are written. Voice test records ~4 seconds from your mic (speak something!) and shows the transcription. If either fails, the real error appears here instead of a silent nothing.</p>
+          <div class="data-actions">
+            <button id="diagCameraBtn" class="primary-button" type="button">Test camera → Gemini</button>
+            <button id="diagVoiceBtn" class="primary-button" type="button">Test voice → Gemini</button>
+          </div>
+          <pre id="diagMediaOutput" class="agent-detail"></pre>
+        </section>
+
+        <section class="command-panel">
+          <div class="panel-title-row">
+            <div>
               <p class="eyebrow">Quick capture</p>
               <h2>End-to-end test</h2>
             </div>

@@ -1,11 +1,11 @@
 /* ============================================================================
-   Motion layer. Fast, intentional, calm. Animate only transform + opacity.
-   All entrances/transforms collapse under prefers-reduced-motion. See
-   docs/design-system.md for the budget.
+   Motion layer. Fast, intentional, calm. Animate ONLY transform / opacity /
+   color / border-color / background-color. One springy beat (the check-off
+   pop); everything else is quiet. Collapses under prefers-reduced-motion.
    ========================================================================== */
 
 @keyframes tz-fade-rise {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
 }
 @keyframes tz-fade {
@@ -16,10 +16,21 @@
   0%   { opacity: 0; transform: scale(.96); }
   100% { opacity: 1; transform: scale(1); }
 }
+/* The one springy beat: diet/gym check-off tick. */
+@keyframes tz-check-pop {
+  0%   { transform: scale(.7); }
+  60%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+/* Shimmer-free loading pulse (skeletons, pending status dots). */
+@keyframes tz-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .45; }
+}
 
-/* ---- Section entrances: staggered fade + rise on first paint. Capped at 6. */
+/* ---- Section entrances: staggered fade + rise on first paint. Subtle. ---- */
 main > section {
-  animation: tz-fade-rise var(--dur-entrance) var(--ease-emphasized) both;
+  animation: tz-fade-rise var(--dur-entrance) var(--ease) both;
 }
 main > section:nth-child(1) { animation-delay: 0ms; }
 main > section:nth-child(2) { animation-delay: calc(var(--stagger) * 1); }
@@ -29,12 +40,12 @@ main > section:nth-child(5) { animation-delay: calc(var(--stagger) * 4); }
 main > section:nth-child(n + 6) { animation-delay: calc(var(--stagger) * 5); }
 
 /* ---- Utility classes for JS-rendered content ---- */
-.tz-enter { animation: tz-fade-rise var(--dur-base) var(--ease-emphasized) both; }
-.tz-fade-in { animation: tz-fade var(--dur-base) var(--ease-standard) both; }
+.tz-enter { animation: tz-fade-rise var(--dur-med) var(--ease) both; }
+.tz-fade-in { animation: tz-fade var(--dur-med) var(--ease) both; }
 .tz-pop { animation: tz-pop var(--dur-fast) var(--ease-spring) both; }
 
 /* Staggered list/table-row reveal (set on a container; children fade in). */
-.tz-stagger > * { animation: tz-fade var(--dur-base) var(--ease-standard) both; }
+.tz-stagger > * { animation: tz-fade var(--dur-med) var(--ease) both; }
 .tz-stagger > *:nth-child(1) { animation-delay: 0ms; }
 .tz-stagger > *:nth-child(2) { animation-delay: calc(var(--stagger) * 1); }
 .tz-stagger > *:nth-child(3) { animation-delay: calc(var(--stagger) * 2); }
@@ -42,30 +53,63 @@ main > section:nth-child(n + 6) { animation-delay: calc(var(--stagger) * 5); }
 .tz-stagger > *:nth-child(5) { animation-delay: calc(var(--stagger) * 4); }
 .tz-stagger > *:nth-child(n + 6) { animation-delay: calc(var(--stagger) * 5); }
 
+/* ---- Skeleton loading: solid block + opacity pulse. No gradient shimmer.
+   JS toggles the class on placeholder elements; content inside is hidden. ---- */
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: var(--chip);
+  color: transparent !important;
+  pointer-events: none;
+  user-select: none;
+  animation: tz-pulse 1.4s var(--ease) infinite;
+}
+.skeleton * { visibility: hidden; }
+
+/* ---- ONE press state for every interactive control: scale(.98), fast. ---- */
+:where(.primary-button, .submit-button, .secondary-button, .voice-button,
+  .ghost-button, .icon-button, .icon-link, .quick-chip, .quick-log-chip,
+  .flow-filter, .table-action, .mode-card, .tab, .file-chip, .file-chip-x,
+  .wl-step, .wl-check, .diet-step, .diet-today, .oauth-button, .theme-toggle,
+  .account-avatar, .version-stamp, .nav-item, .add-del, .add-dismiss,
+  .add-undo, .briefing-dismiss, .dashboard-tile):active {
+  transform: scale(.98);
+}
+
+/* ---- Interactive transitions: colour + press only, tokened. ---- */
+:where(.primary-button, .submit-button, .secondary-button, .voice-button,
+  .ghost-button, .icon-button, .icon-link, .quick-chip, .quick-log-chip,
+  .flow-filter, .table-action, .mode-card, .tab, .file-chip, .file-chip-x,
+  .wl-step, .diet-step, .diet-today, .oauth-button, .version-stamp,
+  .nav-item, .add-undo, .stage-dot) {
+  transition: transform var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
 /* ---- Smooth, contained theme cross-fade on the surfaces that change ---- */
 body,
 .command-panel, .ai-panel, .analytics-panel, .cost-panel, .flow-panel,
-.pipeline-panel, .capture-panel, .metric-card, .summary-tile,
-.data-table-wrap, .dropzone, .status-pill, .bottom-nav, .nav-item,
-.primary-button, .secondary-button, .ghost-button, .settings-row {
+.pipeline-panel, .capture-panel, .metric-card, .summary-tile, .page-hero,
+.data-table-wrap, .dropzone, .status-pill, .bottom-nav, .settings-row {
   transition:
-    background-color var(--dur-base) var(--ease-standard),
-    border-color var(--dur-base) var(--ease-standard),
-    color var(--dur-base) var(--ease-standard);
+    background-color var(--dur-med) var(--ease),
+    border-color var(--dur-med) var(--ease),
+    color var(--dur-med) var(--ease);
 }
 
-/* ---- Card hover lift (devices with a real pointer only) ---- */
+/* ---- Card hover lift (real pointer only): transform + hairline, no glow ---- */
 @media (hover: hover) {
-  .metric-card, .summary-tile {
+  .metric-card, .summary-tile, .dashboard-tile {
     transition:
-      transform var(--dur-fast) var(--ease-standard),
-      box-shadow var(--dur-fast) var(--ease-standard),
-      background-color var(--dur-base) var(--ease-standard),
-      border-color var(--dur-base) var(--ease-standard);
+      transform var(--dur-fast) var(--ease),
+      background-color var(--dur-med) var(--ease),
+      border-color var(--dur-fast) var(--ease),
+      color var(--dur-med) var(--ease);
   }
-  .metric-card:hover, .summary-tile:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow);
+  .metric-card:hover, .summary-tile:hover, .dashboard-tile:hover {
+    transform: translateY(-1px);
+    border-color: var(--line-strong);
   }
 }
 
@@ -73,48 +117,61 @@ body,
 .theme-toggle {
   display: inline-grid;
   place-items: center;
-  width: 38px; height: 38px;
+  width: 38px;
+  height: 38px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--line-strong);
   background: var(--panel);
-  color: var(--ink-soft);
+  color: var(--text-2);
   cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-standard),
-              color var(--dur-fast) var(--ease-standard),
-              transform var(--dur-instant) var(--ease-standard);
+  transition: background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
-.theme-toggle:hover { background: var(--chip); color: var(--ink); }
-.theme-toggle:active { transform: translateY(1px); }
+.theme-toggle:hover { background: var(--chip); color: var(--text); }
 .theme-toggle svg { width: 18px; height: 18px; }
 .topbar-actions { display: inline-flex; align-items: center; gap: var(--sp-2); }
 
 /* Account control: the Settings link collapsed to a compact initial avatar. */
 .account-avatar {
-  width: 38px; height: 38px; padding: 0;
-  display: inline-grid; place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
   border-radius: var(--radius-pill);
   border: 1px solid var(--line-strong);
   background: var(--accent-soft);
   color: var(--accent);
-  font-weight: var(--weight-bold); font-size: var(--fs-sm); line-height: 1;
+  font-weight: var(--weight-bold);
+  font-size: var(--fs-sm);
+  line-height: 1;
   text-decoration: none;
-  transition: background-color var(--dur-fast) var(--ease-standard),
-              color var(--dur-fast) var(--ease-standard),
-              transform var(--dur-instant) var(--ease-standard);
+  transition: background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
-.account-avatar:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
-.account-avatar:active { transform: translateY(1px); }
+.account-avatar:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
 
 /* ============================================================================
-   Reduced motion — strip entrances and per-frame transforms. Keep instant
-   opacity only. Non-negotiable.
+   Reduced motion — strip entrances, presses and per-frame transforms.
+   Non-negotiable.
    ========================================================================== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
     animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
   main > section { animation: none; }
-  .metric-card:hover, .summary-tile:hover { transform: none; }
+  .skeleton { animation: none; }
+  .metric-card:hover, .summary-tile:hover, .dashboard-tile:hover { transform: none; }
+  .toast { transition: opacity 0.001ms linear; transform: none; }
 }

@@ -5,7 +5,7 @@
 body {
   margin: 0;
   background: var(--paper);
-  color: var(--ink);
+  color: var(--text);
   font-size: var(--fs-base);
   font-weight: var(--weight-regular);
   line-height: var(--lh);
@@ -48,13 +48,14 @@ h2 {
   font-size: var(--fs-lg);
   font-weight: var(--weight-semibold);
   line-height: 1.25;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 
 h3 {
   margin-bottom: 0;
   font-size: var(--fs-md);
   font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
 }
 
 strong {
@@ -64,4 +65,17 @@ strong {
 a {
   color: var(--accent-strong);
   text-underline-offset: 2px;
+}
+
+/* ============================================================================
+   THE focus ring — one rule for the whole app. Keyboard only, 2px accent,
+   2px offset. No component defines its own competing ring.
+   ========================================================================== */
+:where(button, a[href], input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+:where(button, a[href], input, select, textarea, summary, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
 }

@@ -20,12 +20,12 @@ function escapeHtml(s) {
 /**
  * Show a slide-up toast.
  * @param {string} message
- * @param {{kind?: "success"|"error", duration?: number}} [opts]
+ * @param {{kind?: "success"|"error"|"warn", duration?: number}} [opts]
  * @returns {() => void} dismiss fn
  */
 export function showToast(message, { kind = "success", duration = 3200 } = {}) {
   const el = document.createElement("div");
-  el.className = kind === "error" ? "toast is-error" : "toast";
+  el.className = kind === "error" ? "toast error is-error" : kind === "warn" ? "toast warn" : "toast";
   el.setAttribute("role", "status");
   el.innerHTML = `<span class="toast-dot"></span><span>${escapeHtml(message)}</span>`;
   ensureHost().appendChild(el);
