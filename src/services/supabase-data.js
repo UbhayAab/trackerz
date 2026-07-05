@@ -391,6 +391,24 @@ export async function markBriefingSeen(id) {
   if (error) throw error;
 }
 
+// Whether the nightly cron generates + pushes briefings for this user.
+export async function fetchBriefingEnabled() {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("profiles").select("briefing_enabled").eq("id", userId).maybeSingle();
+  if (error) throw error;
+  return data?.briefing_enabled !== false;
+}
+
+export async function setBriefingEnabled(enabled) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { error } = await supabase
+    .from("profiles").update({ briefing_enabled: Boolean(enabled) }).eq("id", userId);
+  if (error) throw error;
+}
+
 export async function fetchOpenAiActions({ limit = 50 } = {}) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase

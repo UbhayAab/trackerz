@@ -5,7 +5,7 @@
 // 4. Offline capture queue: POSTs to /__offline-capture__ are saved to
 //    IndexedDB and replayed via Background Sync when the SW comes back.
 
-const VERSION = "trackerz-v17-20260629";
+const VERSION = "trackerz-v18-20260705";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -88,4 +88,35 @@ self.addEventListener("message", (event) => {
       caches.open(VERSION).then((cache) => cache.addAll(event.data.urls).catch(() => null))
     );
   }
+});
+
+// Web Push from the nightly briefing function. Payload: { title, body, url, tag }.
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch { payload = { body: event.data?.text() || "" }; }
+  const title = payload.title || "Trackerz";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: payload.body || "",
+      tag: payload.tag || "trackerz",
+      icon: "./icons/icon-192.svg",
+      badge: "./icons/icon-192.svg",
+      data: { url: payload.url || "./" },
+    })
+  );
+});
+
+// Tapping the notification focuses an open Trackerz tab or opens a new one.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "./";
+  event.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const w of wins) {
+        if ("focus" in w) { await w.focus(); return; }
+      }
+      await self.clients.openWindow(url);
+    })()
+  );
 });

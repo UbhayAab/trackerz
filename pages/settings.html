@@ -75,16 +75,22 @@
           <div class="panel-title-row">
             <div>
               <p class="eyebrow">AI schedule</p>
-              <h2>12 AM daily summary</h2>
+              <h2>Proactive briefings</h2>
             </div>
             <span id="scheduleStatus" class="status-pill muted">enabled</span>
           </div>
           <div class="budget-grid">
-            <label class="settings-row"><span>Nightly summary</span><input id="nightlySummaryToggle" type="checkbox" checked /></label>
+            <label class="settings-row"><span>Morning + evening briefings</span><input id="nightlySummaryToggle" type="checkbox" checked /></label>
+            <label class="settings-row"><span>Push notifications on this device</span><input id="pushToggle" type="checkbox" /></label>
             <label class="settings-row"><span>Aggressive autopilot</span><input id="autopilotToggle" type="checkbox" checked /></label>
             <label class="settings-row"><span>Daily AI cap ($)</span><input id="dailyCapInput" type="number" min="1" value="2" /></label>
           </div>
-          <p id="settingsStatus" class="agent-detail">At 12 AM, the backend job will summarize money, calories, protein, duplicates, and tomorrow's priorities.</p>
+          <div class="data-actions">
+            <button id="pushTestBtn" class="secondary-button" type="button">Send test notification</button>
+            <button id="briefingNowBtn" class="secondary-button" type="button">Run my briefing now</button>
+          </div>
+          <p id="pushStatus" class="agent-detail"></p>
+          <p id="settingsStatus" class="agent-detail">Every morning (7 AM) and evening (8 PM) the backend computes your briefing — budget pace, protein gap, plan for the day — writes it to the app, and pushes it here even if you never open Trackerz. On iPhone, add Trackerz to the Home Screen first (Share → Add to Home Screen); Safari tabs can't receive push.</p>
         </section>
 
         <section class="command-panel">
