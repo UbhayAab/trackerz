@@ -11,7 +11,6 @@
   border-radius: var(--radius-md);
   padding: var(--sp-3) var(--sp-4);
   margin-bottom: var(--sp-4);
-  box-shadow: var(--shadow-sm);
 }
 .briefing-card.briefing-evening { border-left-color: var(--sun); }
 
@@ -19,7 +18,7 @@
   margin: 0;
   padding-right: var(--sp-5);
   font-size: var(--fs-base);
-  color: var(--ink);
+  color: var(--text);
   line-height: var(--lh);
 }
 
@@ -33,10 +32,54 @@
 }
 .briefing-nudges li {
   font-size: var(--fs-xs);
-  color: var(--ink-soft);
+  color: var(--text-2);
   background: var(--chip);
   padding: 2px var(--sp-2);
   border-radius: var(--radius-pill);
+}
+
+/* Habituation-filtered insight lines from the nightly brain. */
+.briefing-insights {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-2) 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: var(--sp-1);
+}
+.briefing-insights li {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One wandering thought / what-if dream + one curiosity question. */
+.briefing-thought,
+.briefing-question {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh);
+}
+.briefing-question { color: var(--text); }
+
+.briefing-tag {
+  display: inline-block;
+  margin-right: var(--sp-1);
+  font-size: var(--fs-micro);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* Weekly metacognition line ("I was wrong on 2 of 40 writes"). */
+.briefing-calibration {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-style: italic;
 }
 
 .briefing-dismiss {
@@ -45,10 +88,10 @@
   right: var(--sp-2);
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-3);
   font-size: var(--fs-sm);
   cursor: pointer;
   line-height: 1;
   padding: var(--sp-1);
 }
-.briefing-dismiss:hover { color: var(--ink); }
+.briefing-dismiss:hover { color: var(--text); }

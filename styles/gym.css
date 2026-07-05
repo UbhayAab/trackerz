@@ -1,103 +1,189 @@
-/* Gym — one-tap workout logger (mirrors the diet hub check-off feel). */
+/* Gym — one-tap workout logger (mirrors the diet hub check-off feel).
+   Fully tokened: neutral chips, one accent, border-only cards. */
 
-#workoutLog .wl-exercises { display: grid; gap: 8px; margin-top: 8px; }
+#workoutLog .wl-exercises { display: grid; gap: var(--sp-2); margin-top: var(--sp-2); }
 
 #workoutLog .wl-ex,
 #workoutLog .wl-note {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--panel);
-  box-shadow: var(--shadow-sm);
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 #workoutLog .wl-ex.is-done,
-#workoutLog .wl-note.is-done { background: var(--accent-soft); border-color: rgba(15,122,82,.3); }
-/* Auto-checked from a captured workout (functional hooks; polish in the design pass). */
+#workoutLog .wl-note.is-done {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+/* Auto-checked from a captured workout. */
 #workoutLog .wl-ex.is-suggested { border-style: dashed; }
 #workoutLog .wl-auto,
-#workoutLog .wl-suggest { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 999px; }
-#workoutLog .wl-auto { background: rgba(15,122,82,.16); color: var(--accent, #138a5b); }
-#workoutLog .wl-suggest { background: rgba(214,158,46,.18); color: #c98a00; }
+#workoutLog .wl-suggest {
+  font-size: var(--fs-micro);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+}
+#workoutLog .wl-auto { background: var(--accent-soft); color: var(--accent); }
+#workoutLog .wl-suggest { background: var(--sun-soft); color: var(--sun); }
 
-#workoutLog .wl-ex-row { display: flex; align-items: center; gap: 11px; padding: 10px 12px; }
+#workoutLog .wl-ex-row { display: flex; align-items: center; gap: 11px; padding: var(--sp-2) var(--sp-3); }
 #workoutLog .wl-ex-main { flex: 1; min-width: 0; }
-#workoutLog .wl-ex-head { display: flex; align-items: center; gap: 8px; }
+#workoutLog .wl-ex-head { display: flex; align-items: center; gap: var(--sp-2); }
 #workoutLog .wl-ex-head strong { font-size: var(--fs-base); }
-#workoutLog .wl-ex-sub { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
-#workoutLog .wl-prescribe { font-size: var(--fs-xs); font-weight: var(--weight-semibold); color: var(--muted); background: var(--chip); padding: 1px 7px; border-radius: 999px; }
-#workoutLog .wl-last { font-size: var(--fs-xs); color: var(--muted-soft); }
-#workoutLog .is-done .wl-ex-head strong { color: var(--ink-soft); }
+#workoutLog .wl-ex-sub { display: flex; align-items: center; gap: var(--sp-2); margin-top: 3px; }
+#workoutLog .wl-prescribe {
+  font-size: var(--fs-xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  background: var(--chip);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+}
+#workoutLog .wl-last { font-size: var(--fs-micro); color: var(--text-3); font-variant-numeric: tabular-nums; }
+#workoutLog .is-done .wl-ex-head strong { color: var(--text-2); }
 
 /* The single tap target that logs / un-logs the exercise. */
 #workoutLog .wl-check {
   flex: 0 0 auto;
-  width: 30px; height: 30px;
-  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill);
   border: 1.5px solid var(--line-strong);
   background: var(--panel);
-  color: #fff;
-  font-size: 0.9rem;
+  color: var(--on-accent);
+  font-size: var(--fs-base);
   font-weight: var(--weight-bold);
-  display: grid; place-items: center;
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
-#workoutLog .wl-check[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); }
-#workoutLog .wl-check:active { transform: scale(0.92); }
+/* The one springy beat: the check-off pop. */
+#workoutLog .wl-check[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  animation: tz-check-pop var(--dur-spring) var(--ease-spring);
+}
 
 /* Weight stepper: − value + (no keyboard needed). */
-#workoutLog .wl-weight-ctl { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+#workoutLog .wl-weight-ctl { flex: 0 0 auto; display: flex; align-items: center; gap: var(--sp-1); }
 #workoutLog .wl-step {
-  width: 34px; height: 34px;
-  border-radius: 9px;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
   background: var(--panel-2);
-  font-size: 1.2rem; line-height: 1; color: var(--ink-soft);
-  display: grid; place-items: center; cursor: pointer;
+  font-size: var(--fs-lg);
+  line-height: 1;
+  color: var(--text-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
 }
-#workoutLog .wl-step:active { background: var(--chip); transform: scale(0.94); }
-#workoutLog .wl-wt { min-width: 56px; text-align: center; font-size: var(--fs-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
-#workoutLog .wl-wt b { font-size: var(--fs-md); color: var(--ink); }
+#workoutLog .wl-step:active { background: var(--chip); }
+#workoutLog .wl-wt {
+  min-width: 56px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+#workoutLog .wl-wt b { font-size: var(--fs-md); color: var(--text); }
 
 /* Cardio / note rows. */
-#workoutLog .wl-note { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+#workoutLog .wl-note { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
 #workoutLog .wl-note-txt { font-size: var(--fs-sm); }
-#workoutLog .is-done .wl-note-txt { color: var(--muted); text-decoration: line-through; }
+#workoutLog .is-done .wl-note-txt { color: var(--text-3); text-decoration: line-through; }
 
-/* Muscle-group chips. */
-.wl-muscle { font-size: .62rem; font-weight: var(--weight-bold); text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); white-space: nowrap; }
-.wl-muscle-quads { background: rgba(109,40,217,.12); color: #6d28d9; }
-.wl-muscle-hamstrings { background: rgba(124,58,237,.12); color: #7c3aed; }
-.wl-muscle-glutes { background: rgba(147,51,234,.12); color: #9333ea; }
-.wl-muscle-calves { background: rgba(168,85,247,.12); color: #a855f7; }
-.wl-muscle-chest { background: rgba(220,38,38,.12); color: #dc2626; }
-.wl-muscle-back { background: rgba(37,99,235,.12); color: #2563eb; }
-.wl-muscle-shoulders { background: rgba(217,119,6,.14); color: #b45309; }
-.wl-muscle-biceps { background: rgba(8,145,178,.12); color: #0891b2; }
-.wl-muscle-triceps { background: rgba(13,148,136,.12); color: #0d9488; }
-.wl-muscle-core { background: rgba(101,163,13,.14); color: #4d7c0f; }
-.wl-muscle-cardio { background: rgba(219,39,119,.12); color: #db2777; }
+/* Muscle-group chips: ONE neutral chip; the row's done-state carries colour. */
+.wl-muscle {
+  font-size: var(--fs-micro);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+#workoutLog .is-done .wl-muscle {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
-/* Weekly volume bars. */
-.wl-volume { margin-top: 16px; }
-.wl-vol-row { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 10px; padding: 3px 0; }
-.wl-vol-bar { height: 9px; border-radius: 999px; background: rgba(20,22,28,.08); overflow: hidden; }
-.wl-vol-bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+/* Weekly volume bars: solid accent on a neutral track. */
+.wl-volume { margin-top: var(--sp-4); }
+.wl-vol-row {
+  display: grid;
+  grid-template-columns: 92px 1fr auto;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px 0;
+  font-variant-numeric: tabular-nums;
+}
+.wl-vol-bar { height: 9px; border-radius: var(--radius-pill); background: var(--chip); overflow: hidden; }
+.wl-vol-bar i { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--accent); }
 
 /* Recent sessions. */
-.wl-recent { margin-top: 16px; }
-.wl-sessions { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
-.wl-sessions li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.wl-recent { margin-top: var(--sp-4); }
+.wl-sessions { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: grid; gap: var(--sp-1); }
+.wl-sessions li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-2);
+  padding: var(--sp-2) var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
 .wl-sessions li strong { font-size: var(--fs-sm); }
 
 /* Body composition. */
-#bodyComposition .body-tiles { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin: 6px 0 12px; }
-#bodyComposition .body-tile { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); padding: 10px 12px; box-shadow: var(--shadow-sm); display: grid; gap: 2px; }
-#bodyComposition .body-tile span:first-child { font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
-#bodyComposition .body-tile strong { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
-.body-trend { font-size: var(--fs-xs); font-weight: var(--weight-semibold); }
+#bodyComposition .body-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0 var(--sp-3);
+}
+#bodyComposition .body-tile {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  padding: var(--sp-2) var(--sp-3);
+  display: grid;
+  gap: 2px;
+}
+#bodyComposition .body-tile span:first-child {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  font-weight: var(--weight-semibold);
+}
+#bodyComposition .body-tile strong {
+  font-size: var(--fs-lg);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.body-trend { font-size: var(--fs-xs); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; }
 .body-trend.good { color: var(--accent); }
-.body-trend.bad { color: var(--food); }
-#bodyComposition .body-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.body-trend.bad { color: var(--risk); }
+#bodyComposition .body-form { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
 .wl-field { display: inline-flex; align-items: center; gap: 5px; }
-#bodyComposition .body-form input { flex: 1 1 90px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--panel-2); font: inherit; }
-#bodyComposition .body-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+#bodyComposition .body-form input {
+  flex: 1 1 90px;
+  min-width: 0;
+  padding: 9px var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}

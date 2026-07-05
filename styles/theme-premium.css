@@ -1,233 +1,13 @@
 /* ============================================================================
-   Premium design system — the AUTHORITATIVE visual layer (imported last, before
-   responsive). Principle: premium = restraint. The chrome is neutral (ink + warm
-   greys); the accent colour is EARNED — it appears only on the single primary
-   action and on data that means money/progress. No green wash over everything.
-   Purely visual: no markup/behaviour changes.
+   Polish layer — genuinely cross-cutting concerns plus the overlay components
+   this file solely owns (statement importer, toasts). Component styling lives
+   in the owning layers (components/capture/dashboard/…) — nothing here
+   re-fights the cascade.
    ========================================================================== */
 
-/* Flat, calm backdrop — no coloured radial washes. */
-body {
-  background: var(--paper);
-  -webkit-font-smoothing: antialiased;
-}
-
-/* ---- Top bar: calm, confident, neutral ---- */
-.topbar { padding: 8px 2px 12px; }
-.topbar .eyebrow { color: var(--muted); }
-.topbar-title,
-.topbar h1 { font-size: var(--fs-xl); letter-spacing: -0.02em; }
-
-.eyebrow {
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  letter-spacing: 0.06em;
-  font-weight: var(--weight-semibold);
-}
-
-/* ---- Panels: one consistent card, hairline border, quiet depth ---- */
-.command-panel,
-.ai-panel,
-.analytics-panel,
-.cost-panel,
-.flow-panel,
-.pipeline-panel,
-.capture-panel {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow-sm);
-  padding: var(--sp-4);
-}
-
-/* Calm the hero: no green tint. */
-.capture-panel-hero { background: var(--panel); }
-
-/* Section rhythm. */
-main > section + section { margin-top: var(--sp-3); }
-.command-grid { display: grid; gap: var(--sp-3); }
-.dashboard-grid { gap: var(--sp-3); }
-
-/* Header rows — neutral eyebrow, crisp title, no coloured tick. */
-.panel-title-row { align-items: flex-start; gap: var(--sp-3); }
-.panel-title-row .eyebrow { color: var(--muted); }
-.panel-title-row h2 { letter-spacing: -0.01em; }
-
-/* ---- Metric cards: number-forward, neutral ---- */
-.metric-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow-sm);
-  padding: var(--sp-4);
-}
-.metric-card p,
-.metric-card span { color: var(--muted); font-size: var(--fs-sm); }
-.metric-card strong {
-  font-size: var(--fs-2xl);
-  font-weight: var(--weight-bold);
-  letter-spacing: -0.025em;
-  font-variant-numeric: tabular-nums;
-}
-/* The coloured top-rule is a thin, single semantic cue — not a slab. */
-.accent-money { border-top: 2px solid var(--accent); }
-.accent-food { border-top: 2px solid var(--food); }
-.accent-wellness { border-top: 2px solid var(--wellness); }
-
-/* ---- Buttons: ONE accent primary; everything else neutral ---- */
-.primary-button,
-.submit-button {
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  border-radius: 12px;
-  padding: 12px 18px;
-  font-weight: var(--weight-semibold);
-  box-shadow: 0 1px 2px rgba(15, 122, 82, 0.25);
-}
-.primary-button:hover,
-.submit-button:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
-.secondary-button,
-.voice-button {
-  border: 1px solid var(--line-strong);
-  background: var(--panel);
-  color: var(--ink);
-  border-radius: 12px;
-  padding: 11px 16px;
-  font-weight: var(--weight-semibold);
-}
-.secondary-button:hover,
-.voice-button:hover { background: var(--chip); border-color: var(--ink-soft); }
-
-/* ---- Capture action chips (camera / files): clean neutral, not "used" ---- */
-.file-chip,
-.file-chip-icon {
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: var(--panel-2);
-  color: var(--ink-soft);
-  display: grid;
-  place-items: center;
-}
-.file-chip-icon { font-size: 1.35rem; color: var(--ink-soft); }
-.file-chip-icon svg { width: 23px; height: 23px; }
-.file-chip:hover { background: var(--chip); }
-.file-chip-icon:hover { color: var(--accent); border-color: var(--accent); }
-.voice-button { display: inline-flex; align-items: center; gap: 6px; }
-.voice-button svg { width: 18px; height: 18px; }
-
-/* ---- Pills + badges: neutral, quiet ---- */
-.status-pill,
-.metric-badge {
-  border-radius: var(--radius-pill);
-  padding: 4px 11px;
-  min-height: 28px;
-  font-size: var(--fs-xs);
-  font-weight: var(--weight-semibold);
-  background: var(--chip);
-  color: var(--ink-soft);
-  border: 1px solid var(--line);
-}
-.status-pill.muted { background: var(--chip); color: var(--muted); }
-
-/* ---- Inputs: clean, larger touch targets, subtle accent focus ---- */
-.settings-row {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  background: var(--panel);
-  font-weight: var(--weight-medium);
-}
-.settings-row input[type="number"],
-.budget-grid input[type="number"] {
-  width: 108px;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: var(--panel-2);
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--weight-semibold);
-  text-align: right;
-}
-.budget-grid { display: grid; gap: var(--sp-2); }
-:where(input, textarea, select):focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-:where(button, a[href], [tabindex]):focus-visible {
-  outline: 2px solid var(--ink-soft);
-  outline-offset: 2px;
-}
-
-/* ---- Tables: rounded, quiet header, neutral hover, aligned figures ---- */
-.data-table-wrap {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  /* Wide tables must SCROLL, not clip — `overflow:hidden` here was cutting off
-     the right-hand columns. Horizontal auto-scroll with rounded corners kept. */
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  background: var(--panel);
-}
-.data-table-wrap table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.data-table-wrap th {
-  text-align: left;
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  font-weight: var(--weight-semibold);
-  background: var(--panel-2);
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
-}
-.data-table-wrap td {
-  padding: 11px 12px;
-  border-bottom: 1px solid var(--line);
-  font-variant-numeric: tabular-nums;
-}
-.data-table-wrap tr:last-child td { border-bottom: 0; }
-.data-table-wrap tbody tr:hover { background: var(--panel-2); }
-
-/* ---- Bottom nav: neutral; active = ink (NOT a green wash) ---- */
-.bottom-nav { background: rgba(245, 245, 242, 0.9); }
-.nav-item { color: var(--muted); font-size: var(--fs-sm); }
-.nav-item:hover { background: var(--chip); color: var(--ink-soft); }
-.nav-item.active { background: var(--charcoal); color: #fff; box-shadow: none; }
-
-/* ---- Version stamp: quieter ---- */
-.version-stamp { font-size: 0.62rem; color: var(--muted-soft); }
-
 /* ============================================================================
-   Button states — explicit press + disabled (default/hover above; here:
-   active/disabled). A pressed button sinks 1px and drops its shadow.
-   ========================================================================== */
-.primary-button:active,
-.submit-button:active,
-.secondary-button:active,
-.voice-button:active,
-.ghost-button:active { transform: translateY(1px); box-shadow: none; }
-.primary-button:disabled,
-.submit-button:disabled,
-.secondary-button:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-
-/* Ghost (secondary, zero-fill) action. */
-.ghost-button {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink-soft);
-  border-radius: 12px;
-  padding: 11px 16px;
-  font-weight: var(--weight-semibold);
-  font-family: inherit;
-  cursor: pointer;
-}
-.ghost-button:hover { background: var(--chip); }
-
-/* ============================================================================
-   Statement importer — premium dropzone + result card. Four states on the
-   wrapper: idle / dragover / parsing / parsed (+ inline error).
+   Statement importer — dropzone + result card. Four states on the wrapper:
+   idle / dragover / parsing / parsed (+ inline error).
    ========================================================================== */
 .importer { display: grid; gap: var(--sp-4); }
 
@@ -239,151 +19,219 @@ main > section + section { margin-top: var(--sp-3); }
   text-align: center;
   padding: var(--sp-6) var(--sp-4);
   border: 1.5px dashed var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
   cursor: pointer;
-  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .12s ease;
+  transition: border-color var(--dur-med) var(--ease),
+    background-color var(--dur-med) var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
 .dropzone:hover { border-color: var(--accent); background: var(--accent-soft); }
-.dropzone:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dropzone.is-dragover {
   border-style: solid;
   border-color: var(--accent);
   background: var(--accent-soft);
-  box-shadow: var(--shadow);
   transform: translateY(-1px);
 }
 .dropzone-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .dropzone-icon {
-  width: 46px; height: 46px;
-  display: grid; place-items: center;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
   border-radius: var(--radius-md);
   background: var(--panel);
   border: 1px solid var(--line);
   color: var(--accent);
-  box-shadow: var(--shadow-sm);
-  transition: transform .18s ease;
+  transition: transform var(--dur-med) var(--ease);
 }
 .dropzone:hover .dropzone-icon { transform: translateY(-2px); }
 .dropzone-icon svg { width: 22px; height: 22px; }
-.dropzone-title { font-weight: var(--weight-semibold); font-size: var(--fs-md); color: var(--ink); letter-spacing: -0.01em; }
-.dropzone-hint { font-size: var(--fs-sm); color: var(--muted); }
+.dropzone-title {
+  font-weight: var(--weight-semibold);
+  font-size: var(--fs-md);
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.dropzone-hint { font-size: var(--fs-sm); color: var(--text-3); }
 .dropzone-link { color: var(--accent); font-weight: var(--weight-semibold); }
 .dropzone-file {
   margin-top: var(--sp-1);
-  font-size: var(--fs-sm); font-weight: var(--weight-semibold); color: var(--ink);
-  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--fs-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
 }
-.dropzone-file::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.dropzone-file::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
 .importer[data-state="parsing"] .dropzone,
 .importer[data-state="importing"] .dropzone { pointer-events: none; opacity: 0.75; }
 
-/* result card */
+/* Result card. */
 .import-result { display: grid; gap: var(--sp-3); }
 .import-result[hidden] { display: none; }
 
 .import-summary {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
   padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--panel-2);
 }
-.import-summary-label { display: block; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: var(--weight-semibold); }
-.import-summary-value { display: block; font-size: var(--fs-2xl); line-height: 1.1; font-weight: var(--weight-bold); letter-spacing: -.025em; font-variant-numeric: tabular-nums; color: var(--ink); }
-.import-summary-sub { font-size: var(--fs-xs); color: var(--muted); }
-.import-summary-figures { display: grid; gap: 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.import-summary-label {
+  display: block;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--text-3);
+  font-weight: var(--weight-semibold);
+}
+.import-summary-value {
+  display: block;
+  font-size: var(--fs-2xl);
+  line-height: 1.1;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.import-summary-sub { font-size: var(--fs-xs); color: var(--text-3); }
+.import-summary-figures {
+  display: grid;
+  gap: var(--sp-1);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .import-summary-figures .fig-debit { color: var(--risk); font-weight: var(--weight-semibold); }
 .import-summary-figures .fig-credit { color: var(--accent); font-weight: var(--weight-semibold); }
-.import-summary-figures em { color: var(--muted); font-style: normal; font-weight: var(--weight-medium); font-size: var(--fs-xs); margin-left: 6px; text-transform: uppercase; letter-spacing: .04em; }
+.import-summary-figures em {
+  color: var(--text-3);
+  font-style: normal;
+  font-weight: var(--weight-medium);
+  font-size: var(--fs-xs);
+  margin-left: var(--sp-1);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 .import-mapping { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .map-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 10px; border-radius: var(--radius-pill);
-  background: var(--chip); border: 1px solid var(--line);
-  font-size: var(--fs-xs); color: var(--muted); font-weight: var(--weight-semibold);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+  border: 1px solid var(--line);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  font-weight: var(--weight-semibold);
 }
-.map-chip b { color: var(--ink); font-weight: var(--weight-semibold); }
-.map-chip.is-missing { color: var(--sun); border-color: color-mix(in srgb, var(--sun) 45%, var(--line)); background: #fbf4e6; }
+.map-chip b { color: var(--text); font-weight: var(--weight-semibold); }
+.map-chip.is-missing {
+  color: var(--sun);
+  border-color: color-mix(in srgb, var(--sun) 45%, transparent);
+  background: var(--sun-soft);
+}
 
-.import-foot-note { font-size: var(--fs-xs); color: var(--muted); margin: 0; }
+.import-foot-note { font-size: var(--fs-xs); color: var(--text-3); margin: 0; }
 .import-error {
-  display: flex; align-items: center; gap: var(--sp-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   padding: var(--sp-3) var(--sp-4);
-  border: 1px solid color-mix(in srgb, var(--risk) 40%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--risk) 40%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--risk) 7%, var(--panel));
-  color: var(--risk); font-size: var(--fs-sm); font-weight: var(--weight-medium);
+  background: var(--risk-soft);
+  color: var(--risk);
+  font-size: var(--fs-sm);
+  font-weight: var(--weight-medium);
 }
 .import-footer { display: flex; justify-content: flex-end; gap: var(--sp-2); }
 .import-footer[hidden] { display: none; }
 
 /* ============================================================================
-   Toast — slide-up confirmation chips (success / error). Lives above the nav.
+   Toast — slide-up confirmation chips. A true overlay: gets THE soft shadow.
+   Default = inverted ink pill; .error / .warn = solid tinted-border surfaces.
    ========================================================================== */
 .toast-host {
-  position: fixed; left: 0; right: 0;
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: calc(86px + env(safe-area-inset-bottom, 0px));
-  display: grid; justify-items: center; gap: var(--sp-2);
-  padding: 0 var(--sp-4); z-index: 60; pointer-events: none;
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  z-index: 60;
+  pointer-events: none;
 }
 .toast {
   pointer-events: auto;
-  display: inline-flex; align-items: center; gap: var(--sp-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
   max-width: min(440px, 92vw);
-  padding: 11px 16px;
+  padding: 11px var(--sp-4);
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  background: var(--charcoal); color: #fff;
-  font-size: var(--fs-sm); font-weight: var(--weight-medium);
-  box-shadow: var(--shadow-lg);
-  transform: translateY(140%); opacity: 0;
-  transition: transform .34s cubic-bezier(.22,1,.36,1), opacity .2s ease;
+  background: var(--charcoal);
+  color: var(--paper);
+  font-size: var(--fs-sm);
+  font-weight: var(--weight-medium);
+  box-shadow: var(--shadow-overlay);
+  transform: translateY(140%);
+  opacity: 0;
+  transition: transform var(--dur-med) var(--ease), opacity var(--dur-fast) var(--ease);
 }
 .toast.is-in { transform: translateY(0); opacity: 1; }
-.toast .toast-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
-.toast.is-error .toast-dot { background: #ff6b5e; }
-@media (prefers-reduced-motion: reduce) {
-  .toast { transition: opacity .2s ease; transform: none; }
+.toast .toast-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  flex: none;
 }
 
+/* Error / warning variants: solid panel, risk/sun-tinted edge, no glow. */
+.toast.error,
+.toast.is-error,
+.toast.warn {
+  background: var(--panel);
+  color: var(--text);
+}
+.toast.error,
+.toast.is-error {
+  border-color: color-mix(in srgb, var(--risk) 55%, transparent);
+}
+.toast.warn {
+  border-color: color-mix(in srgb, var(--sun) 55%, transparent);
+}
+.toast.error .toast-dot,
+.toast.is-error .toast-dot { background: var(--risk); }
+.toast.warn .toast-dot { background: var(--sun); }
+
 /* ============================================================================
-   Dark mode — component fixes where light values were baked in, or where a
-   token (e.g. --charcoal) intentionally flips to a light surface. Surfaces
-   driven purely by tokens already adapt; these are the exceptions.
+   Dark-mode exceptions — the few spots where depth needs a lighter surface
+   rather than a token flip.
    ========================================================================== */
-:root[data-theme="dark"] .bottom-nav {
-  background: rgba(16, 20, 18, 0.86);
-  border-color: var(--line);
-}
-:root[data-theme="dark"] .nav-item.active { background: var(--accent); color: #08110d; }
-:root[data-theme="dark"] .toast {
-  background: #202723;
-  color: var(--ink);
-  border: 1px solid var(--line-strong);
-}
-:root[data-theme="dark"] .version-stamp { background: rgba(24, 29, 26, 0.7); }
-:root[data-theme="dark"] .primary-button,
-:root[data-theme="dark"] .submit-button { color: #08110d; }
-:root[data-theme="dark"] .inbox-strip {
-  background: rgba(217, 164, 65, 0.12);
-  border-color: rgba(217, 164, 65, 0.35);
-}
-:root[data-theme="dark"] .dashboard-tabs .tab.active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-:root[data-theme="dark"] .data-table tbody tr:hover { background: rgba(47, 185, 133, 0.08); }
-:root[data-theme="dark"] .table-action:hover { color: var(--accent); border-color: var(--accent); }
-:root[data-theme="dark"] .map-chip.is-missing { background: rgba(217, 164, 65, 0.14); border-color: rgba(217, 164, 65, 0.4); }
 :root[data-theme="dark"] .secondary-button,
 :root[data-theme="dark"] .voice-button,
 :root[data-theme="dark"] .table-action { background: var(--panel-2); }
 
 /* ============================================================================
-   Layout safety — kill the horizontal overflow that shifts the page off-centre
-   and makes it look "zoomed in". Nothing should be able to exceed the viewport
-   width; long unbroken strings (emails, UIDs, URLs) wrap instead of stretching.
+   Layout safety — kill horizontal overflow. Nothing may exceed the viewport;
+   long unbroken strings (emails, UIDs, URLs) wrap instead of stretching.
    ========================================================================== */
 html, body { max-width: 100%; overflow-x: hidden; }
 .app-shell, .page-shell { width: 100%; max-width: 100%; overflow-x: clip; }

@@ -301,29 +301,58 @@ async function withinDailyCap(supabase: ReturnType<typeof adminClient>, userId: 
 
 // -------- gemini call --------
 
+// Gemini inlineData wants a bare media type (no ";codecs=..." params) from its
+// supported set. Anything else gets normalized or reported — never silently
+// passed through to fail downstream.
+const GEMINI_MEDIA_TYPES = new Set([
+  "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif",
+  "audio/wav", "audio/mp3", "audio/mpeg", "audio/aiff", "audio/aac", "audio/ogg", "audio/flac", "audio/mp4", "audio/webm",
+  "application/pdf", "text/plain", "text/csv",
+]);
+function normalizeMediaType(mime: string): string {
+  const bare = String(mime || "").split(";")[0].trim().toLowerCase();
+  if (bare === "audio/x-m4a") return "audio/mp4";
+  if (bare === "image/jpg") return "image/jpeg";
+  return bare;
+}
+
 async function loadMediaInline(supabase: ReturnType<typeof adminClient>, mediaAssetIds: string[]) {
-  if (!mediaAssetIds?.length) return [] as { mimeType: string; data: string }[];
+  const inline: { mimeType: string; data: string }[] = [];
+  const mediaErrors: string[] = [];
+  if (!mediaAssetIds?.length) return { inline, mediaErrors };
   const { data, error } = await supabase
     .from("media_assets")
     .select("id, storage_bucket, storage_path, mime_type, media_kind")
     .in("id", mediaAssetIds);
   if (error) throw error;
-  const inline: { mimeType: string; data: string }[] = [];
   for (const asset of data || []) {
     const { data: blob, error: dlErr } = await supabase.storage
       .from(asset.storage_bucket)
       .download(asset.storage_path);
-    if (dlErr || !blob) continue;
+    if (dlErr || !blob) {
+      mediaErrors.push(`download_failed:${asset.id}:${dlErr?.message || "empty"}`);
+      continue;
+    }
+    const mimeType = normalizeMediaType(asset.mime_type);
+    if (!GEMINI_MEDIA_TYPES.has(mimeType)) {
+      mediaErrors.push(`unsupported_media_type:${asset.id}:${asset.mime_type}`);
+      continue;
+    }
     const buf = new Uint8Array(await blob.arrayBuffer());
-    inline.push({ mimeType: asset.mime_type, data: base64Encode(buf) });
+    inline.push({ mimeType, data: base64Encode(buf) });
   }
-  return inline;
+  return { inline, mediaErrors };
 }
 
 function base64Encode(bytes: Uint8Array): string {
-  let s = "";
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-  return btoa(s);
+  // Chunked fromCharCode — the per-byte concat loop burned 1-3s of CPU on a
+  // phone photo and could get the worker killed mid-request.
+  const CHUNK = 0x8000;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    parts.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
+  }
+  return btoa(parts.join(""));
 }
 
 function costOf(inUsdPerM: number, outUsdPerM: number, pt = 0, ot = 0) {
@@ -404,7 +433,7 @@ function extractJsonObject(raw: string): string {
   return "";
 }
 
-async function callDeepseek(model: string, combinedText: string, mode: string, opts: { json: boolean; contextBlock?: string }) {
+async function callDeepseek(model: string, combinedText: string, mode: string, opts: { json: boolean; contextBlock?: string; userMessageOverride?: string }) {
   const apiKey = await resolveAnySecret(["DEEPSEEK_API_KEY", "NVIDIA_API_KEY"]);
   if (!apiKey) throw new Error("no_brain_key"); // -> Gemini reasoning fallback
   const url = (await resolveSecretOptional("DEEPSEEK_BASE_URL")) || DEEPSEEK_URL;
@@ -412,7 +441,7 @@ async function callDeepseek(model: string, combinedText: string, mode: string, o
     model,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: reasoningUserMessage(combinedText, mode, opts.contextBlock) },
+      { role: "user", content: opts.userMessageOverride || reasoningUserMessage(combinedText, mode, opts.contextBlock) },
     ],
   };
   // deepseek-reasoner rejects response_format + temperature; only set them for chat.
@@ -479,6 +508,91 @@ async function geminiReason(combinedText: string, mode: string, contextBlock = "
   const raw = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
   const usage = json.usageMetadata || {};
   return { raw, promptTokens: usage.promptTokenCount || 0, outputTokens: usage.candidatesTokenCount || 0 };
+}
+
+// ---- revise-while-writing (mirror of lib/revision-gate.mjs) ------------------
+// Humans re-read and edit when a sentence feels off; the brain's draft gets the
+// same loop. The CRITIQUE is deterministic (validator rejects, missing events,
+// weak confidence); only the REWRITE is a model call, fired only when the gate
+// trips, and the revision is adopted only if it strictly improves the draft.
+// Keep these constants identical to lib/revision-gate.mjs (tests/cognition
+// greps for parity).
+
+const REVISION_MIN_MEAN_CONFIDENCE = 0.75;
+const REVISION_MAX_INPUT_CHARS = 4000;
+const REVISION_EVENT_CUE = /\b(spent|paid|bought|ate|had|drank|ran|walked|gym|workout|slept|weigh|kg|rs|₹)\b/i;
+
+function needsRevision(opts: { validCalls: ToolCall[]; rejected: { tc: ToolCall; errors: string[] }[]; combinedText: string; meanConfidence: number }) {
+  const text = String(opts.combinedText || "");
+  if (!text.trim() || text.length > REVISION_MAX_INPUT_CHARS) return false;
+  const realRejects = opts.rejected.filter((r) => r?.tc?.name && r.tc.name !== "request_user_review");
+  if (realRejects.length > 0) return true;
+  const onlyReview = opts.validCalls.length > 0 && opts.validCalls.every((c) => c.name === "request_user_review");
+  if ((opts.validCalls.length === 0 || onlyReview) && REVISION_EVENT_CUE.test(text)) return true;
+  if (opts.validCalls.length >= 2 && opts.meanConfidence < REVISION_MIN_MEAN_CONFIDENCE) return true;
+  return false;
+}
+
+function buildCritique(opts: { validCalls: ToolCall[]; rejected: { tc: ToolCall; errors: string[] }[]; combinedText: string }) {
+  const lines: string[] = [];
+  for (const r of opts.rejected) {
+    if (!r?.tc?.name) continue;
+    lines.push(`- Your call "${r.tc.name}" was REJECTED by the validator: ${(r.errors || []).join(", ")}. Fix the arguments or drop it.`);
+  }
+  const onlyReview = opts.validCalls.length === 0 || opts.validCalls.every((c) => c.name === "request_user_review");
+  if (onlyReview && /\b(spent|paid|bought|ate|had|drank|gym|workout|slept)\b/i.test(opts.combinedText)) {
+    lines.push("- You produced no concrete event, but the content contains an obvious loggable event cue. Emit the best-guess candidate calls instead of punting.");
+  }
+  const low = opts.validCalls.filter((c) => Number(c.confidence) < REVISION_MIN_MEAN_CONFIDENCE);
+  if (low.length) {
+    lines.push(`- ${low.length} call(s) have low confidence — re-read the content and either firm them up or split/merge events correctly.`);
+  }
+  return lines.join("\n");
+}
+
+function acceptRevision(before: { validCalls: ToolCall[]; rejected: unknown[] }, after: { validCalls: ToolCall[]; rejected: unknown[] }) {
+  const writes = (calls: ToolCall[]) => calls.filter((c) => c.name !== "request_user_review").length;
+  if (after.rejected.length > before.rejected.length) return false;
+  if (writes(after.validCalls) < writes(before.validCalls)) return false;
+  if (after.rejected.length === before.rejected.length && writes(after.validCalls) === writes(before.validCalls)) return false;
+  return true;
+}
+
+// One cost-gated model pass over the draft. Returns the (possibly) improved
+// parse plus the extra tokens spent; never throws — a failed revision keeps
+// the original draft (a capture is never lost to its own editor).
+async function reviseToolCalls(
+  draft: { validCalls: ToolCall[]; rejected: { tc: ToolCall; errors: string[] }[] },
+  combinedText: string, mode: string, contextBlock: string,
+) {
+  const meanConfidence = draft.validCalls.length
+    ? draft.validCalls.reduce((s, c) => s + Number(c.confidence || 0), 0) / draft.validCalls.length
+    : 0;
+  if (!needsRevision({ ...draft, combinedText, meanConfidence })) {
+    return { ...draft, revised: false, promptTokens: 0, outputTokens: 0, cost: 0 };
+  }
+  try {
+    const critique = buildCritique({ ...draft, combinedText });
+    const reviseMessage = [
+      "REVISION PASS. You already answered this capture once. Here is the content again, your DRAFT tool calls, and the validator's specific complaints. Return the CORRECTED full JSON object { \"tool_calls\": [...] } — same rules as before, fix only what the critique names, keep everything that was already right.",
+      `Current time: ${new Date().toISOString()}.`,
+      `Mode hint: ${mode}.`,
+      contextBlock ? `<memory_context>\n${contextBlock}\n</memory_context>` : "",
+      wrapUserContent(combinedText),
+      `DRAFT: ${JSON.stringify({ tool_calls: [...draft.validCalls, ...draft.rejected.map((r) => r.tc)] })}`,
+      `CRITIQUE:\n${critique}`,
+      "Return ONLY JSON.",
+    ].filter(Boolean).join("\n");
+    const r = await callDeepseek(DEEPSEEK_MODEL, combinedText, mode, { json: true, userMessageOverride: reviseMessage });
+    const reparsed = parseToolCalls(extractJsonObject(r.raw) || r.raw);
+    const cost = costOf(DEEPSEEK_IN_USD, DEEPSEEK_OUT_USD, r.promptTokens, r.outputTokens);
+    if (acceptRevision(draft, reparsed)) {
+      return { ...reparsed, revised: true, promptTokens: r.promptTokens, outputTokens: r.outputTokens, cost };
+    }
+    return { ...draft, revised: false, promptTokens: r.promptTokens, outputTokens: r.outputTokens, cost };
+  } catch (_e) {
+    return { ...draft, revised: false, promptTokens: 0, outputTokens: 0, cost: 0 };
+  }
 }
 
 function parseToolCalls(raw: string) {
@@ -958,10 +1072,11 @@ async function fetchContextBlock(supabase: ReturnType<typeof adminClient>, userI
 
 // Orchestrates the two-model pipeline: Gemini extracts evidence from media,
 // DeepSeek (brain) reasons into tool calls, Gemini reasoning is the fallback.
-async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string; data: string }[]; mode: string; contextBlock?: string }) {
+async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string; data: string }[]; mode: string; contextBlock?: string; mediaErrors?: string[] }) {
   const startedAt = Date.now();
   let geminiEvidence = "";
   let extractCost = 0;
+  let extractError = "";
   const usedProviders: string[] = [];
 
   if (opts.inlineMedia.length) {
@@ -970,12 +1085,33 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
       geminiEvidence = ext.evidenceText;
       extractCost = costOf(GEMINI_IN_USD, GEMINI_OUT_USD, ext.promptTokens, ext.outputTokens);
       usedProviders.push("gemini-vision");
-    } catch (_e) {
-      geminiEvidence = ""; // extraction failed; reason over text alone
+      if (!geminiEvidence.trim()) extractError = "gemini_returned_empty_evidence";
+    } catch (e) {
+      // Extraction failed — reason over text alone, but NEVER hide it: this
+      // silent catch was why broken photo/voice captures looked successful.
+      geminiEvidence = "";
+      extractError = String(e instanceof Error ? e.message : e).slice(0, 300);
     }
+  }
+  if (opts.mediaErrors?.length) {
+    extractError = [extractError, ...opts.mediaErrors].filter(Boolean).join("; ").slice(0, 400);
   }
 
   const combinedText = [opts.text, geminiEvidence].filter(Boolean).join("\n").trim();
+
+  // Media-only capture whose extraction failed: there is nothing to reason
+  // over — surface an explicit review action instead of running the brain on
+  // empty input and "succeeding" with zero tool calls.
+  if (extractError && !combinedText) {
+    return {
+      toolCalls: [{ name: "request_user_review", arguments: { reason: `media_extraction_failed: ${extractError}`, raw_input: "" }, confidence: 0.4 }],
+      rejected: [] as { tc: ToolCall; errors: string[] }[],
+      latencyMs: Date.now() - startedAt, promptTokens: 0, outputTokens: 0,
+      provider: usedProviders.join("+") || "gemini-vision", model: GEMINI_MODEL,
+      estimatedCostUsd: Number(extractCost.toFixed(6)), evidenceText: "", inputText: opts.text || "",
+      extractError,
+    };
+  }
   const injectionMatched = INJECTION_PATTERNS.some((rx) => rx.test(opts.text || "") || rx.test(geminiEvidence));
 
   let raw = "{}";
@@ -995,12 +1131,18 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
     usedProviders.push("gemini-fallback");
   }
 
-  const { validCalls, rejected } = parseToolCalls(raw);
+  const draft = parseToolCalls(raw);
+  // Revise-while-writing: deterministic critique of the draft, one cost-gated
+  // model edit, adopted only if it strictly improves the parse.
+  const revision = await reviseToolCalls(draft, combinedText, opts.mode, opts.contextBlock || "");
+  const { validCalls, rejected } = revision;
+  if (revision.revised) usedProviders.push("revise");
+  const revisionCost = revision.cost || 0;
   const expandedCalls = recomputeFoodMacros(
     expandToolCalls(validCalls, combinedText, new Date().toISOString()), // fan-out + pure-food fallback
   ); // then deterministic food-macro override (table beats the model for everyday foods)
   const latencyMs = Date.now() - startedAt;
-  const estimatedCostUsd = Number((extractCost + brainCost).toFixed(6));
+  const estimatedCostUsd = Number((extractCost + brainCost + revisionCost).toFixed(6));
   const provider = usedProviders.join("+") || "deepseek";
   // Evidence for grounding/injection = user text + Gemini-extracted text.
   const evidenceText = combinedText;
@@ -1010,13 +1152,13 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
     return {
       toolCalls: [{ name: "request_user_review", arguments: { reason: "suspected_prompt_injection", raw_input: inputText.slice(0, 400) }, confidence: 0.5 }],
       rejected, latencyMs, promptTokens: brainPt, outputTokens: brainOt,
-      provider, model, estimatedCostUsd, evidenceText, inputText,
+      provider, model, estimatedCostUsd, evidenceText, inputText, extractError,
     };
   }
 
   return {
     toolCalls: expandedCalls, rejected, latencyMs, promptTokens: brainPt, outputTokens: brainOt,
-    provider, model, estimatedCostUsd, evidenceText, inputText,
+    provider, model, estimatedCostUsd, evidenceText, inputText, extractError,
   };
 }
 
@@ -1421,18 +1563,49 @@ Deno.serve(async (req) => {
     }
 
     // 5. Run the two-model pipeline (build-context → Gemini extract → DeepSeek reason).
-    const inlineMedia = await loadMediaInline(supabase, payload.mediaAssetIds || []);
+    const { inline: inlineMedia, mediaErrors } = await loadMediaInline(supabase, payload.mediaAssetIds || []);
+
+    // Diagnostic mode: run ONLY storage-load + Gemini extraction and return the
+    // evidence text — no reasoning, no rows written. Lets the diagnostics page
+    // prove the camera/voice → Gemini path end-to-end without polluting data.
+    if ((payload as any).diagnostic === true) {
+      let evidenceText = "";
+      let extractError = "";
+      let diagCost = 0;
+      if (inlineMedia.length) {
+        try {
+          const ext = await geminiExtract({ text: payload.text || "", inlineMedia });
+          evidenceText = ext.evidenceText;
+          diagCost = costOf(GEMINI_IN_USD, GEMINI_OUT_USD, ext.promptTokens, ext.outputTokens);
+        } catch (e) {
+          extractError = String(e instanceof Error ? e.message : e).slice(0, 300);
+        }
+      }
+      // Log the spend so the daily cap stays honest, but write no actions.
+      await supabase.from("ai_runs").insert({
+        user_id: userId, ingestion_id: payload.ingestionId,
+        provider: "gemini-vision", model: GEMINI_MODEL, purpose: "diagnostic",
+        estimated_cost_usd: diagCost, latency_ms: 0, status: extractError ? "failed" : "completed",
+        error_message: extractError || null,
+      });
+      return Response.json(
+        { ok: !extractError, evidenceText, extractError, mediaErrors, mediaCount: inlineMedia.length },
+        { headers: corsHeaders },
+      );
+    }
+
     const contextBlock = await fetchContextBlock(supabase, userId);
     const runInfo = await runPipeline({
       text: payload.text || "",
       inlineMedia,
       mode: payload.mode || "auto",
       contextBlock,
+      mediaErrors,
     });
     const { aiRunId, cost } = await persistRunAndActions(supabase, userId, payload.ingestionId, runInfo);
 
     return Response.json(
-      { ok: true, aiRunId, toolCalls: runInfo.toolCalls, rejected: runInfo.rejected.length, cost },
+      { ok: true, aiRunId, toolCalls: runInfo.toolCalls, rejected: runInfo.rejected.length, cost, extractError: (runInfo as any).extractError || "" },
       { headers: corsHeaders },
     );
   } catch (error) {

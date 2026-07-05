@@ -19,6 +19,7 @@ export function startLiveTranscription({ onPartial, onFinal, onError, lang = "en
   rec.lang = lang;
 
   let aggregate = "";
+  let stopped = false;
   rec.addEventListener("result", (event) => {
     let interim = "";
     let finalChunk = "";
@@ -35,7 +36,15 @@ export function startLiveTranscription({ onPartial, onFinal, onError, lang = "en
     onPartial?.((aggregate + interim).trim());
   });
   rec.addEventListener("error", (event) => onError?.(event.error || "speech_error"));
-  rec.addEventListener("end", () => onPartial?.(aggregate.trim()));
+  // Chrome ends recognition after a few seconds of silence even with
+  // continuous=true — restart while the caller hasn't stopped us, so longer
+  // voice notes aren't truncated to the first phrase.
+  rec.addEventListener("end", () => {
+    onPartial?.(aggregate.trim());
+    if (!stopped) {
+      try { rec.start(); } catch { /* already restarting or mic gone */ }
+    }
+  });
 
   try {
     rec.start();
@@ -43,7 +52,12 @@ export function startLiveTranscription({ onPartial, onFinal, onError, lang = "en
     onError?.(err.message || String(err));
     return null;
   }
-  return rec;
+  return {
+    stop() {
+      stopped = true;
+      try { rec.stop(); } catch { /* noop */ }
+    },
+  };
 }
 
 export function stopLiveTranscription(rec) {

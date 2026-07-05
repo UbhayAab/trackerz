@@ -40,10 +40,58 @@ function isHtml(req) {
   return req.headers.get("accept")?.includes("text/html");
 }
 
+// Minimal IndexedDB access to the same offline-capture queue the app uses
+// (src/services/offline-queue.js) — the SW can't import modules, so the tiny
+// open/add pair is duplicated here. Schema must stay in sync: db
+// trackerz_offline, store captures, autoIncrement id.
+function offlineDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("trackerz_offline", 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("captures")) {
+        db.createObjectStore("captures", { keyPath: "id", autoIncrement: true });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function offlineEnqueue(row) {
+  return offlineDb().then((db) => new Promise((resolve, reject) => {
+    const req = db.transaction("captures", "readwrite").objectStore("captures").add(row);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET") return; // never cache POST/PUT/DELETE
   const url = new URL(req.url);
+
+  // Web Share Target: the OS share sheet POSTs multipart data at
+  // share-target.html, but GitHub Pages is static (405 on POST). Intercept it
+  // here, stash the payload in the offline queue, and redirect to the page —
+  // share-target.js drains the queue into a normal capture.
+  if (req.method === "POST" && url.pathname.endsWith("/share-target.html")) {
+    event.respondWith((async () => {
+      try {
+        const fd = await req.formData();
+        const text = ["title", "text", "url"].map((k) => fd.get(k)).filter(Boolean).join("\n");
+        const files = fd.getAll("media")
+          .filter((f) => f && typeof f === "object" && typeof f.arrayBuffer === "function")
+          .map((f) => ({ name: f.name || "shared", type: f.type || "application/octet-stream", blob: f }));
+        if (text || files.length) {
+          await offlineEnqueue({ text, files, captureType: "auto", queuedAt: Date.now() });
+        }
+      } catch { /* fall through — the page still opens */ }
+      return Response.redirect("./share-target.html", 303);
+    })());
+    return;
+  }
+
+  if (req.method !== "GET") return; // never cache POST/PUT/DELETE
 
   // Supabase API + storage + functions: pass through, never cache.
   if (/supabase\.co|esm\.sh|cdn\.|fonts\./.test(url.hostname)) return;

@@ -71,15 +71,20 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
     fnErr = err;
   }
 
+  let degraded = false;
+  let degradedReason = "";
   if (fnErr || !agentResp?.toolCalls) {
     // Edge function unavailable / older version. Save a review action client-side
-    // so the capture is not lost.
+    // so the capture is not lost — but REPORT the degradation; masking it as
+    // success is how broken photo/voice captures went unnoticed.
+    degraded = true;
+    degradedReason = fnErr ? `agent_error: ${fnErr.message || fnErr}` : (agentResp?.error || "agent_returned_empty");
     await supabase.from("ai_actions").insert({
       user_id: ingestion.user_id,
       ingestion_id: ingestion.id,
       tool_name: "request_user_review",
       arguments: {
-        reason: fnErr ? `agent_error: ${fnErr.message || fnErr}` : "agent_returned_empty",
+        reason: degradedReason,
         raw_text: combinedText,
         source_type: sourceType,
       },
@@ -88,6 +93,12 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
     });
     onStage?.(stage("dedupe", { detail: `Agent unavailable; capture queued for review.` }), 4);
   } else {
+    if (agentResp.extractError && mediaAssets.length) {
+      // Media went up but Gemini couldn't read it — the server already queued a
+      // review action; surface it instead of pretending the photo was parsed.
+      degraded = true;
+      degradedReason = `media_extraction_failed: ${agentResp.extractError}`;
+    }
     onStage?.(stage("dedupe", { detail: `${agentResp.toolCalls.length || 0} tool call(s) proposed.` }), 4);
   }
   const dedupeResult = await runCrossSourceDedupe({ since: ingestion.created_at }).catch(() => ({ pairs: 0 }));
@@ -97,7 +108,7 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
   onStage?.(stage("writing"), 5);
   onStage?.(stage("done"), 6);
 
-  return { ingestion, mediaAssets, agentResp, dedupe: dedupeResult };
+  return { ingestion, mediaAssets, agentResp, dedupe: dedupeResult, degraded, reason: degradedReason };
 }
 
 async function runLocalCapture({ text, files, captureType, transcript, sourceType }, { onStage } = {}) {
@@ -105,7 +116,7 @@ async function runLocalCapture({ text, files, captureType, transcript, sourceTyp
   const localStages = [
     stage("queued", { detail: "Local capture received." }),
     stage("uploading", { detail: "Saved in this browser session." }),
-    stage("extracting", { detail: files.length ? `${files.length} file hint(s) prepared.` : "Text input only." }),
+    stage("extracting", { detail: files.length ? "Local mode can't read photos/audio — sign in for AI processing." : "Text input only." }),
     stage("reasoning", { detail: "Running local parser fallback." }),
     stage("dedupe", { detail: "Flagging possible duplicates for review." }),
     stage("writing", { detail: "Writing local rows." }),

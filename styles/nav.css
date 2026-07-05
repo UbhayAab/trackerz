@@ -1,3 +1,6 @@
+/* Bottom nav — the ONE surface that keeps backdrop blur. Neutral items;
+   active = ink pill (flips naturally in dark mode via --charcoal/--panel). */
+
 .bottom-nav {
   position: fixed;
   right: 0;
@@ -5,11 +8,11 @@
   left: 0;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
+  gap: var(--sp-1);
   width: min(100%, 980px);
   margin: 0 auto;
-  padding: 8px 10px calc(env(safe-area-inset-bottom, 0px) + 10px);
-  background: rgba(247, 246, 241, 0.92);
+  padding: var(--sp-2) var(--sp-2) calc(env(safe-area-inset-bottom, 0px) + 10px);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -23,19 +26,18 @@
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--muted);
-  font-size: 0.84rem;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
   font-weight: var(--weight-semibold);
   text-decoration: none;
-  transition: background 140ms ease, color 140ms ease;
 }
 
 .nav-item:hover {
-  color: var(--ink-soft);
+  color: var(--text-2);
   background: var(--chip);
 }
 
 .nav-item.active {
   background: var(--charcoal);
-  color: white;
+  color: var(--paper);
 }

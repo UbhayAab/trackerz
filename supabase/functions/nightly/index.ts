@@ -30,6 +30,10 @@ import {
   setDietPlanOverride, setGymPlanOverride, setDatedPlanOverrides,
 } from "../_shared/src/domain/diet/plan.js";
 import { isPlanDelta } from "../_shared/lib/plan-merge.mjs";
+import { historyFromBriefings, filterNovel, insightSignature } from "../_shared/lib/habituation.mjs";
+import { wander } from "../_shared/lib/mind-wander.mjs";
+import { consolidate } from "../_shared/lib/consolidate.mjs";
+import { calibrate } from "../_shared/lib/calibration.mjs";
 
 const APP_URL = Deno.env.get("APP_URL") || "https://ubhayaab.github.io/trackerz/";
 const DEFAULT_TZ = "Asia/Kolkata";
@@ -106,11 +110,82 @@ async function fetchUserRows(supabase: ReturnType<typeof adminClient>, userId: s
     supabase.from("user_plans").select("id, kind, scope, payload, active, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(200),
     supabase.from("push_subscriptions").select("id, endpoint, p256dh, auth").eq("user_id", userId),
   ]);
+  // Cognitive inputs: durable memory, open threads, and recent briefings (the
+  // habituation history — what was already said in the last few days).
+  const [{ data: memoryFacts }, { data: notes }, { data: recentBriefings }] = await Promise.all([
+    supabase.from("memory_facts").select("key, value, kind, confidence, source, updated_at").eq("user_id", userId).limit(100),
+    supabase.from("notes").select("id, body, kind, domain, status, occurred_at, created_at").eq("user_id", userId).neq("status", "archived").order("occurred_at", { ascending: false }).limit(50),
+    supabase.from("briefings").select("kind, for_date, body, payload, seen").eq("user_id", userId).order("for_date", { ascending: false }).limit(10),
+  ]);
   return {
     ledger, foodLogs, wellnessLogs, bodyMetrics, workoutLogs,
     budgets: budgets || [], subscriptions: subscriptions || [],
     userPlans: userPlans || [], pushSubs: pushSubs || [],
+    memoryFacts: memoryFacts || [], notes: notes || [], recentBriefings: recentBriefings || [],
   };
+}
+
+// ---- the sleep cycle: consolidation + forgetting -----------------------------
+// Evening runs compress the trailing weeks into memory_facts patterns and decay
+// the stale ones (see lib/consolidate.mjs). Deletes are audit-logged so the
+// forgetting is inspectable.
+async function runConsolidation(
+  supabase: ReturnType<typeof adminClient>,
+  userId: string, rows: any, now: Date,
+) {
+  const plan = consolidate(rows, rows.memoryFacts, now);
+  for (const u of plan.upserts) {
+    await supabase.from("memory_facts").upsert({
+      user_id: userId, key: u.key, value: u.value, kind: u.kind,
+      confidence: u.confidence, source: "ai", updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,key" });
+  }
+  for (const d of plan.decays) {
+    await supabase.from("memory_facts")
+      .update({ confidence: d.confidence, updated_at: new Date().toISOString() })
+      .eq("user_id", userId).eq("key", d.key);
+  }
+  for (const del of plan.deletes) {
+    await supabase.from("audit_log").insert({
+      user_id: userId, action: "memory_decay", target_table: "memory_facts", target_id: null,
+      before: { key: del.key, confidence: del.was }, after: null, source: "system",
+    });
+    await supabase.from("memory_facts").delete().eq("user_id", userId).eq("key", del.key);
+  }
+  return { upserted: plan.upserts.length, decayed: plan.decays.length, forgotten: plan.deletes.length };
+}
+
+// ---- weekly metacognition: was I wrong, and where? ---------------------------
+// Sunday evenings: check which auto-applied writes from the last 7 days the
+// user deleted, write the error profile into weekly_reviews, and hand back a
+// one-line confession for the briefing.
+async function runCalibration(
+  supabase: ReturnType<typeof adminClient>,
+  userId: string, now: Date,
+) {
+  const since = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+  const { data: actions } = await supabase.from("ai_actions")
+    .select("tool_name, status, confidence, applied_record_table, applied_record_id, created_at")
+    .eq("user_id", userId).eq("status", "auto_applied").gte("created_at", since).limit(500);
+  const byTable = new Map<string, string[]>();
+  for (const a of actions || []) {
+    if (!a.applied_record_table || !a.applied_record_id) continue;
+    if (!byTable.has(a.applied_record_table)) byTable.set(a.applied_record_table, []);
+    byTable.get(a.applied_record_table)!.push(a.applied_record_id);
+  }
+  const survivingIds = new Set<string>();
+  for (const [table, ids] of byTable) {
+    const { data } = await supabase.from(table).select("id").in("id", ids);
+    for (const r of data || []) survivingIds.add(r.id);
+  }
+  const result = calibrate({ actions: actions || [], survivingIds });
+  const weekStart = new Date(now.getTime() - 6 * 86_400_000);
+  await supabase.from("weekly_reviews").upsert({
+    user_id: userId,
+    week_start: localDateKey(weekStart),
+    summary: { calibration: result, generated_by: "nightly" },
+  }, { onConflict: "user_id,week_start" });
+  return result;
 }
 
 // Hydrate the plan resolver's override registries from user_plans rows —
@@ -255,23 +330,64 @@ async function runForUser(
     today: now, proteinTargetG: snapshot.proteinTarget || 130,
   });
   const brief = buildBriefing(useSlot, snapshot);
-  const payload = { ...brief.payload, insights: feed.lines.slice(0, 6) };
+
+  // Habituation: what did the last few briefings already say? Repeats (except
+  // critical ones) are suppressed so the brain never sounds like a broken
+  // record. Then mind-wandering picks one novel thought and one question.
+  // (Excluding this very slot's existing row — a same-day re-run must not
+  // habituate against its own previous output and shrink to nothing.)
+  const history = historyFromBriefings(
+    rows.recentBriefings
+      .filter((b: any) => !(b.kind === useSlot && b.for_date === brief.forDate))
+      .map((b: any) => b.payload),
+  );
+  const { fresh: freshInsights } = filterNovel(feed.items, history);
+  const candidates = wander(
+    { ledger: rows.ledger, foodLogs: rows.foodLogs, workoutLogs: rows.workoutLogs, bodyMetrics: rows.bodyMetrics, notes: rows.notes },
+    { seed: `${user.id}|${brief.forDate}|${useSlot}`, now },
+  );
+  const freshCandidates = candidates.filter((c: any) => !history.has(insightSignature(c.text)));
+  const thought = freshCandidates.find((c: any) => c.kind === "wander" || c.kind === "dream") || null;
+  const question = freshCandidates.find((c: any) => c.kind === "question") || null;
+
+  // The sleep cycle: evening runs consolidate the day into durable memory and
+  // decay what stopped being true; Sunday evening also runs calibration.
+  let consolidation = null;
+  let calibration: any = null;
+  if (useSlot === "evening") {
+    consolidation = await runConsolidation(supabase, user.id, rows, now).catch(() => null);
+    if (now.getDay() === 0) calibration = await runCalibration(supabase, user.id, now).catch(() => null);
+  }
+
+  const payload: Record<string, unknown> = {
+    ...brief.payload,
+    insights: freshInsights.map((it: any) => it.text).slice(0, 6),
+    ...(thought ? { thought: { kind: thought.kind, text: thought.text } } : {}),
+    ...(question ? { question: question.text } : {}),
+    ...(calibration ? { calibration: calibration.line } : {}),
+    ...(consolidation ? { consolidation } : {}),
+  };
+
+  // Preserve a dismissed briefing's seen flag when a re-run produces the same
+  // body — otherwise every cron retry resurfaces it.
+  const existing = rows.recentBriefings.find((b: any) => b.kind === useSlot && b.for_date === brief.forDate);
+  const seen = existing && existing.body === brief.body ? Boolean(existing.seen) : false;
 
   const { error: upsertErr } = await supabase.from("briefings").upsert({
     user_id: user.id, kind: useSlot, for_date: brief.forDate,
-    body: brief.body, payload, seen: false,
+    body: brief.body, payload, seen,
   }, { onConflict: "user_id,kind,for_date" });
   if (upsertErr) throw new Error(`briefings upsert: ${upsertErr.message}`);
 
   const title = useSlot === "morning" ? "Trackerz — morning briefing" : "Trackerz — evening check-in";
-  const topInsight = feed.lines[0] ? ` ${feed.lines[0]}` : "";
+  const extra = thought ? ` ${thought.text}` : (freshInsights[0] ? ` ${freshInsights[0].text}` : "");
   const push = await pushToUser(supabase, rows.pushSubs, {
     title,
-    body: `${brief.body}${topInsight}`.slice(0, 240),
+    body: `${brief.body}${extra}`.slice(0, 240),
     url: APP_URL,
     tag: `briefing-${useSlot}-${brief.forDate}`,
   });
-  return { userId: user.id, slot: useSlot, forDate: brief.forDate, body: brief.body, ...push };
+  return { userId: user.id, slot: useSlot, forDate: brief.forDate, body: brief.body, thought: thought?.text || null, question: question?.text || null, ...push };
 }
 
 // -------- handler --------

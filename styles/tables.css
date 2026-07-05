@@ -1,9 +1,12 @@
-/* Tables: dense, readable, no truncation. Mobile collapses to card rows. */
+/* Tables: dense, readable, no truncation. Wide tables SCROLL, never clip.
+   Quiet uppercase headers, tabular figures, numeric columns right-aligned.
+   Mobile collapses to card rows. */
 
 .data-table-wrap {
   width: 100%;
   overflow-x: auto;
-  margin-top: 12px;
+  overflow-y: hidden;
+  margin-top: var(--sp-3);
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--panel);
@@ -11,55 +14,57 @@
   scrollbar-width: thin;
 }
 
-.table-spaced { margin-top: 18px; }
+.table-spaced { margin-top: var(--sp-4); }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: auto;
   min-width: 720px;
-  font-size: 0.88rem;
+  font-size: var(--fs-sm);
   line-height: 1.4;
 }
 
 .data-table thead {
-  background: var(--chip);
+  background: var(--panel-2);
   position: sticky;
   top: 0;
   z-index: 1;
 }
 
 .data-table th {
-  color: var(--muted);
+  color: var(--text-3);
   text-align: left;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: var(--weight-semibold);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
-  padding: 10px 14px;
+  padding: var(--sp-2) 14px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 
 .data-table td {
   border-bottom: 1px solid var(--line);
-  padding: 14px;
+  padding: var(--sp-3) 14px;
   vertical-align: top;
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: normal;
   min-height: 48px;
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table tbody tr:hover {
-  background: rgba(26, 141, 98, 0.04);
+  background: var(--panel-2);
 }
 
 .data-table tbody tr:last-child td {
   border-bottom: 0;
 }
 
-/* Per-column widths so amount/date never share space with note */
+/* Per-column widths so amount/date never share space with note.
+   Numeric columns are right-aligned with tabular figures. */
 .data-table td[data-col="date"],
 .data-table th[data-col="date"] { min-width: 96px; white-space: nowrap; }
 .data-table td[data-col="amount"],
@@ -76,31 +81,31 @@
 .data-table th[data-col="ops"] { min-width: 160px; white-space: nowrap; }
 
 .empty-cell {
-  color: var(--muted);
+  color: var(--text-3);
   font-weight: var(--weight-medium);
   text-align: center;
-  padding: 24px !important;
+  padding: var(--sp-5) !important;
 }
 
 .cell-strong {
   font-weight: var(--weight-semibold);
-  color: var(--ink);
+  color: var(--text);
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
-  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  padding: var(--sp-1) var(--sp-2);
   background: var(--chip);
-  color: var(--ink-soft);
-  font-size: 0.72rem;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
   font-weight: var(--weight-semibold);
   white-space: nowrap;
 }
 
 .badge-risk {
-  background: rgba(168, 49, 32, 0.12);
+  background: var(--risk-soft);
   color: var(--risk);
 }
 
@@ -108,30 +113,29 @@
   min-height: 34px;
   margin: 3px 5px 3px 0;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--panel);
-  color: var(--ink);
-  font-size: 0.76rem;
+  color: var(--text);
+  font-size: var(--fs-xs);
   font-weight: var(--weight-semibold);
-  padding: 0 12px;
+  padding: 0 var(--sp-3);
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease;
 }
 
 .table-action:hover {
-  border-color: var(--money);
-  color: var(--money);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .flow-list {
   display: grid;
-  gap: 10px;
-  margin-top: 14px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
 }
 
 .flow-card {
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--panel);
@@ -142,22 +146,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .flow-card p {
   margin: 0;
-  color: var(--muted);
-  font-size: 0.88rem;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
 }
 
 .flow-domain {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--chip);
-  padding: 4px 10px;
-  color: var(--ink-soft);
-  font-size: 0.7rem;
+  padding: var(--sp-1) var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
   font-weight: var(--weight-semibold);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
 }
 
@@ -177,8 +182,8 @@
   .data-table-wrap[data-mode="cards"] .data-table tbody tr {
     display: grid;
     grid-template-columns: minmax(0, 90px) minmax(0, 1fr);
-    gap: 4px 12px;
-    padding: 12px 14px;
+    gap: var(--sp-1) var(--sp-3);
+    padding: var(--sp-3) 14px;
     border-bottom: 1px solid var(--line);
   }
   .data-table-wrap[data-mode="auto"] .data-table tbody td,
@@ -191,12 +196,12 @@
   .data-table-wrap[data-mode="auto"] .data-table tbody td::before,
   .data-table-wrap[data-mode="cards"] .data-table tbody td::before {
     content: attr(data-label);
-    color: var(--muted);
-    font-size: 0.7rem;
+    color: var(--text-3);
+    font-size: var(--fs-xs);
     font-weight: var(--weight-semibold);
-    letter-spacing: 0.04em;
+    letter-spacing: var(--track-label);
     text-transform: uppercase;
-    padding-top: 4px;
+    padding-top: var(--sp-1);
   }
   .data-table-wrap[data-mode="auto"] .data-table tbody td > *,
   .data-table-wrap[data-mode="auto"] .data-table tbody td,
