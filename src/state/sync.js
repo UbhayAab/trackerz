@@ -4,9 +4,10 @@ import {
   fetchMealTemplates, fetchUserPlans, fetchWorkoutLogs,
   fetchNotes, fetchMemoryFacts, fetchTargetEvents,
 } from "../services/supabase-data.js";
-import { setDietPlanOverride, setGymPlanOverride, setDatedPlanOverrides, parsePlanScope, planForDate } from "../domain/diet/plan.js";
+import { setDietPlanOverride, setGymPlanOverride, setDatedPlanOverrides, parsePlanScope, planForDate, isoWeekday } from "../domain/diet/plan.js";
 import { isPlanDelta } from "../../lib/plan-merge.mjs";
-import { resolveDietTargets } from "../domain/goals.js";
+import { resolveDietTargets, goalDef } from "../domain/goals.js";
+import { getBudgetPace } from "../analytics/budget-trajectory.js";
 import { estimateNutrition } from "../../lib/food-nutrition.mjs";
 import { isLocalSession } from "../services/auth.js";
 import { updateState } from "./app-state.js";
@@ -143,14 +144,33 @@ export async function hydrateStateFromSupabase() {
       status: row.status,
     }));
 
-    const budgetRows = budgets.map((row) => ({
-      id: row.id,
-      category: row.category_id ? "Category" : "All",
-      period: row.period,
-      amount: fmtAmount(row.amount),
-      starts: shortDate(row.starts_on),
-      status: "active",
-    }));
+    // Trajectory columns (spent/pace/forecast/next) are a MONEY concept -- a
+    // diet/gym goal (calories, protein, workouts) isn't a spend figure, so
+    // only compute them for money-domain kinds; other kinds show "—".
+    const budgetRows = budgets.map((row) => {
+      const isMoneyGoal = goalDef(row.kind)?.domain === "money";
+      let spent = "—", pace = "—", forecast = "—", next = "—";
+      if (isMoneyGoal) {
+        const win = periodWindow(row.period);
+        const spentSoFar = ledger
+          .filter((r) => r.direction === "expense" && win.since(r.occurred_at))
+          .reduce((acc, r) => acc + Number(r.amount || 0), 0);
+        const p = getBudgetPace({ spentSoFar, budget: Number(row.amount), dayOfMonth: win.dayOfMonth, daysInMonth: win.daysInMonth });
+        spent = fmtAmount(spentSoFar);
+        pace = p.pace > 1.1 ? "over" : p.pace < 0.9 ? "under" : "on track";
+        forecast = fmtAmount(p.projected);
+        next = fmtAmount(p.expected);
+      }
+      return {
+        id: row.id,
+        category: row.category_id ? "Category" : "All",
+        period: row.period,
+        amount: fmtAmount(row.amount),
+        starts: shortDate(row.starts_on),
+        status: "active",
+        spent, pace, forecast, next,
+      };
+    });
 
     const todaySpend = sumTodayExpense(ledger);
     const protein = sumTodayProtein(foods);
@@ -224,6 +244,26 @@ function isSameLocalDay(iso, now = new Date()) {
   if (!iso) return false;
   const d = new Date(iso);
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+// Spend-to-date + period length for a budget's pace/forecast, matching its
+// own period -- daily uses today, weekly uses the ISO week (Monday start),
+// monthly uses the calendar month. getBudgetPace's dayOfMonth/daysInMonth
+// params are really "day-into-period"/"days-in-period"; naming kept as-is
+// since that's the pure function's real signature.
+function periodWindow(period, now = new Date()) {
+  if (period === "daily") {
+    return { dayOfMonth: 1, daysInMonth: 1, since: (iso) => isSameLocalDay(iso, now) };
+  }
+  if (period === "weekly") {
+    const wd = isoWeekday(now); // 1..7, Monday=1
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (wd - 1));
+    return { dayOfMonth: wd, daysInMonth: 7, since: (iso) => iso && new Date(iso) >= start };
+  }
+  const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { dayOfMonth, daysInMonth, since: (iso) => iso && new Date(iso) >= start };
 }
 
 function sumTodayExpense(rows) {
