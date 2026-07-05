@@ -369,6 +369,23 @@ create table if not exists public.briefings (
   unique(user_id, kind, for_date)
 );
 
+-- Web Push subscriptions (20260705000015_push_subscriptions.sql). One row per
+-- device; the client writes its own rows, the nightly edge fn reads them with
+-- service role and prunes dead endpoints (404/410 from the push service).
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  endpoint text not null,
+  p256dh text not null,
+  auth text not null,
+  user_agent text,
+  last_seen_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique(user_id, endpoint)
+);
+
+create index if not exists ix_push_subscriptions_user on public.push_subscriptions(user_id);
+
 create table if not exists public.invited_emails (
   email text primary key,
   invited_by uuid references public.profiles(id) on delete set null,
@@ -502,7 +519,8 @@ begin
     select unnest(array[
       'workout_logs','merchant_aliases','category_memory','subscriptions',
       'bank_format_memory','meal_templates','hydration_logs','weekly_reviews',
-      'audit_log','user_secrets','user_plans','memory_facts','notes','briefings'
+      'audit_log','user_secrets','user_plans','memory_facts','notes','briefings',
+      'push_subscriptions'
     ])
   loop
     execute format('alter table public.%I enable row level security', t);

@@ -4,7 +4,7 @@ import {
   fetchMealTemplates, fetchUserPlans, fetchWorkoutLogs,
   fetchNotes, fetchMemoryFacts, fetchTargetEvents,
 } from "../services/supabase-data.js";
-import { setDietPlanOverride, setDatedPlanOverrides, parsePlanScope, planForDate } from "../domain/diet/plan.js";
+import { setDietPlanOverride, setGymPlanOverride, setDatedPlanOverrides, parsePlanScope, planForDate } from "../domain/diet/plan.js";
 import { isPlanDelta } from "../../lib/plan-merge.mjs";
 import { resolveDietTargets } from "../domain/goals.js";
 import { estimateNutrition } from "../../lib/food-nutrition.mjs";
@@ -67,6 +67,7 @@ export async function hydrateStateFromSupabase() {
     // can fold onto an earlier full plan (or the standing scaffold). Permanent
     // deltas are ignored — permanent changes must be full replacements.
     let permanentDiet = null;
+    let permanentGym = null;
     const datedDiet = new Map();
     const datedGym = new Map();
     for (const p of userPlans) {
@@ -74,6 +75,7 @@ export async function hydrateStateFromSupabase() {
       const { kind: scopeKind, dates } = parsePlanScope(p.scope);
       if (scopeKind === "permanent") {
         if (p.kind === "diet" && !permanentDiet && !isPlanDelta(p.payload)) permanentDiet = p.payload;
+        if (p.kind === "gym" && !permanentGym && !isPlanDelta(p.payload)) permanentGym = p.payload;
       } else if (scopeKind === "dates") {
         const target = p.kind === "gym" ? datedGym : datedDiet;
         for (const d of dates) { if (!target.has(d)) target.set(d, []); target.get(d).push(p.payload); }
@@ -83,6 +85,7 @@ export async function hydrateStateFromSupabase() {
     // earlier full replace for the same date.
     for (const m of [datedDiet, datedGym]) for (const [k, v] of m) m.set(k, v.slice().reverse());
     setDietPlanOverride(permanentDiet);
+    setGymPlanOverride(permanentGym);
     setDatedPlanOverrides({ diet: datedDiet, gym: datedGym });
 
     // Detect subscriptions from the ledger and persist them (best-effort), then

@@ -31,6 +31,13 @@ jobs:
             exit 0
           fi
           supabase functions deploy agent --project-ref "$PROJECT_REF"
+      - name: Deploy nightly function (cron-called, so no JWT gate)
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ ! -d supabase/functions/nightly ]; then
+            echo "nightly not deployed (missing token or function not present)"
+            exit 0
+          fi
+          supabase functions deploy nightly --no-verify-jwt --project-ref "$PROJECT_REF"
       - name: Deploy gmail-sync function (if present)
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ ! -d supabase/functions/gmail-sync ]; then
