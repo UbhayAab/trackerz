@@ -22,6 +22,9 @@ type AgentRequest = {
   text?: string;
   mode?: "auto" | Domain;
   mediaAssetIds?: string[];
+  // Trusted server-to-server callers (e.g. the email-inbound fn) pass an explicit
+  // userId alongside the x-internal-secret header; ignored on the browser path.
+  userId?: string;
 };
 
 type ToolCall = {
@@ -1550,20 +1553,37 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
 
   try {
-    // 1. JWT — required, never trust userId from body.
-    const auth = req.headers.get("authorization") || "";
-    const jwt = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    if (!jwt) return Response.json({ ok: false, error: "missing_auth" }, { status: 401, headers: corsHeaders });
-
+    // Parse once — both auth paths read the body.
+    const payload = (await req.json()) as AgentRequest;
     const supabase = adminClient();
-    const { data: userResp, error: userErr } = await supabase.auth.getUser(jwt);
-    if (userErr || !userResp?.user?.id) {
-      return Response.json({ ok: false, error: "invalid_auth" }, { status: 401, headers: corsHeaders });
+
+    // 1. Auth. Browser callers present a user JWT (validated here). A trusted
+    //    server-to-server caller (the email-inbound fn) instead presents
+    //    x-internal-secret matching app_secrets.INTERNAL_INVOKE_SECRET and an
+    //    explicit userId in the body. That secret lives only server-side and is
+    //    NEVER shipped to the browser; the ingestion-ownership check below still
+    //    applies, so a bad userId can't touch another user's rows.
+    let userId = "";
+    const internalSecret = req.headers.get("x-internal-secret") || "";
+    if (internalSecret) {
+      const expected = await resolveSecretOptional("INTERNAL_INVOKE_SECRET");
+      if (!expected || internalSecret !== expected) {
+        return Response.json({ ok: false, error: "invalid_internal_secret" }, { status: 401, headers: corsHeaders });
+      }
+      userId = String(payload?.userId || "");
+      if (!userId) return Response.json({ ok: false, error: "userId required for internal call" }, { status: 400, headers: corsHeaders });
+    } else {
+      const auth = req.headers.get("authorization") || "";
+      const jwt = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!jwt) return Response.json({ ok: false, error: "missing_auth" }, { status: 401, headers: corsHeaders });
+      const { data: userResp, error: userErr } = await supabase.auth.getUser(jwt);
+      if (userErr || !userResp?.user?.id) {
+        return Response.json({ ok: false, error: "invalid_auth" }, { status: 401, headers: corsHeaders });
+      }
+      userId = userResp.user.id;
     }
-    const userId = userResp.user.id;
 
     // 2. Payload.
-    const payload = (await req.json()) as AgentRequest;
     if (!payload?.ingestionId) {
       return Response.json({ ok: false, error: "ingestionId required" }, { status: 400, headers: corsHeaders });
     }

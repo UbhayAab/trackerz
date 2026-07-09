@@ -13,6 +13,7 @@ const MIRRORS = [
   ["lib/mind-wander.mjs", "supabase/functions/_shared/lib/mind-wander.mjs"],
   ["lib/consolidate.mjs", "supabase/functions/_shared/lib/consolidate.mjs"],
   ["lib/calibration.mjs", "supabase/functions/_shared/lib/calibration.mjs"],
+  ["lib/email-normalize.mjs", "supabase/functions/_shared/lib/email-normalize.mjs"],
   ["src/analytics/insights-engine.js", "supabase/functions/_shared/src/analytics/insights-engine.js"],
   ["src/analytics/insights-feed.js", "supabase/functions/_shared/src/analytics/insights-feed.js"],
   ["src/analytics/period-aggregator.js", "supabase/functions/_shared/src/analytics/period-aggregator.js"],
