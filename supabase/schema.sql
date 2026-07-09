@@ -386,6 +386,21 @@ create table if not exists public.push_subscriptions (
 
 create index if not exists ix_push_subscriptions_user on public.push_subscriptions(user_id);
 
+-- Email ingestion idempotency (20260709000016_email_messages.sql). One row per
+-- delivered email so the same message is never ingested twice.
+create table if not exists public.email_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  dedupe_key text not null,
+  sender text,
+  subject text,
+  ingestion_id uuid references public.raw_ingestions(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (user_id, dedupe_key)
+);
+
+create index if not exists ix_email_messages_user on public.email_messages(user_id);
+
 create table if not exists public.invited_emails (
   email text primary key,
   invited_by uuid references public.profiles(id) on delete set null,
@@ -520,7 +535,7 @@ begin
       'workout_logs','merchant_aliases','category_memory','subscriptions',
       'bank_format_memory','meal_templates','hydration_logs','weekly_reviews',
       'audit_log','user_secrets','user_plans','memory_facts','notes','briefings',
-      'push_subscriptions'
+      'push_subscriptions','email_messages'
     ])
   loop
     execute format('alter table public.%I enable row level security', t);

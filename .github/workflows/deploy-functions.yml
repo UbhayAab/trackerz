@@ -45,3 +45,10 @@ jobs:
             exit 0
           fi
           supabase functions deploy gmail-sync --project-ref "$PROJECT_REF"
+      - name: Deploy email-inbound function (Apps Script forwarder, so no JWT gate)
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ ! -d supabase/functions/email-inbound ]; then
+            echo "email-inbound not deployed (missing token or function not present)"
+            exit 0
+          fi
+          supabase functions deploy email-inbound --no-verify-jwt --project-ref "$PROJECT_REF"

@@ -128,11 +128,49 @@ Belt-and-suspenders: the Gmail label prevents re-sending, and the endpoint's
 
 ---
 
-## Status & what I need from you
+## Status — BUILT (decisions locked: Apps Script forwarder + auto-apply)
 
-- ✅ Normalizer + tests built and in the suite now.
-- ⏳ The `email-inbound` edge fn + migration + delivery glue are **pending your
-  pick of delivery mechanism** (table above) and the **auto-apply vs review**
-  policy call — both change the endpoint. Once you choose, this is roughly a
-  half-day: one edge fn, one small migration, one contract test, and (Option 1)
-  the script above. Deploy + secret-set happen on your laptop with the PAT.
+Everything is committed and green (47 test files). Delivery = **Option 1 (Gmail
+Apps Script)**; policy = **auto-apply, confidence-gated** (bank emails flow
+through the normal `action-policy`, exactly like a typed capture).
+
+- ✅ `lib/email-normalize.mjs` + `_shared` mirror (parity-guarded) + tests.
+- ✅ `supabase/functions/email-inbound/index.ts` — secret-gated, dedupes, creates
+  the capture, drives the existing `agent` pipeline via the internal path.
+- ✅ `agent` internal-invoke path (`x-internal-secret` + explicit `userId`), with
+  the ingestion-ownership check still enforced. **Security note:** this adds a
+  server-to-server auth branch to the production `agent` fn — review it.
+- ✅ Migration `20260709000016_email_messages.sql` (+ schema.sql mirror + RLS).
+- ✅ CI: `deploy-functions.yml` deploys `email-inbound` with `--no-verify-jwt`.
+- ✅ Contract test `tests/email-inbound-contract.test.mjs`.
+
+### Activation (on your laptop, with the PAT)
+
+1. Apply the migration `20260709000016_email_messages.sql` (Studio SQL editor or
+   `npm run db:push`).
+2. Set two secrets in `app_secrets`:
+   ```sql
+   insert into public.app_secrets (name, value) values
+     ('EMAIL_SECRET', '<long random A>'),
+     ('INTERNAL_INVOKE_SECRET', '<long random B>')
+   on conflict (name) do update set value = excluded.value;
+   ```
+   `EMAIL_SECRET` authenticates the Apps Script → `email-inbound`;
+   `INTERNAL_INVOKE_SECRET` authenticates `email-inbound` → `agent`.
+3. Deploy (push to `main` → CI, or manual
+   `supabase functions deploy email-inbound --no-verify-jwt --project-ref yyoewdcijplkhxleejtm`
+   and redeploy `agent` so its internal path ships).
+4. (Single-user app: nothing to configure. If you ever add a 2nd account, set the
+   `EMAIL_OWNER_USER_ID` function secret to your `profiles.id`.)
+5. Paste the Apps Script above into script.google.com, set `ENDPOINT` +
+   `SECRET` (= `EMAIL_SECRET`), add a 15-min time trigger.
+6. Smoke test: forward yourself an HDFC alert (or wait for one) → within 15 min
+   it should appear as a capture and, if confident, an auto-applied expense.
+   Verify: `select raw_text, status from raw_ingestions where capture_mode='email' order by created_at desc limit 5;`
+
+### Follow-ups (not built)
+
+- Expand the Apps Script `QUERY` to your actual bank senders / other sources.
+- Optional: a Settings toggle to pause email ingestion.
+- If you later want zero Google-side script, swap delivery to Option 2/3 — the
+  endpoint + normalizer stay; only the caller changes.
