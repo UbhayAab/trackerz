@@ -16,6 +16,7 @@ import { looksLikeGym } from "../lib/capture-intent.mjs";
 const edge = readFileSync("supabase/functions/agent/index.ts", "utf8");
 const fanout = readFileSync("lib/fan-out-expander.mjs", "utf8");
 const router = readFileSync("lib/request-router.mjs", "utf8");
+const negation = readFileSync("lib/negation.mjs", "utf8");
 
 // --- extractors -------------------------------------------------------------
 
@@ -72,6 +73,7 @@ for (const [name, libSrc] of [
 for (const [name, libSrc] of [
   ["MONEY_CUE", fanout], ["MONEY_SUFFIX", fanout], ["MONEY_TRAIL", fanout],
   ["PURCHASE_CUE", fanout], ["FOR_LATER_CUE", fanout], ["CONSUMPTION_CUE", fanout],
+  ["NEGATION_RE", negation], ["CLAUSE_SPLIT_RE", negation],
 ]) {
   assert.equal(regexLiteral(edge, name), regexLiteral(libSrc, name), `DRIFT in regex ${name}`);
 }
