@@ -63,7 +63,7 @@ assert.ok(serve.indexOf("fetchContextBlock(") < serve.indexOf("runPipeline("), "
 // --- each pure stage keeps a lib/src mirror (unit-testable without Deno) ------
 const MIRRORS = [
   "lib/context-builder.mjs", "lib/fan-out-expander.mjs", "lib/capture-intent.mjs",
-  "lib/request-router.mjs", "lib/sanity-guards.mjs", "lib/food-nutrition.mjs",
+  "lib/request-router.mjs", "lib/negation.mjs", "lib/sanity-guards.mjs", "lib/food-nutrition.mjs",
   "src/agent/evidence-grounding.js", "src/agent/prompt-boundaries.js",
   "src/agent/tool-schemas.js", "src/agent/tool-registry.js",
 ];

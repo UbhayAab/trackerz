@@ -36,6 +36,15 @@ const CASES = [
   ["worked out, did chest press and a brisk walk", { workout: true }], // the drift case
   ["spent 1200 on a grocery run at dmart", { workout: false, food: false, expense: true }], // "grocery run" is not a workout
 
+  // --- negation / skipped activity: the ABSENCE of an event never logs or ticks ---
+  ["didn't go to the gym today", { workout: false }],
+  ["skipped gym, too tired", { workout: false }],
+  ["no gym today", { workout: false }],
+  ["didn't hit the gym", { workout: false }],
+  ["skipped breakfast", { food: false }],
+  ["didn't go to the gym but had dal and 2 rotis for lunch", { workout: false, food: true }], // mixed: log only what DID happen
+  ["didn't spend on lunch today, just ate leftovers", { expense: false, food: true }],
+
   // --- commands: change the scaffolding, log NOTHING ---
   ["change my gym schedule today: bench 3x10 60kg, squats 3x8", { workout: false, food: false }],
   ["for the next 4 Mondays I'll have paneer salad", { food: false }],

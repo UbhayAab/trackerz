@@ -120,6 +120,7 @@ Rules:
   • UPI / account debit: "Rs.250.00 has been debited from a/c **1234 to VPA name@bank on 21-06-26. UPI Ref 412345678901." -> create_expense_candidate { amount:250, payment_mode:"upi", merchant:"name@bank or the payee name", occurred_at, tags:["412345678901"] }.
   Money LEAVING the account (debited/spent/paid/withdrawn) is an expense; money ARRIVING (credited/received/refund/salary) is income; movement between the user's OWN accounts is a transfer. Never count the "available balance" figure as the transaction amount.
 - LOG vs CHANGE-REQUEST — DECIDE THIS FIRST. If the user is COMMANDING a change to their setup, do NOT log an event and do NOT tick anything; ROUTE it: (a) changing the diet/gym PLAN or SCHEDULE ("change my gym today", "here is my new schedule", "make Thursdays rest", "for the next 4 Mondays I'll have paneer salad", "stop doing Workout A") -> update_plan_candidate, NEVER a workout/food log. (b) changing a BUDGET/TARGET ("raise my protein goal to 180", "set my spend cap to 40000", "adjust my calorie budget to 1800") -> set_target_candidate, NEVER a Rs 0 expense. (c) a QUESTION ("how much did I spend?", "am I on track?") -> request_user_review with reason "query". Only emit a food/workout/expense LOG when the user reports something that ACTUALLY HAPPENED.
+- NEGATED / SKIPPED ACTIVITY — the absence of an event is NOT a log. If the user says something did NOT happen ("didn't go to the gym", "skipped lunch", "no workout today", "couldn't train", "missed breakfast", "didn't hit the gym"), do NOT emit create_workout_log_candidate / create_food_log_candidate / create_expense_candidate for the negated thing, and NEVER tick its checklist. Only the part that DID happen gets logged: "skipped the gym but had dal and 2 rotis" -> a food log for the dal + rotis and NO workout; "no gym today, too tired" -> nothing logged. A pure skip with nothing done is best left as a short create_note_candidate (body:"skipped gym", domain:"gym") or request_user_review, never a log.
 - MADE vs BOUGHT vs ATE (cost decides the money side): "bought paneer and cheese for 50" -> expense ONLY (purchased, not eaten). "made paneer sabzi which costed me 50" -> BOTH a food_log AND an expense of 50. "just made paneer sabzi" (NO amount stated) -> food_log ONLY, NO expense (never invent a cost). Cooking/eating is a food_log; a stated price is the only thing that adds an expense.
 - PLAN UPDATE (FULL): if the user pastes a whole diet/gym PLAN, or replaces it wholesale ("update my diet", "new plan from gpt", "here is my new schedule"), emit update_plan_candidate { kind:"diet"|"gym", scope:"permanent" for a lasting change OR a "YYYY-MM-DD" date for a one-day temporary change OR a comma-separated list of dates "YYYY-MM-DD,YYYY-MM-DD,..." for a recurring temporary change ("next 4 Mondays and Wednesdays" -> the 8 concrete dates, computed from the current time), summary: one short line, payload: the FULL parsed plan as JSON. For diet payload use { meals:[{time,slot,name,detail,calories,protein_g,carbs_g,fat_g}], targets:{calories,protein_g,carbs_g,fat_g} } when every day is the same, OR a weekly map { days:{Monday:{meals:[...],targets:{...}},Tuesday:{...},...} } when the pasted plan varies by weekday (days without an entry keep the standing plan). For gym use { name,kind,duration_min,items:["Bench press 3x8","Lat pulldown 3x10",...] } for one repeating workout OR a weekly split { days:{Monday:{name,kind,duration_min,items:[...]},Wednesday:{...}} } — day keys are weekday names (Mon or Monday both work), items are plain strings with sets x reps included, kind is "gym" | "cardio" | "rest". PARSE THE WHOLE PASTE: a pasted multi-day plan from another AI (ChatGPT/Gemini) or a coach must become ONE update_plan_candidate per kind (one for the diet part, one for the gym part if both are present), never dozens of calls and never a note. A plan is a TEMPLATE — do NOT also emit individual food/expense/workout log events for it.
 - PLAN UPDATE (ONE-SHOT DELTA): for a SMALL change to an existing plan — add / drop / swap ONE meal or exercise, or nudge a day's target — do NOT re-send the whole plan. Emit update_plan_candidate with a DELTA payload carrying an "op" (the app folds it onto the current plan): diet ops { op:"add_meal", meal:{name,slot,time,calories,protein_g,carbs_g,fat_g} } | { op:"remove_meal", match:"banana" | a slot } | { op:"replace_meal", match, meal:{...} } | { op:"set_targets", targets:{calories,protein_g,...} }; gym ops { op:"replace_workout", workout:{name,kind,items:[...],duration_min} } | { op:"add_exercise", exercise:"Pull-ups 3×8" } | { op:"remove_exercise", match:"bench" }. Examples: "add a salad bowl at 4pm to my diet" -> { kind:"diet", scope: today's date, payload:{ op:"add_meal", meal:{name:"Salad bowl", slot:"snack", time:"16:00", ...} } }; "swap today's leg day for cardio" -> { kind:"gym", scope: today, payload:{ op:"replace_workout", workout:{name:"Cardio", kind:"cardio", items:["30 min treadmill"]} } }; "drop the banana snack today" -> { op:"remove_meal", match:"banana" }. IMPORTANT: delta ops are ONLY for a date scope (a specific date / date list). A PERMANENT change must be a FULL payload (send the whole plan), never a delta.
@@ -668,6 +669,17 @@ function carriesLoggedEvent(text = ""): boolean {
   return routerHasAny(String(text || "").toLowerCase(), LOG_OVERRIDE_CUES);
 }
 
+// Negation / skip detection (mirror of lib/negation.mjs). Strips clauses that
+// assert something did NOT happen ("didn't go to the gym", "skipped lunch") so a
+// skip never salvages a log. NEGATION_RE + CLAUSE_SPLIT_RE are parity-guarded.
+const NEGATION_RE = /\b(?:did(?:n'?t| not)|do(?:n'?t| not)|does(?:n'?t| not)|couldn'?t|could not|can'?t|cannot|wasn'?t|was not|won'?t|will not|wouldn'?t|would not|no|not|skip(?:s|ped|ping)?|missed|missing|bailed|forgot to|failed to)\b/i;
+const CLAUSE_SPLIT_RE = /\n|,|;|\bthen\b|\band\b|\bbut\b/i;
+function stripNegatedClauses(text = ""): string {
+  const s = String(text || "");
+  if (!NEGATION_RE.test(s)) return s;
+  return s.split(CLAUSE_SPLIT_RE).map((c) => c.trim()).filter((c) => c && !NEGATION_RE.test(c)).join(", ").trim();
+}
+
 // ---- amount + date salvage (mirror of lib/fan-out-expander.mjs) ----
 const MONEY_CUE = /(?:spent|spend|paid|pay|bought|buy|cost|costs|rs\.?|inr|rupees?|₹)\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i;
 const MONEY_SUFFIX = /([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:rs\.?|inr|rupees?|₹|bucks)\b/i;
@@ -774,13 +786,16 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
 
   const ev = String(evidence || "").trim();
   const occurredAt = resolveOccurredAt(ev, now);
+  // POSITIVE half — negated/skipped clauses removed so a skip never salvages a log.
+  // positive === ev when there is no negation (zero behaviour change).
+  const positive = stripNegatedClauses(ev);
 
   // 2. Salvage an EXPENSE the model missed (only with an explicit money cue).
-  const amount = extractAmount(ev);
+  const amount = extractAmount(positive);
   if (amount != null && !hasExpense() && !command) {
     out.push({
       name: "create_expense_candidate",
-      arguments: { amount, currency: "INR", merchant: spendTargetFrom(ev), description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, is_discretionary: true, _auto_expanded: true },
+      arguments: { amount, currency: "INR", merchant: spendTargetFrom(positive), description: positive.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, is_discretionary: true, _auto_expanded: true },
       confidence: 0.6,
     });
   }
@@ -788,10 +803,10 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   // 3. Salvage FOOD the model missed (even alongside an expense), so a food+spend
   //    capture lands in BOTH trackers and never sits in review. Not for a grocery
   //    purchase — that's an expense, not something eaten.
-  if (!purchase && !command && looksLikeFood(ev) && !hasFood()) {
+  if (!purchase && !command && looksLikeFood(positive) && !hasFood()) {
     out.push({
       name: "create_food_log_candidate",
-      arguments: { meal_slot: mealSlotFromTime(occurredAt), description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
+      arguments: { meal_slot: mealSlotFromTime(occurredAt), description: positive.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
       confidence: 0.6,
     });
   }
@@ -802,13 +817,20 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
 
   // 3c. Salvage a WORKOUT the model missed: gym free-text is a workout even without
   //     the word "gym" ("did Workout A", "bench 3x10 60kg", "ran 5k").
-  if (!command && looksLikeGym(ev) && !out.some((tc) => tc?.name === "create_workout_log_candidate")) {
+  if (!command && looksLikeGym(positive) && !out.some((tc) => tc?.name === "create_workout_log_candidate")) {
     out.push({
       name: "create_workout_log_candidate",
-      arguments: { description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
+      arguments: { description: positive.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
       confidence: 0.6,
     });
   }
+
+  // 3d. NEGATION OVERRIDE: when a domain's only cue lived in a negated/skipped clause
+  //     ("didn't go to the gym", "skipped lunch"), drop any log for that domain — even
+  //     one the MODEL emitted despite the negation. Mixed "skipped gym but had dal"
+  //     keeps the positive half. This is what stops a "no-gym" note from ticking the day.
+  if (looksLikeGym(ev) && !looksLikeGym(positive)) out = out.filter((tc) => tc?.name !== "create_workout_log_candidate");
+  if (looksLikeFood(ev) && !looksLikeFood(positive)) out = out.filter((tc) => tc?.name !== "create_food_log_candidate");
 
   // 4. Once anything real was captured, drop the now-stale review request (unless
   //    it's a genuine safety flag). This is what clears "needs a look".
