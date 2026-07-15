@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- design tokens (dark-first, premium) ---------- */
+:root,
+:root[data-theme="dark"] {
+  --bg: 222 26% 6%;
+  --surface: 222 22% 9%;
+  --surface-2: 222 20% 13%;
+  --border: 222 16% 20%;
+  --text: 210 20% 96%;
+  --muted: 218 12% 63%;
+  --primary: 252 90% 68%;
+  --primary-fg: 250 45% 10%;
+  --accent: 174 72% 52%;
+  --success: 150 64% 46%;
+  --warn: 38 92% 60%;
+  --danger: 358 76% 62%;
+  --shadow: 222 70% 2%;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: 214 42% 97%;
+  --surface: 0 0% 100%;
+  --surface-2: 214 32% 95%;
+  --border: 214 22% 87%;
+  --text: 222 44% 12%;
+  --muted: 220 12% 42%;
+  --primary: 252 82% 60%;
+  --primary-fg: 0 0% 100%;
+  --accent: 174 66% 36%;
+  --success: 150 58% 36%;
+  --warn: 32 90% 44%;
+  --danger: 358 70% 52%;
+  --shadow: 222 40% 45%;
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-bg text-text antialiased;
+    font-feature-settings: "ss01", "cv01", "cv11";
+    /* ambient glow so the near-black page never reads as flat */
+    background-image:
+      radial-gradient(60rem 60rem at 80% -10%, hsl(var(--primary) / 0.12), transparent 60%),
+      radial-gradient(50rem 50rem at -10% 10%, hsl(var(--accent) / 0.08), transparent 55%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid hsl(var(--bg));
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted) / 0.6);
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-border bg-surface/80 shadow-card backdrop-blur-xl;
+  }
+  .glass {
+    @apply border border-white/5 bg-surface/60 backdrop-blur-2xl;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2/60 px-2.5 py-1 text-xs font-medium text-muted;
+  }
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-primary-fg shadow-glow hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border border-border bg-surface-2/50 text-text hover:bg-surface-2;
+  }
+  /* gradient text for hero numbers */
+  .text-gradient {
+    @apply bg-gradient-to-br from-primary to-accent bg-clip-text text-transparent;
+  }
+  /* skeleton shimmer */
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-surface-2;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full;
+    background: linear-gradient(90deg, transparent, hsl(var(--text) / 0.06), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
