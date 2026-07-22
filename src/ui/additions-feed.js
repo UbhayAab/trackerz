@@ -6,6 +6,7 @@
 import { buildAdditions, groupByDay } from "../../lib/additions.mjs";
 import { deleteRow, revertTargetEvent, rejectAiAction } from "../services/supabase-data.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { showToast } from "./toast.js";
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => (
@@ -48,6 +49,34 @@ export function renderAdditionsFeed(state) {
     </div>`).join("");
 }
 
+// Every row button writes to the DB, so a failure must put the row back AND say
+// why: a row that quietly un-strikes reads as "nothing happened" while the row is
+// still there. The write and the re-hydrate are separated on purpose — a hydrate
+// failure after a successful write must NOT restore the row, or the feed would
+// claim the delete never landed.
+async function runRowAction(rowEl, label, write) {
+  rowEl.classList.add("is-deleting"); // red strike-through while it writes
+  try {
+    await write();
+  } catch (err) {
+    rowEl.classList.remove("is-deleting"); // write failed — the row is still in the DB
+    showToast(`${label} failed: ${err?.message || err}`, { kind: "error", duration: 5000 });
+    return;
+  }
+  // hydrateStateFromSupabase reports partial failures by RETURNING a status
+  // rather than throwing (page boot must survive one dead read), so a catch
+  // alone would never fire — check the result.
+  let status;
+  try {
+    status = await hydrateStateFromSupabase();
+  } catch (err) {
+    status = { ok: false, failed: [err?.message || String(err)] };
+  }
+  if (status && status.ok === false) {
+    showToast(`${label} saved, but the feed couldn't refresh: ${status.failed?.[0] || "sync failed"}`, { kind: "error", duration: 5000 });
+  }
+}
+
 let bound = false;
 export function bindAdditionsFeed() {
   if (bound) return;
@@ -59,39 +88,21 @@ export function bindAdditionsFeed() {
     if (undoBtn) {
       const rowEl = undoBtn.closest("[data-undo-id]");
       if (!rowEl) return;
-      rowEl.classList.add("is-deleting");
-      try {
-        await revertTargetEvent(rowEl.dataset.undoId);
-        await hydrateStateFromSupabase();
-      } catch {
-        rowEl.classList.remove("is-deleting");
-      }
+      await runRowAction(rowEl, "Undo", () => revertTargetEvent(rowEl.dataset.undoId));
       return;
     }
     const dismissBtn = event.target.closest(".add-dismiss");
     if (dismissBtn) {
       const rowEl = dismissBtn.closest("[data-add-id]");
       if (!rowEl) return;
-      rowEl.classList.add("is-deleting");
-      try {
-        await rejectAiAction(rowEl.dataset.addId);
-        await hydrateStateFromSupabase();
-      } catch {
-        rowEl.classList.remove("is-deleting");
-      }
+      await runRowAction(rowEl, "Dismiss", () => rejectAiAction(rowEl.dataset.addId));
       return;
     }
     const btn = event.target.closest(".add-del");
     if (!btn) return;
     const rowEl = btn.closest("[data-add-id]");
     if (!rowEl) return;
-    rowEl.classList.add("is-deleting"); // red strike-through while it deletes
-    try {
-      await deleteRow(rowEl.dataset.addTable, rowEl.dataset.addId);
-      await hydrateStateFromSupabase();
-    } catch {
-      rowEl.classList.remove("is-deleting"); // delete failed — restore the row
-    }
+    await runRowAction(rowEl, "Delete", () => deleteRow(rowEl.dataset.addTable, rowEl.dataset.addId));
   });
 }
 

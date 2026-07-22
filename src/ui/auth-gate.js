@@ -1,5 +1,10 @@
 import { hasSupabaseConfig, primeSupabaseConfig, saveConfig } from "../config.js";
-import { initAuth, onAuthChange, signInLocal, signInWithEmail, signInWithPassword, signInWithProvider, signOut, ensureProfileRow, getCurrentSession, isLocalSession } from "../services/auth.js";
+import {
+  initAuth, onAuthChange, signInLocal, signInWithEmail, signInWithPassword, signInWithProvider,
+  signOut, ensureProfileRow, getCurrentSession, isLocalSession,
+  sendPasswordReset, updatePassword, readAuthRedirectError, getLastAuthError, exitLocalSession,
+  getEnabledProviders,
+} from "../services/auth.js";
 import { resetSupabaseClient } from "../services/supabase-client.js";
 
 const SETUP_ID = "trackerz-setup-card";
@@ -17,15 +22,51 @@ export async function mountAuthGate({ onReady } = {}) {
   removeCard(SETUP_ID);
 
   await initAuth();
+
+  // Arriving back from a password-reset email: let the user actually set one.
+  if (isRecoveryLanding()) {
+    showRecoveryCard();
+    return;
+  }
+
   onAuthChange(async (session) => {
     renderAuthPill(session);
     if (session) {
       removeCard(SIGNIN_ID);
-      try { await ensureProfileRow(); } catch {}
+      renderLocalModeBanner(session);
+      try { await ensureProfileRow(); } catch (err) {
+        console.warn("profile upsert failed", err);
+      }
       onReady?.(session);
     } else {
       showSignInCard();
     }
+  });
+}
+
+// Supabase sends the recovery link back with type=recovery in the URL hash.
+function isRecoveryLanding() {
+  const hash = String(globalThis.location?.hash || "");
+  return hash.includes("type=recovery");
+}
+
+// Local test mode is a developer escape hatch that looks identical to being
+// signed in — except none of the real account's data is there. Make it obvious,
+// and give a one-tap way out.
+function renderLocalModeBanner(session) {
+  document.getElementById("trackerz-local-banner")?.remove();
+  if (!isLocalSession(session)) return;
+  const bar = document.createElement("div");
+  bar.id = "trackerz-local-banner";
+  bar.className = "local-mode-banner";
+  bar.innerHTML = `
+    <span>Local test mode — nothing syncs and your real account's data is not shown.</span>
+    <button type="button" id="exitLocalMode" class="secondary-button">Sign in for real</button>
+  `;
+  document.body.prepend(bar);
+  bar.querySelector("#exitLocalMode").addEventListener("click", async () => {
+    await exitLocalSession();
+    bar.remove();
   });
 }
 
@@ -85,7 +126,9 @@ function showSignInCard() {
       <input type="password" id="pwPass" placeholder="••••••••" autocomplete="current-password" />
     </label>
     <button type="button" id="pwSignin" class="primary-button">Sign in</button>
+    <button type="button" id="pwForgot" class="link-button">Forgot password?</button>
     <p id="pwMessage" class="muted small" role="status" aria-live="polite"></p>
+    <p id="authBanner" class="auth-banner" role="alert" hidden></p>
     <div class="auth-divider"><span>or use another method</span></div>
     <div class="oauth-row">
       <button type="button" class="oauth-button" data-provider="google">
@@ -132,6 +175,37 @@ function showSignInCard() {
   };
   card.querySelector("#pwSignin").addEventListener("click", doPasswordSignin);
   card.querySelector("#pwPass").addEventListener("keydown", (e) => { if (e.key === "Enter") doPasswordSignin(); });
+
+  // Surface why sign-in is failing, instead of an empty card. Covers both a
+  // bounced OAuth/magic-link redirect and a session-restore failure (offline,
+  // CDN blocked, project unreachable) — all of which used to look identical to
+  // "you are simply signed out".
+  const banner = card.querySelector("#authBanner");
+  const redirectError = readAuthRedirectError();
+  const initError = getLastAuthError();
+  if (redirectError || initError) {
+    banner.hidden = false;
+    banner.textContent = redirectError
+      ? `Sign-in was rejected: ${redirectError}`
+      : `Couldn't reach the account service: ${initError}. Check your connection — your data is safe.`;
+  }
+
+  card.querySelector("#pwForgot").addEventListener("click", async () => {
+    const typed = card.querySelector("#pwUser").value.trim();
+    const email = typed.includes("@") ? typed : card.querySelector("#signinEmail").value.trim();
+    if (!email.includes("@")) {
+      pwMessage.textContent = "Enter your email address (not just a username) to reset.";
+      card.querySelector("#signinEmail").focus();
+      return;
+    }
+    pwMessage.textContent = "Sending reset link...";
+    try {
+      await sendPasswordReset(email);
+      pwMessage.textContent = `Reset link sent to ${email}. Check spam if it isn't there in a minute.`;
+    } catch (err) {
+      pwMessage.textContent = `Couldn't send reset: ${err.message || err}`;
+    }
+  });
   card.querySelector("#localSignin").addEventListener("click", async () => {
     message.textContent = "Starting local session...";
     const session = await signInLocal({
@@ -140,14 +214,43 @@ function showSignInCard() {
     });
     message.textContent = `Local session ready for ${session.user.email}.`;
   });
+  // Don't offer a button that cannot work. Both providers are disabled on this
+  // project, so "Continue with Google" could only ever eject the user to a
+  // Supabase error page — which is exactly what the owner reported.
+  getEnabledProviders().then((external) => {
+    if (!external) return; // couldn't tell; leave the buttons alone
+    const row = card.querySelector(".oauth-row");
+    let disabledCount = 0;
+    card.querySelectorAll(".oauth-button").forEach((btn) => {
+      if (external[btn.dataset.provider] === false) {
+        btn.remove();
+        disabledCount += 1;
+      }
+    });
+    if (row && !row.querySelector(".oauth-button")) {
+      row.previousElementSibling?.remove(); // the "or use another method" divider
+      row.innerHTML = `<p class="muted small">Social sign-in isn't set up on this project${
+        disabledCount ? "" : ""
+      }. Use your email and password above, or enable a provider in Supabase → Authentication → Providers.</p>`;
+    }
+  });
+
   card.querySelectorAll(".oauth-button").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const provider = btn.dataset.provider;
       message.textContent = `Opening ${provider}...`;
+      btn.setAttribute("disabled", "");
       try {
         await signInWithProvider(provider);
       } catch (err) {
-        message.textContent = `Error: ${err.message || err}`;
+        // A disabled provider now says so in plain words on the card, rather
+        // than bouncing the user to a raw Supabase error page.
+        message.textContent = "";
+        banner.hidden = false;
+        banner.textContent = err.message || String(err);
+        btn.classList.add("is-unavailable");
+      } finally {
+        btn.removeAttribute("disabled");
       }
     });
   });
@@ -160,6 +263,48 @@ function showSignInCard() {
       message.textContent = `Check ${email} for a sign-in link.`;
     } catch (err) {
       message.textContent = `Error: ${err.message || err}`;
+    }
+  });
+}
+
+// Landing from a password-reset email: set the new password here. Without this
+// the emailed link dropped the user on a normal page with a recovery session and
+// no way to actually change anything.
+function showRecoveryCard() {
+  removeCard(SIGNIN_ID);
+  let card = document.getElementById("trackerz-recovery-card");
+  if (!card) {
+    card = document.createElement("section");
+    card.id = "trackerz-recovery-card";
+    card.className = "auth-card signin-card";
+    document.body.appendChild(card);
+  }
+  card.innerHTML = `
+    <h2>Set a new password</h2>
+    <p class="muted small">You followed a reset link. Choose a password of at least 6 characters.</p>
+    <label>New password
+      <input type="password" id="newPass" autocomplete="new-password" />
+    </label>
+    <label>Confirm
+      <input type="password" id="newPass2" autocomplete="new-password" />
+    </label>
+    <button type="button" id="savePass" class="primary-button">Save password</button>
+    <p id="recoveryMessage" class="muted small" role="status" aria-live="polite"></p>
+  `;
+  const msg = card.querySelector("#recoveryMessage");
+  card.querySelector("#savePass").addEventListener("click", async () => {
+    const a = card.querySelector("#newPass").value;
+    const b = card.querySelector("#newPass2").value;
+    if (a.length < 6) { msg.textContent = "At least 6 characters."; return; }
+    if (a !== b) { msg.textContent = "The two passwords don't match."; return; }
+    msg.textContent = "Saving...";
+    try {
+      await updatePassword(a);
+      msg.textContent = "Password updated. Loading your account...";
+      try { history.replaceState(null, "", location.pathname); } catch { /* non-browser */ }
+      location.reload();
+    } catch (err) {
+      msg.textContent = `Couldn't update: ${err.message || err}`;
     }
   });
 }

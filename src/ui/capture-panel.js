@@ -99,7 +99,9 @@ async function handleSubmit() {
 
   updateState((state) => {
     state.parseLog.unshift(`Capture: ${text || `${allFiles.length} file(s)`}${liveTranscript ? ` + voice` : ""}`);
-    state.activeJob = { key: "queued", label: "Queued", eta: 5, detail: "Capture received.", stageIndex: 0 };
+    // No ETA: nothing here measures how long the agent takes, and an invented
+    // one rendered as "~undefineds" in the header pill.
+    state.activeJob = { key: "queued", label: "Queued", detail: "Capture received.", stageIndex: 0 };
   });
 
   if (!navigator.onLine) {
@@ -157,6 +159,12 @@ function resetForm() {
   renderRoutePreview();
 }
 
+// Same escaping as ui/toast.js — the optimistic row is built with innerHTML and
+// the summary is whatever the user typed, pasted or dictated.
+function escapeHtml(s) {
+  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+}
+
 function pushOptimistic({ text, transcript, fileCount, captureType }) {
   const wrap = $("#optimisticQueue");
   if (!wrap) return null;
@@ -169,8 +177,8 @@ function pushOptimistic({ text, transcript, fileCount, captureType }) {
   row.innerHTML = `
     <span class="optimistic-dot" aria-hidden="true"></span>
     <div class="optimistic-body">
-      <strong>${summary.slice(0, 80)}</strong>
-      <span class="optimistic-status">${captureType} • queued</span>
+      <strong>${escapeHtml(summary.slice(0, 80))}</strong>
+      <span class="optimistic-status">${escapeHtml(captureType)} • queued</span>
     </div>
   `;
   wrap.prepend(row);

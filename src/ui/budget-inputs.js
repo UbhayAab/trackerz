@@ -31,9 +31,22 @@ export function renderBudgetInputs(state) {
     if (kind === "daily_calories") v = dt.calories;
     else if (kind === "daily_protein") v = dt.protein_g;
     else if (kind === "weekly_calories") v = goalValue(budgets, kind) ?? Math.round(dt.calories * 7);
-    else v = goalDisplayValue(budgets, kind);
+    else if (isUnsetMoneyCap(budgets, kind)) {
+      // An unsaved money cap is in effect NOWHERE — the brief, the trajectory
+      // table and the insight rules all read the budgets row, not the seed. So
+      // show the seed as a placeholder (visibly unset) instead of a value that
+      // claims a cap the app isn't enforcing.
+      const def = goalDef(kind);
+      input.value = "";
+      input.placeholder = def?.default != null ? `Not set (suggested ${def.default})` : "Not set";
+      return;
+    } else v = goalDisplayValue(budgets, kind);
     if (v != null) input.value = v;
   });
+}
+
+function isUnsetMoneyCap(budgets, kind) {
+  return goalDef(kind)?.domain === "money" && goalValue(budgets, kind) == null;
 }
 
 export function bindBudgetInputs(statusId) {
@@ -56,7 +69,17 @@ async function saveBudget(input, status) {
   const def = goalDef(input.dataset.budgetKind);
   if (!def) return;
   const amount = Number(input.value);
-  if (!Number.isFinite(amount) || amount <= 0) return;
+  // Bailing silently left the status reading "Saving…" forever on a blank/zero
+  // input, so nothing was saved but the UI said otherwise.
+  if (!Number.isFinite(amount) || amount <= 0) {
+    // Emptying the box does NOT remove a saved cap — the budgets row is still
+    // there. Saying "cleared, no cap is in effect" would be its own false
+    // assertion, which is the bug class this whole pass is about.
+    if (status) status.textContent = input.value.trim() === ""
+      ? `${def.label} unchanged — clearing the box doesn't remove a saved cap. Enter a number to change it.`
+      : `${def.label} not saved — enter a number above 0.`;
+    return;
+  }
   if (!canSync()) { if (status) status.textContent = "Sign in to save budgets."; return; }
   try {
     await upsertBudget({ kind: def.kind, period: def.period, amount });

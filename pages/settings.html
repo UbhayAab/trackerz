@@ -85,8 +85,11 @@
             <label class="settings-row"><span>Notify this device (Web Push)</span><input id="pushBriefToggle" type="checkbox" /></label>
           </div>
           <div class="data-actions">
+            <button id="enablePushBtn" class="primary-button" type="button">Enable notifications</button>
+            <button id="testPushBtn" class="secondary-button" type="button">Send test notification</button>
             <button id="briefNowBtn" class="primary-button" type="button">Brief me now</button>
           </div>
+          <p id="pushStatus" class="agent-detail">Notifications on this device: checking…</p>
           <p id="jarvisDetail" class="agent-detail">Runs on the server even when the app is closed: the day is closed out just after midnight, the morning brief lands at 7:00 with yesterday closed + today's plan + safe-to-spend, and the evening nudge flags what's still fixable. Quiet hours 22:30–06:45.</p>
           <p id="settingsStatus" class="agent-detail"></p>
         </section>

@@ -50,6 +50,8 @@ const ALLOWED_TOOLS = new Set([
   "create_workout_log_candidate",
   "create_body_metric_candidate",
   "create_wellness_note_candidate",
+  "create_hydration_candidate",
+  "create_sleep_candidate",
   "create_note_candidate",
   "set_target_candidate",
   "remember_fact",
@@ -72,6 +74,8 @@ const WRITE_TOOLS = new Set([
   "create_workout_log_candidate",
   "create_body_metric_candidate",
   "create_wellness_note_candidate",
+  "create_hydration_candidate",
+  "create_sleep_candidate",
   "create_note_candidate",
   "set_target_candidate",
   "remember_fact",
@@ -225,7 +229,9 @@ const TOOL_SCHEMAS: Record<string, Schema> = {
   create_transfer_candidate: { required: ["amount", "occurred_at"], types: { amount: "positive_number", description: "string", occurred_at: "iso", from_account: "string", to_account: "string" } },
   create_statement_row_candidate: { required: ["amount", "occurred_at"], types: { amount: "number", direction: "string", merchant: "string", description: "string", occurred_at: "iso", reference: "string" }, enums: { direction: ["expense", "income", "transfer"] } },
   create_food_log_candidate: { required: ["description", "occurred_at"], types: { meal_slot: "string", meal_name: "string", description: "string", calories_estimate: "number", protein_g: "number", carbs_g: "number", fat_g: "number", occurred_at: "iso" }, enums: { meal_slot: ["breakfast", "lunch", "snack", "dinner", "other", null] } },
-  create_workout_log_candidate: { required: ["description", "occurred_at"], types: { description: "string", duration_min: "number", intensity: "string", occurred_at: "iso" } },
+  create_workout_log_candidate: { required: ["description", "occurred_at"], types: { description: "string", duration_min: "number", intensity: "string", status: "string", occurred_at: "iso" }, enums: { status: ["done", "skipped", "rest", null] } },
+  create_hydration_candidate: { required: ["ml", "occurred_at"], types: { ml: "positive_number", occurred_at: "iso" } },
+  create_sleep_candidate: { required: ["started_at"], types: { started_at: "iso", ended_at: "iso", quality: "number" }, ranges: { quality: [1, 5] } },
   create_body_metric_candidate: { required: ["metric_type", "value", "occurred_at"], types: { metric_type: "string", value: "number", unit: "string", occurred_at: "iso" }, enums: { metric_type: ["weight", "sleep_hours", "steps", "water_ml"] } },
   create_wellness_note_candidate: { required: ["note", "occurred_at"], types: { note: "string", mood_score: "number", energy_score: "number", stress_score: "number", occurred_at: "iso" }, ranges: { mood_score: [1, 10], energy_score: [1, 10], stress_score: [1, 10] } },
   link_duplicate_candidates: { required: ["candidate_a", "candidate_b"], types: { candidate_a: "string", candidate_b: "string", reason: "string" } },
@@ -541,10 +547,22 @@ function parseToolCalls(raw: string) {
 // so "paid 240 zomato lunch" lands in BOTH money and diet.
 const FOOD_MERCHANTS = ["zomato", "swiggy", "blinkit", "zepto", "instamart", "dominos", "domino", "mcdonald", "kfc", "starbucks", "subway", "pizza", "burger", "cafe", "coffee", "restaurant", "dhaba", "bakery", "biryani", "faasos", "eatfit", "box8", "behrouz", "wow momo", "chaayos", "haldiram", "barbeque", "burger king", "pizza hut", "dunkin", "baskin", "chai point", "theobroma", "la pino", "eatsure", "freshmenu", "ovenstory", "taco bell", "third wave", "blue tokai", "keventers", "bikanervala", "nandos", "sweet truth"];
 const FOOD_WORDS = ["lunch", "dinner", "breakfast", "snack", "meal", "thali", "biryani", "roti", "rotis", "dal", "sabzi", "rice", "paneer", "egg", "eggs", "chicken", "mutton", "dosa", "idli", "poha", "sandwich", "salad", "shake", "smoothie", "fruit", "curd", "yogurt", "momo", "noodles", "pasta", "ate", "eaten", "food", "maggi", "cake", "milk", "cookies", "chai", "tea", "juice", "soup", "oats", "banana", "apple", "omelette", "omelet", "upma", "paratha", "khichdi", "sambar", "vada", "uttapam", "pulao", "lassi", "buttermilk", "samosa", "pakora", "halwa", "kheer", "jalebi", "sprouts", "tofu", "soya", "soybean", "soybeans", "fish", "prawns", "kebab", "tikka", "naan", "kulcha", "aloo", "palak", "rajma", "chole", "chana", "dahi", "muesli", "granola", "almonds", "peanuts", "shawarma", "poori", "puri", "chaat", "curry", "coffee"];
-function looksLikeFood(text: string): boolean {
+// Words that name WHEN you ate, not WHAT — matching only these means no dish was
+// named, so no macros can ever be derived.
+const MEAL_SLOT_WORDS = new Set(["lunch", "dinner", "breakfast", "snack", "meal", "food", "ate", "eaten"]);
+function foodCuesIn(text: string): string[] {
   const t = String(text || "").toLowerCase();
-  if (FOOD_MERCHANTS.some((m) => t.includes(m))) return true;
-  return FOOD_WORDS.some((w) => new RegExp(`\\b${w}\\b`).test(t));
+  const hits: string[] = [];
+  for (const m of FOOD_MERCHANTS) if (t.includes(m)) hits.push(m);
+  for (const w of FOOD_WORDS) if (new RegExp(`\\b${w}\\b`).test(t)) hits.push(w);
+  return hits;
+}
+function looksLikeFood(text: string): boolean {
+  return foodCuesIn(text).length > 0;
+}
+// True when the text names an actual dish/merchant, not just a meal slot.
+function namesDish(text: string): boolean {
+  return foodCuesIn(text).some((cue) => !MEAL_SLOT_WORDS.has(cue));
 }
 
 // Buying provisions ("bought paneer and curd", "groceries for the week") is an
@@ -571,6 +589,76 @@ function looksLikeGym(text: string): boolean {
   if (CARDIO_CUE.test(t.replace(CARDIO_FALSE_FRIENDS, " "))) return true;
   if (GYM_SET_REP.test(t)) return true;
   return false;
+}
+
+// ==== NEGATION MIRROR START (byte-identical logic in lib/negation.mjs) ====
+// "I did NOT go to the gym" must never become a workout row. Salvage fires on a
+// domain MENTION, and a mention is not an occurrence. Scoped per clause so
+// "no gym but ate 6 eggs" denies the gym and still logs the eggs.
+const NEG_CLAUSE_SPLIT = /[,;.!?\n]+|\bbut\b|\bhowever\b|\bthough\b|\balthough\b|\bwhereas\b/i;
+const NEG_REPORTED_SPEECH = /\b(?:it\s+says|says\s+i|said\s+i|shows?|showing|shown|marked|ticked|checked\s+off|the\s+ai|the\s+app|ai\s+note|in\s+the\s+note|according\s+to|thinks\s+i|claims?)\b/i;
+const NEG_AUX_VERB = new RegExp(
+  "\\b(?:did\\s*n[o']?t|didnt|does\\s*n[o']?t|doesnt|do\\s+not|don'?t|dont|" +
+  "was\\s*n[o']?t|wasnt|were\\s*n[o']?t|is\\s*n[o']?t|isnt|" +
+  "have\\s*n[o']?t|havent|has\\s*n[o']?t|hasnt|had\\s*n[o']?t|hadnt|" +
+  "wo\\s*n[o']?t|wont|will\\s+not|can\\s*not|cannot|can'?t|cant|" +
+  "could\\s*n[o']?t|couldnt|should\\s*n[o']?t|shouldnt|ai\\s*n[o']?t|not)\\b" +
+  "(?:\\s+\\w+){0,3}\\s+" +
+  "\\b(?:go|going|gone|went|do|doing|did|done|make|made|making|hit|attend|attended|" +
+  "train|trained|training|work\\s*out|workout|worked|exercise|exercised|lift|lifted|" +
+  "eat|eating|ate|eaten|have|having|had|take|taking|took|" +
+  "buy|buying|bought|pay|paying|paid|spend|spending|spent|order|ordered|" +
+  "drink|drinking|drank|log|logged)\\b",
+  "i",
+);
+const NEG_NO_EVENT = /\bno\s+(?:gym|workout|work\s?out|exercise|training|session|lifting|cardio|run|walk|breakfast|lunch|dinner|meal|meals|food|snack|eating|spend|spending|purchase|expense)\b/i;
+const NEG_DENIAL_VERB = /\b(?:skip|skips|skipped|skipping|miss|missed|missing|bunk|bunked|ditch|ditched|avoided|refused|declined|forgot\s+to|failed\s+to|gave\s+it\s+a\s+miss)\b/i;
+const NEG_IDIOM = /\b(?:rest\s+day|day\s+off|off\s+day|took\s+rest|taking\s+rest|out\s+(?:\S+\s+){0,2}window|couldn'?t\s+make\s+it|not\s+happening|didn'?t\s+happen)\b/i;
+
+function clauseDeniesEvent(clause: string): boolean {
+  const t = String(clause || "").toLowerCase();
+  if (!t.trim()) return false;
+  return NEG_NO_EVENT.test(t) || NEG_AUX_VERB.test(t) || NEG_DENIAL_VERB.test(t) || NEG_IDIOM.test(t);
+}
+function clauseIsReportedSpeech(clause: string): boolean {
+  return NEG_REPORTED_SPEECH.test(String(clause || "").toLowerCase());
+}
+function splitNegationClauses(text: string): string[] {
+  return String(text || "").split(NEG_CLAUSE_SPLIT).map((c) => c.trim()).filter(Boolean);
+}
+function isEventDenied(text: string, mentions: (s: string) => boolean): boolean {
+  const clauses = splitNegationClauses(text);
+  if (!clauses.length) return false;
+  const test = typeof mentions === "function" ? mentions : () => true;
+  let mentioned = 0, affirmative = 0;
+  for (const clause of clauses) {
+    if (!test(clause)) continue;
+    mentioned++;
+    if (clauseDeniesEvent(clause)) continue;
+    if (clauseIsReportedSpeech(clause)) continue;
+    affirmative++;
+  }
+  if (mentioned === 0) {
+    if (!test(text)) return false;
+    return clauseDeniesEvent(text) && !clauseIsReportedSpeech(text);
+  }
+  return affirmative === 0;
+}
+function declaresNoWorkout(text: string, mentionsGym: (s: string) => boolean): boolean {
+  const t = String(text || "");
+  if (!t.trim()) return false;
+  if (NEG_IDIOM.test(t) && !clauseIsReportedSpeech(t)) return true;
+  return isEventDenied(t, mentionsGym);
+}
+// ==== NEGATION MIRROR END ====
+
+// A meal-slot label with no dish in it — no macros are derivable, so it must not
+// become a food row.
+const BARE_MEAL_LABEL = /^(?:the\s+)?(?:breakfast|lunch|dinner|brunch|supper|snack|meal|food)s?$/i;
+function isBareMealLabel(label: string): boolean {
+  const cleaned = String(label || "").toLowerCase()
+    .replace(/\(auto from spend\)/g, " ").replace(/[^a-z ]+/g, " ").replace(/\s+/g, " ").trim();
+  return BARE_MEAL_LABEL.test(cleaned);
 }
 
 // Request router (mirror of lib/request-router.mjs). A capture is a LOG or a
@@ -676,15 +764,24 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   // not a loggable event — suppress all deterministic log-salvage so we never write
   // a row or tick a checklist for a command. A mixed "…also I ate dal" keeps it on.
   const command = isChangeRequest(evidence) && !carriesLoggedEvent(evidence);
+  // DENIAL: the capture names a domain only to say it did NOT happen ("no gym
+  // today", "skipped lunch"). Salvage stays off and any positive row the model
+  // emitted for that domain is dropped — an explicit denial outranks a guess.
+  const gymDenied = declaresNoWorkout(evidence, looksLikeGym);
+  const foodDenied = isEventDenied(evidence, looksLikeFood);
   const hasExpense = () => out.some((tc) => tc?.name === "create_expense_candidate");
   const hasFood = () => out.some((tc) => tc?.name === "create_food_log_candidate");
 
   // 1. Fan-out: model-emitted food-merchant expense -> matching food_log.
   //    Skipped for a grocery purchase (buying food ≠ eating it) or a command.
-  if (!purchase && !command) for (const tc of toolCalls) {
+  if (!purchase && !command && !foodDenied) for (const tc of toolCalls) {
     if (tc.name !== "create_expense_candidate") continue;
     const a = (tc.arguments || {}) as any;
-    if (!looksLikeFood(`${a.merchant || ""} ${a.description || ""}`)) continue;
+    const label = `${a.merchant || ""} ${a.description || ""}`;
+    if (!looksLikeFood(label)) continue;
+    // A bare meal-slot label ("lunch") names no dish, so no macros can ever be
+    // derived — it lands as a blank 0-calorie meal beside the real one.
+    if (isBareMealLabel(label)) continue;
     const occurredAt = a.occurred_at as string;
     const dup = out.some((f) => f.name === "create_food_log_candidate" && minutesApart((f.arguments as any)?.occurred_at, occurredAt) <= 2);
     if (dup) continue;
@@ -711,7 +808,7 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   // 3. Salvage FOOD the model missed (even alongside an expense), so a food+spend
   //    capture lands in BOTH trackers and never sits in review. Not for a grocery
   //    purchase — that's an expense, not something eaten.
-  if (!purchase && !command && looksLikeFood(ev) && !hasFood()) {
+  if (!purchase && !command && !foodDenied && namesDish(ev) && !hasFood()) {
     out.push({
       name: "create_food_log_candidate",
       arguments: { meal_slot: mealSlotFromTime(occurredAt), description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
@@ -723,12 +820,26 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   //     the user bought provisions, they did not eat them. Keeps the expense.
   if (purchase) out = out.filter((tc) => tc?.name !== "create_food_log_candidate");
 
-  // 3c. Salvage a WORKOUT the model missed: gym free-text is a workout even without
-  //     the word "gym" ("did Workout A", "bench 3x10 60kg", "ran 5k").
-  if (!command && looksLikeGym(ev) && !out.some((tc) => tc?.name === "create_workout_log_candidate")) {
+  // 3b-ii. The user said they did NOT eat: drop every food row, model's included.
+  if (foodDenied) out = out.filter((tc) => tc?.name !== "create_food_log_candidate");
+
+  // 3c. WORKOUT. A denial ("no gym today") is recorded as an explicit `skipped`
+  //     row rather than dropped: that keeps it out of the streak and out of the
+  //     "you trained yesterday" brief, while still telling the evening nudge the
+  //     day was answered. Only an affirmative capture salvages a real workout.
+  if (!command && gymDenied) {
+    out = out.filter((tc) => tc?.name !== "create_workout_log_candidate");
     out.push({
       name: "create_workout_log_candidate",
-      arguments: { description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
+      arguments: { description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, status: "skipped", _auto_expanded: true },
+      confidence: 0.9,
+    });
+  } else if (!command && looksLikeGym(ev) && !out.some((tc) => tc?.name === "create_workout_log_candidate")) {
+    // Gym free-text is a workout even without the word "gym" ("did Workout A",
+    // "bench 3x10 60kg", "ran 5k").
+    out.push({
+      name: "create_workout_log_candidate",
+      arguments: { description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, status: "done", _auto_expanded: true },
       confidence: 0.6,
     });
   }
@@ -1225,7 +1336,22 @@ async function applyTool(supabase: ReturnType<typeof adminClient>, userId: strin
         description: args.description || "",
         duration_min: args.duration_min ?? null,
         intensity: args.intensity || null,
+        // "skipped" rows record that the user answered the day without counting
+        // as training — habit_days/streaks only ever count status='done'.
+        status: args.status === "skipped" || args.status === "rest" ? args.status : "done",
         occurred_at: occurredAt,
+      }).select().single();
+    case "create_hydration_candidate":
+      return supabase.from("hydration_logs").insert({
+        user_id: userId, ml: Math.round(Number(args.ml)) || 0, occurred_at: occurredAt,
+      }).select().single();
+    case "create_sleep_candidate":
+      return supabase.from("sleep_sessions").insert({
+        user_id: userId, ingestion_id: ingestionId,
+        started_at: args.started_at || occurredAt,
+        ended_at: args.ended_at || null,
+        quality: args.quality ?? null,
+        source: "capture",
       }).select().single();
     case "create_food_log_candidate":
       return supabase.from("food_logs").insert({
@@ -1402,6 +1528,8 @@ function tableForTool(name: string): string | null {
       return "ledger_entries";
     case "create_food_log_candidate": return "food_logs";
     case "create_workout_log_candidate": return "workout_logs";
+    case "create_hydration_candidate": return "hydration_logs";
+    case "create_sleep_candidate": return "sleep_sessions";
     case "create_body_metric_candidate": return "body_metrics";
     case "create_wellness_note_candidate": return "wellness_logs";
     case "update_plan_candidate": return "user_plans";

@@ -31,6 +31,22 @@ npm run setup:backend
 # Screenshot pages with Playwright (writes to docs/ — used for visual checks)
 npm run screenshot
 
+# Ad-hoc read-only SQL against the live DB (reads .env.local)
+node scripts/q.mjs "select count(*) from food_logs"
+
+# Drive the real signed-in app in a phone viewport; prints console errors,
+# failed requests, and any fabricated "undefined"/NaN on screen
+node scripts/smoke-ui.mjs
+
+# Fire the jarvis engine on demand instead of waiting for a cron slot
+node scripts/jarvis-run.mjs status|morning|evening|closeout [--force]
+
+# Prove the negation guard against the DEPLOYED agent function (self-cleaning)
+node scripts/verify-negation-live.mjs
+
+# Copy the JARVIS-BRIEF mirror block lib/ -> edge fn (tests/mirror-parity guards it)
+node scripts/sync-mirror.mjs
+
 # Deploy an edge function (requires supabase CLI logged in; or use the script — takes a slug, default agent)
 supabase functions deploy agent
 node scripts/deploy-edge-function.mjs jarvis
@@ -62,6 +78,7 @@ Everything in `lib/` is a pure module imported by both browser code and tests �
 - `context-builder.mjs` — assembles the "memory context" block injected into every AI reasoning call (fixed-priority sections under a char cap; LAST7 is O(1)).
 - `fan-out-expander.mjs` — deterministic fan-out + salvage + backdate: guarantees one real event lands in every tracker it belongs to even when the model under-emits or bails to review.
 - `food-nutrition.mjs` — lookup table of everyday foods; when `estimateNutrition(text).recognized` is true its totals are AUTHORITATIVE and override the model (DeepSeek reasoning is only used for non-everyday items).
+- `negation.mjs` — clause-scoped denial detection. Salvage fires on a domain *mention*, and a mention is not an occurrence: "no gym today" must never become a workout row. Scoped per clause so "no gym but ate 6 eggs" denies the gym and still logs the eggs. A denied workout is written as `workout_logs.status='skipped'` (answered the day, did not train) rather than dropped. See `docs/AUDIT-2026-07-22.md`.
 - `additions.mjs` — shapes recent domain rows into the Home feed's day-over-day "additions" list.
 - `aspiration-cascade.mjs` — maps a free-text goal note to budget/target changes plus the undo math.
 

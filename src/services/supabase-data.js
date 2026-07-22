@@ -180,6 +180,120 @@ export async function logQuickWellness({ mood_score = null, energy_score = null,
   return data;
 }
 
+// Total ml drunk on the local day containing `date`. Drives the water ring.
+export async function fetchHydrationTotal(date = new Date()) {
+  const supabase = await getSupabaseClient();
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const end = new Date(start);
+  end.setDate(start.getDate() + 1);
+  const { data, error } = await supabase
+    .from("hydration_logs")
+    .select("id, ml, occurred_at")
+    .gte("occurred_at", start.toISOString())
+    .lt("occurred_at", end.toISOString())
+    .order("occurred_at", { ascending: false });
+  if (error) throw error;
+  const rows = data || [];
+  return { ml: rows.reduce((sum, r) => sum + (Number(r.ml) || 0), 0), rows };
+}
+
+// Undo the most recent water tap (mis-taps are the whole risk of a one-tap UI).
+export async function undoLastHydration() {
+  const supabase = await getSupabaseClient();
+  const { rows } = await fetchHydrationTotal(new Date());
+  const last = rows[0];
+  if (!last) return null;
+  const { error } = await supabase.from("hydration_logs").delete().eq("id", last.id);
+  if (error) throw error;
+  return last;
+}
+
+// ---- sleep ----
+// An OPEN session (ended_at null) means "asleep right now". There is at most one
+// per user (enforced by a partial unique index), so a double tap cannot strand a
+// second open row.
+
+export async function fetchOpenSleepSession() {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("sleep_sessions")
+    .select("id, started_at, ended_at")
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return (data || [])[0] || null;
+}
+
+export async function startSleepSession(at = new Date()) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const open = await fetchOpenSleepSession();
+  if (open) return open; // already asleep — tapping again is a no-op, not an error
+  const { data, error } = await supabase
+    .from("sleep_sessions")
+    .insert({ user_id: userId, started_at: at.toISOString(), source: "button" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Close the open session. Returns { row, hours } or null when nothing was open.
+export async function endSleepSession(at = new Date()) {
+  const supabase = await getSupabaseClient();
+  const open = await fetchOpenSleepSession();
+  if (!open) return null;
+  const { data, error } = await supabase
+    .from("sleep_sessions")
+    .update({ ended_at: at.toISOString() })
+    .eq("id", open.id)
+    .select()
+    .single();
+  if (error) throw error;
+  const hours = (new Date(data.ended_at) - new Date(data.started_at)) / 3600000;
+  return { row: data, hours: Math.round(hours * 10) / 10 };
+}
+
+// ---- gym: answered either way ----
+// `status` is the whole point: a 'skipped' row records that the day was answered
+// without counting as training, so the streak stays honest and the evening nudge
+// stops asking.
+export async function logGymAnswer(status, { description = null, occurredAt = null } = {}) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const safe = status === "skipped" || status === "rest" ? status : "done";
+  const { data, error } = await supabase
+    .from("workout_logs")
+    .insert({
+      user_id: userId,
+      description: description || (safe === "done" ? "Gym — logged from Home" : "No gym today"),
+      status: safe,
+      occurred_at: (occurredAt ? new Date(occurredAt) : new Date()).toISOString(),
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Today's gym answer, if any — so the buttons render their current state.
+export async function fetchTodayGymAnswer(date = new Date()) {
+  const supabase = await getSupabaseClient();
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const end = new Date(start);
+  end.setDate(start.getDate() + 1);
+  const { data, error } = await supabase
+    .from("workout_logs")
+    .select("id, description, status, occurred_at")
+    .gte("occurred_at", start.toISOString())
+    .lt("occurred_at", end.toISOString())
+    .order("occurred_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return (data || [])[0] || null;
+}
+
 export async function fetchWorkoutLogs({ limit = 200 } = {}) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase

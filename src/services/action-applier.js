@@ -16,6 +16,8 @@ export const APPLIER_WRITE_TOOLS = [
   "create_workout_log_candidate",
   "create_body_metric_candidate",
   "create_wellness_note_candidate",
+  "create_hydration_candidate",
+  "create_sleep_candidate",
   "create_note_candidate",
   "set_target_candidate",
   "remember_fact",
@@ -67,6 +69,19 @@ export function buildRowForTool(action, userId) {
       return { table: "workout_logs", row: {
         ...base, description: args.description || "", duration_min: args.duration_min ?? null,
         intensity: args.intensity || null, occurred_at: occurredAt,
+        // A 'skipped' row records that the day was answered without counting as
+        // training. Dropping this field here (it used to be dropped) is what let
+        // "Did not go to gym bro" land as a completed workout.
+        status: args.status === "skipped" || args.status === "rest" ? args.status : "done",
+      } };
+    case "create_hydration_candidate":
+      return { table: "hydration_logs", row: {
+        user_id: userId, ml: Math.round(Number(args.ml)) || 0, occurred_at: occurredAt,
+      } };
+    case "create_sleep_candidate":
+      return { table: "sleep_sessions", row: {
+        ...base, started_at: args.started_at || occurredAt, ended_at: args.ended_at || null,
+        quality: args.quality ?? null, source: "capture",
       } };
     case "create_body_metric_candidate":
       return { table: "body_metrics", row: {

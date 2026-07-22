@@ -20,7 +20,20 @@ const importColumns = [
   { key: "mapped", label: "Mapped" },
   { key: "duplicate", label: "Dupes" },
   { key: "status", label: "Status", badge: true },
-  { key: "ops", label: "Ops", actions: [{ label: "Import", action: "import" }] },
+  // Re-importing an already-recorded statement isn't built: the original file is
+  // never kept, and nothing promotes statement_rows into the ledger. This button
+  // used to fabricate a row count and flip the row to "imported" without writing
+  // anything, so it now says what it is and can't be pressed.
+  {
+    key: "ops",
+    label: "Ops",
+    actions: [{
+      label: "Not wired up",
+      action: "import",
+      disabled: true,
+      title: "Row-level import isn't implemented. Drop the statement file into the importer above to import it.",
+    }],
+  },
 ];
 
 const ledgerColumns = [
@@ -48,12 +61,19 @@ const macroColumns = [
   { key: "note", label: "Note" },
 ];
 
-export function renderOperationalTables(state) {
-  setTable("#reviewTable", reviewColumns, state.reviewRows, { table: "review", emptyMessage: "Nothing yet today. Captures auto-commit here as additions — delete any that are wrong." });
-  setTable("#importTable", importColumns, state.importRows, { table: "import", emptyMessage: "No bank files yet. Upload CSV, Excel, PDF, or screenshots from Capture." });
-  setTable("#ledgerTable", ledgerColumns, state.ledgerRows, { emptyMessage: "No expenses yet. Add a payment, statement, or screenshot dump." });
-  setTable("#budgetTable", budgetColumns, state.budgetRows, { emptyMessage: "No budget burn yet. Add spends or load demo data." });
-  setTable("#macroTable", macroColumns, state.macroRows, { emptyMessage: "No meals yet. Add food text, photo, or EOD voice note." });
+// `options.errors` maps a table key (review/import/ledger/budget/macro) to the
+// message from the read that failed, and `options.loading` says the data hasn't
+// been read yet. Without those, a failed or pending read is indistinguishable
+// from an empty account — which is how "couldn't read your ledger" ended up
+// rendering as "no expenses yet".
+export function renderOperationalTables(state, options = {}) {
+  const errors = options.errors || {};
+  const loading = Boolean(options.loading);
+  setTable("#reviewTable", reviewColumns, state.reviewRows, { table: "review", emptyMessage: "Nothing yet today. Captures auto-commit here as additions — delete any that are wrong.", error: errors.review, loading });
+  setTable("#importTable", importColumns, state.importRows, { table: "import", emptyMessage: "No bank files yet. Upload CSV, Excel, PDF, or screenshots from Capture.", error: errors.import, loading });
+  setTable("#ledgerTable", ledgerColumns, state.ledgerRows, { emptyMessage: "No expenses yet. Add a payment, statement, or screenshot dump.", error: errors.ledger, loading });
+  setTable("#budgetTable", budgetColumns, state.budgetRows, { emptyMessage: "No budget burn yet. Add spends or load demo data.", error: errors.budget, loading });
+  setTable("#macroTable", macroColumns, state.macroRows, { emptyMessage: "No meals yet. Add food text, photo, or EOD voice note.", error: errors.macro, loading });
 }
 
 export function bindOperationalTables() {
@@ -62,7 +82,6 @@ export function bindOperationalTables() {
     if (!button) return;
     const { table, action, rowId } = button.dataset;
     if (table === "review") handleReviewAction(action, rowId);
-    if (table === "import") handleImportAction(rowId);
   });
 }
 
@@ -131,20 +150,35 @@ async function handleApproveAll() {
   await hydrateStateFromSupabase().catch(() => {});
 }
 
-function handleImportAction(rowId) {
-  updateState((state) => {
-    const row = state.importRows.find((item) => item.id === rowId);
-    if (!row) return;
-    row.rows = row.rows === "detecting" ? "128" : row.rows;
-    row.mapped = row.mapped === "pending" ? "93%" : row.mapped;
-    row.duplicate = row.duplicate === "pending" ? "18" : row.duplicate;
-    row.status = "imported";
-    state.parseLog.unshift(`Imported preview rows from ${row.file}`);
-  });
-}
-
 function setTable(selector, columns, rows, options = {}) {
   const element = document.querySelector(selector);
   if (!element) return;
-  element.innerHTML = renderTable(columns, rows, options);
+  const list = Array.isArray(rows) ? rows : [];
+  const { error, loading, ...tableOptions } = options;
+
+  if (error) {
+    // A read failure must never read as "nothing logged yet".
+    element.innerHTML =
+      `<div class="import-error"><span class="toast-dot"></span>Couldn't load this table — ${escapeHtml(error)}</div>` +
+      renderTable(columns, [], { ...tableOptions, emptyMessage: "Not loaded — see the error above." });
+    return;
+  }
+  if (loading && !list.length) tableOptions.emptyMessage = "Loading…";
+  element.innerHTML = renderTable(columns, list, tableOptions);
+
+  // table-renderer has no notion of a disabled action, so mark them after render
+  // — an action we can't actually perform must not look pressable.
+  for (const column of columns) {
+    for (const action of column.actions || []) {
+      if (!action.disabled) continue;
+      element.querySelectorAll(`.table-action[data-action="${action.action}"]`).forEach((button) => {
+        button.disabled = true;
+        if (action.title) button.title = action.title;
+      });
+    }
+  }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 }
