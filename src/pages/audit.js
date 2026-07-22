@@ -8,6 +8,7 @@ import {
   renderAuditLog, auditTotalsHtml, ACTION_FILTERS,
 } from "../ui/audit-log.js";
 import { renderDuplicatesPanel, bindDuplicatesPanel } from "../ui/duplicates-panel.js";
+import { mergeDuplicatePair } from "../services/dedupe-scan.js";
 
 let allEntries = [];
 let duplicateRows = [];
@@ -34,15 +35,28 @@ async function loadDuplicates() {
   }
 }
 
-async function handleMergeDuplicate(id, picked) {
+async function handleMergeDuplicate(id, picked, sides = {}) {
   const row = duplicateRows.find((r) => r.id === id);
   if (!row) return;
   const dropSide = picked === "a" ? "b" : "a";
   const drop = row[dropSide];
+  const keep = row[picked];
   if (!drop) { await dismissDuplicate(id); await loadDuplicates(); return; } // nothing left to drop
   const dropTable = dropSide === "a" ? row.record_a_table : row.record_b_table;
   try {
-    await resolveDuplicateMerge({ candidateId: id, dropTable, dropId: drop.id });
+    // Ledger duplicates are MERGED, not deleted: the loser keeps its row and
+    // gains merged_into, so the history survives and the merge is reversible.
+    // Every spend query filters merged_into, so the money still stops counting
+    // twice. Other tables have no merged_into column, so they still delete.
+    if (dropTable === "ledger_entries") {
+      await mergeDuplicatePair({
+        candidateId: id,
+        keepId: sides.keepId || keep?.id,
+        dropId: sides.dropId || drop.id,
+      });
+    } else {
+      await resolveDuplicateMerge({ candidateId: id, dropTable, dropId: drop.id });
+    }
   } catch (err) {
     alert(`Could not merge: ${err?.message || err}`);
   }

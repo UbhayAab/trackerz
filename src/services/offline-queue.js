@@ -2,7 +2,11 @@
 // the agent is down, or the share-target route fires the SW.
 //
 // Schema: one object store `captures` with auto-increment key. Each row =
-// { id, text, files: [{ name, type, blob }], captureType, queuedAt }.
+// { id, text, files: [{ name, type, blob }], captureType, queuedAt, ingestionId }.
+//
+// `ingestionId` is remembered the first time a drain reaches the server so the
+// next drain retries against the SAME raw_ingestions row. Without it every drain
+// minted a fresh capture, which is how one purchase became three ledger rows.
 
 const DB_NAME = "trackerz_offline";
 const STORE = "captures";
@@ -42,6 +46,7 @@ export async function enqueueCapture({ text = "", files = [], captureType = "aut
       files: serializedFiles,
       captureType,
       queuedAt: Date.now(),
+      ingestionId: null,
     });
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -54,6 +59,22 @@ export async function listOfflineQueue() {
     const req = store.getAll();
     req.onsuccess = () => resolve(req.result || []);
     req.onerror = () => reject(req.error);
+  });
+}
+
+export async function rememberIngestionId(id, ingestionId) {
+  const store = await tx("readwrite");
+  return new Promise((resolve, reject) => {
+    const get = store.get(id);
+    get.onsuccess = () => {
+      const row = get.result;
+      if (!row) { resolve(null); return; } // already drained; nothing to pin
+      const next = { ...row, ingestionId };
+      const put = store.put(next);
+      put.onsuccess = () => resolve(next);
+      put.onerror = () => reject(put.error);
+    };
+    get.onerror = () => reject(get.error);
   });
 }
 
@@ -70,20 +91,42 @@ export async function drainOfflineQueue(runCapture) {
   const rows = await listOfflineQueue();
   const results = [];
   for (const row of rows) {
+    let res = null;
     try {
       const filesAsBlobs = (row.files || []).map((f) => {
         const blob = f.blob instanceof Blob ? f.blob : new Blob([f.blob || ""], { type: f.type });
         return new File([blob], f.name || "blob", { type: f.type || "application/octet-stream" });
       });
-      const res = await runCapture({
-        text: row.text || "",
-        files: filesAsBlobs,
-        captureType: row.captureType || "auto",
-      });
-      results.push({ id: row.id, ok: true, res });
-      await removeRow(row.id);
+      res = await runCapture(
+        {
+          text: row.text || "",
+          files: filesAsBlobs,
+          captureType: row.captureType || "auto",
+        },
+        {
+          // Reuse the ingestion a previous drain already created, and pin the new
+          // one the moment it exists so a crash mid-drain still retries into the
+          // same capture instead of writing a second one.
+          ingestionId: row.ingestionId || null,
+          onIngestion: (ingestion) => {
+            if (row.ingestionId === ingestion.id) return;
+            rememberIngestionId(row.id, ingestion.id).catch((err) => {
+              console.error("[offline-queue] could not pin ingestion id; a later retry may double-write:", err);
+            });
+          },
+        },
+      );
     } catch (err) {
       results.push({ id: row.id, ok: false, error: err.message || String(err) });
+      continue;
+    }
+    try {
+      await removeRow(row.id);
+      results.push({ id: row.id, ok: true, res });
+    } catch (err) {
+      // The capture DID land; only the local cleanup failed. Saying ok:false here
+      // would read as "not captured" — say exactly what happened instead.
+      results.push({ id: row.id, ok: true, res, cleanupError: err.message || String(err) });
     }
   }
   return results;

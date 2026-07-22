@@ -74,7 +74,12 @@ export async function fetchLedger({ limit = 50 } = {}) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("ledger_entries")
-    .select("id, occurred_at, merchant, description, amount, currency, direction, payment_mode, duplicate_state, confidence, is_discretionary, tags")
+    .select("id, occurred_at, merchant, description, amount, currency, direction, payment_mode, duplicate_state, confidence, is_discretionary, tags, merged_into")
+    // A merged-away duplicate must not be counted again. This function feeds
+    // EVERY browser-side money number (the month tile, the period aggregator,
+    // opportunity cost, exports), so without this filter merging a duplicate
+    // would visibly change nothing — the whole point of the merge.
+    .is("merged_into", null)
     .order("occurred_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -745,6 +750,97 @@ const USER_DATA_TABLES = [
   "hydration_logs", "weekly_reviews", "user_plans", "notes", "memory_facts",
   "briefings", "audit_log", "media_assets", "raw_ingestions",
 ];
+
+// ---- bank statement -> ledger promotion ----
+// statement_rows were being written and then never read by anything that counts
+// money, so every imported bank row was invisible in every total. These are the
+// primitives the promoter in services/statement-import.js runs on.
+
+// Rows that have never reached the ledger. ledger_entry_id is the promotion
+// marker: set = this row already has its entry, so it can never be counted twice.
+export async function fetchUnpromotedStatementRows({ importId = null, limit = 2000 } = {}) {
+  const supabase = await getSupabaseClient();
+  let query = supabase
+    .from("statement_rows")
+    .select("id, import_id, occurred_on, description, debit, credit, balance, reference, ledger_entry_id")
+    .is("ledger_entry_id", null)
+    .order("occurred_on", { ascending: true })
+    .limit(limit);
+  if (importId) query = query.eq("import_id", importId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+// Statement-sourced entries already in the ledger over an inclusive day range,
+// so a re-import can recognise its own earlier rows by content.
+export async function fetchStatementLedgerEntries({ fromDate, toDate }) {
+  const supabase = await getSupabaseClient();
+  const [fy, fm, fd] = fromDate.split("-").map(Number);
+  const [ty, tm, td] = toDate.split("-").map(Number);
+  const start = new Date(fy, fm - 1, fd);
+  const end = new Date(ty, tm - 1, td + 1);
+  const { data, error } = await supabase
+    .from("ledger_entries")
+    .select("id, amount, direction, occurred_at, merchant, description, reference, source_type")
+    .eq("source_type", "statement")
+    .gte("occurred_at", start.toISOString())
+    .lt("occurred_at", end.toISOString());
+  if (error) throw error;
+  return data || [];
+}
+
+// One entry per call so a single bad row is attributable instead of failing a
+// whole batch and leaving the user guessing which transaction broke.
+export async function insertStatementLedgerEntry(entry) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("ledger_entries")
+    .insert({ ...entry, user_id: userId })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function markStatementRowPromoted(statementRowId, ledgerEntryId) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase
+    .from("statement_rows")
+    .update({ ledger_entry_id: ledgerEntryId, promoted_at: new Date().toISOString(), promotion_error: null })
+    .eq("id", statementRowId);
+  if (error) throw error;
+}
+
+// Persist WHY a row could not be promoted, so the reason survives the toast and
+// the row does not silently sit unpromoted forever with no explanation.
+export async function markStatementRowUnpromotable(statementRowId, reason) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase
+    .from("statement_rows")
+    .update({ promotion_error: reason })
+    .eq("id", statementRowId);
+  if (error) throw error;
+}
+
+// Statement rows still missing from the ledger, across every import. Returns
+// null when the server gives no count — an unknown backlog is not a backlog of 0.
+export async function countUnpromotedStatementRows() {
+  const supabase = await getSupabaseClient();
+  const { count, error } = await supabase
+    .from("statement_rows")
+    .select("id", { count: "exact", head: true })
+    .is("ledger_entry_id", null);
+  if (error) throw error;
+  return count == null ? null : count;
+}
+
+export async function setStatementImportStatus(importId, status) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.from("statement_imports").update({ status }).eq("id", importId);
+  if (error) throw error;
+}
 
 export async function deleteAllUserData() {
   const supabase = await getSupabaseClient();

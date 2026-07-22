@@ -20,7 +20,16 @@ function stage(key, overrides = {}) {
   return { ...base, ...overrides };
 }
 
-export async function runCapture({ text = "", files = [], captureType = "auto", transcript = "" }, { onStage } = {}) {
+// A dropped invoke tells us nothing about what the server did — the edge function
+// is the writer, and on 2026-07-09 a transport error after a successful write plus
+// one re-submit put ~Rs 240 in the ledger for an Rs 80 purchase. So we ask the DB.
+const RUN_POLL_TRIES = 3;
+const RUN_POLL_MS = 1000;
+
+// options.ingestionId: reuse an existing raw_ingestions row (an explicit user
+// retry — see retryCapture); options.onIngestion: fires as soon as the row exists
+// so a caller (e.g. the offline queue) can remember it and retry against it.
+export async function runCapture({ text = "", files = [], captureType = "auto", transcript = "" }, { onStage, ingestionId = null, onIngestion } = {}) {
   const sourceType = inferSourceType(text, files, transcript);
   const mode = captureType === "food" ? "diet" : captureType === "money" ? "money" : captureType === "wellness" ? "wellness" : "auto";
 
@@ -31,25 +40,52 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
   onStage?.(stage("queued"), 0);
 
   const combinedText = [text, transcript].filter(Boolean).join("\n").trim();
-  const ingestion = await insertRawIngestion({
+  const supabase = await getSupabaseClient();
+
+  // An explicit retry reuses the SAME row. Minting a fresh ingestion per attempt
+  // is what made one capture look like three unrelated ones to the server, and it
+  // re-uploads the media under new ids, which changes the capture's fingerprint.
+  const reusedIngestion = ingestionId ? await loadIngestion(supabase, ingestionId) : null;
+  const ingestion = reusedIngestion || await insertRawIngestion({
     sourceType,
     captureMode: mode,
     rawText: combinedText || null,
     occurredAt: new Date().toISOString(),
   });
+  onIngestion?.(ingestion);
 
-  onStage?.(stage("uploading", { detail: `Saved raw ingestion ${shortId(ingestion.id)}.` }), 1);
-
-  const mediaAssets = [];
-  for (const file of files) {
-    if (!(file instanceof Blob) && !(file?.arrayBuffer)) continue;
-    const asset = await uploadMediaFile(file, { kind: pickKind(file), ingestionId: ingestion.id });
-    mediaAssets.push(asset);
+  // Retry with edited text: keep the one row but make it say what was actually
+  // submitted. The server fingerprints raw_text, so an edit correctly reads as a
+  // different capture instead of silently replaying the old one's result.
+  if (reusedIngestion && (combinedText || null) !== (ingestion.raw_text ?? null)) {
+    const { error: textErr } = await supabase
+      .from("raw_ingestions").update({ raw_text: combinedText || null, status: "queued" }).eq("id", ingestion.id);
+    if (textErr) throw textErr;
+    ingestion.raw_text = combinedText || null;
   }
 
-  onStage?.(stage("extracting", { detail: mediaAssets.length ? `${mediaAssets.length} media file(s) uploaded.` : "Text input only." }), 2);
+  onStage?.(stage("uploading", {
+    detail: reusedIngestion
+      ? `Retrying raw ingestion ${shortId(ingestion.id)} — no new capture row.`
+      : `Saved raw ingestion ${shortId(ingestion.id)}.`,
+  }), 1);
 
-  const supabase = await getSupabaseClient();
+  let mediaAssets = reusedIngestion ? await loadMediaAssets(supabase, ingestion.id) : [];
+  const reusedMedia = mediaAssets.length > 0;
+  if (!reusedMedia) {
+    for (const file of files) {
+      if (!(file instanceof Blob) && !(file?.arrayBuffer)) continue;
+      const asset = await uploadMediaFile(file, { kind: pickKind(file), ingestionId: ingestion.id });
+      mediaAssets.push(asset);
+    }
+  }
+
+  onStage?.(stage("extracting", {
+    detail: !mediaAssets.length ? "Text input only."
+      : reusedMedia ? `${mediaAssets.length} media file(s) already uploaded — reused.`
+      : `${mediaAssets.length} media file(s) uploaded.`,
+  }), 2);
+
   onStage?.(stage("reasoning"), 3);
 
   let agentResp = null;
@@ -71,24 +107,53 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
     fnErr = err;
   }
 
-  if (fnErr || !agentResp?.toolCalls) {
-    // Edge function unavailable / older version. Save a review action client-side
-    // so the capture is not lost.
-    await supabase.from("ai_actions").insert({
+  const failed = Boolean(fnErr) || !agentResp?.toolCalls;
+  // A failed invoke does NOT mean nothing was written. Ask the DB whether a run
+  // landed for this ingestion before saying the agent was unavailable — claiming
+  // "unavailable" is what invites the re-submit that duplicates the ledger.
+  const probe = failed ? await findRunForIngestion(supabase, ingestion.id) : { run: null, error: null };
+
+  if (probe.run) {
+    onStage?.(stage("dedupe", {
+      detail: `Connection dropped, but the agent run landed (${probe.actionCount == null ? "action count unavailable" : `${probe.actionCount} action(s)`}). Nothing re-sent.`,
+    }), 4);
+  } else if (failed) {
+    // Nothing found. Save a review action client-side so the capture is not lost.
+    // probe.error means the poll itself failed: we do NOT know whether the write
+    // landed, and the row must say so rather than assert "agent unavailable".
+    const unverified = Boolean(probe.error);
+    const { error: reviewErr } = await supabase.from("ai_actions").insert({
       user_id: ingestion.user_id,
       ingestion_id: ingestion.id,
       tool_name: "request_user_review",
       arguments: {
-        reason: fnErr ? `agent_error: ${fnErr.message || fnErr}` : "agent_returned_empty",
+        reason: unverified
+          ? `agent_error_unverified: ${fnErr?.message || fnErr || "agent_returned_empty"} (run lookup failed: ${probe.error.message || probe.error})`
+          : fnErr ? `agent_error: ${fnErr.message || fnErr}` : "agent_returned_empty",
+        // Tri-state on purpose: true = confirmed nothing was written, null = we
+        // could not check. Never false-as-in-"we know it wrote".
+        write_confirmed_absent: unverified ? null : true,
         raw_text: combinedText,
         source_type: sourceType,
       },
       confidence: 0.4,
       status: "proposed",
     });
-    onStage?.(stage("dedupe", { detail: `Agent unavailable; capture queued for review.` }), 4);
+    // A swallowed failure here loses the capture entirely and silently.
+    if (reviewErr) throw new Error(`capture_review_row_failed: ${reviewErr.message} (agent also failed: ${fnErr?.message || fnErr || "empty response"})`);
+    onStage?.(stage("dedupe", {
+      detail: unverified
+        ? `Agent call failed and the run could not be checked — capture queued for review. Check the feed before re-submitting.`
+        : `Agent unavailable; capture queued for review.`,
+    }), 4);
+  } else if (agentResp.duplicate) {
+    onStage?.(stage("dedupe", { detail: `Already recorded by an earlier run — no new rows written.` }), 4);
   } else {
     onStage?.(stage("dedupe", { detail: `${agentResp.toolCalls.length || 0} tool call(s) proposed.` }), 4);
+  }
+  if (agentResp?.warning) {
+    console.warn("[agent-runner] agent warning:", agentResp.warning);
+    onStage?.(stage("dedupe", { detail: `Agent warning: ${agentResp.warning}` }), 4);
   }
   const dedupeResult = await runCrossSourceDedupe({ since: ingestion.created_at }).catch((err) => ({ pairs: 0, error: err }));
   if (dedupeResult.pairs > 0) {
@@ -100,10 +165,74 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
     console.error("[agent-runner] dedupe scan failed:", dedupeResult.error);
     onStage?.(stage("dedupe", { detail: `Dedupe check failed (${dedupeResult.error.message || "see console"}) — capture still saved.` }), 4);
   }
-  onStage?.(stage("writing"), 5);
-  onStage?.(stage("done"), 6);
+  // Never narrate a write that this attempt did not perform.
+  const duplicate = agentResp?.duplicate === true;
+  const writeDetail = duplicate ? "No rows written — this capture was already applied."
+    : probe.run ? "Rows were written by the run that already landed."
+    : failed ? "No agent rows written; capture is in the review queue."
+    : null;
+  onStage?.(stage("writing", writeDetail ? { detail: writeDetail } : {}), 5);
+  onStage?.(stage("done", duplicate || probe.run ? { detail: "Tables refreshed — nothing duplicated." } : {}), 6);
 
-  return { ingestion, mediaAssets, agentResp, dedupe: dedupeResult };
+  return {
+    ingestion,
+    mediaAssets,
+    agentResp,
+    dedupe: dedupeResult,
+    duplicate,
+    // The run the server had already completed for this ingestion, found after a
+    // failed invoke. Null means "no such run", not "no run happened elsewhere".
+    recoveredRun: probe.run,
+    // Hand back to a caller that wants to retry: reuse this, do not mint a new row.
+    retryIngestionId: ingestion.id,
+  };
+}
+
+export async function retryCapture(input, { ingestionId, onStage } = {}) {
+  if (!ingestionId) throw new Error("retryCapture requires the original ingestionId — a retry must never mint a new capture row");
+  return runCapture(input, { onStage, ingestionId });
+}
+
+async function loadIngestion(supabase, id) {
+  const { data, error } = await supabase.from("raw_ingestions").select("*").eq("id", id).maybeSingle();
+  if (error) throw error; // a failed read must reach the user, not fall back to a new row
+  if (!data) throw new Error(`retry_ingestion_missing: ${id}`);
+  return data;
+}
+
+async function loadMediaAssets(supabase, ingestionId) {
+  const { data, error } = await supabase
+    .from("media_assets").select("id, media_kind, storage_path").eq("ingestion_id", ingestionId);
+  if (error) throw error;
+  return data || [];
+}
+
+// Polls ai_runs for this ingestion. Returns { run, actionCount, error }: `run`
+// null with a non-null `error` means UNKNOWN, not "nothing was written".
+async function findRunForIngestion(supabase, ingestionId, { tries = RUN_POLL_TRIES, delayMs = RUN_POLL_MS } = {}) {
+  let lastError = null;
+  for (let attempt = 0; attempt < tries; attempt++) {
+    if (attempt > 0) await delay(delayMs);
+    const { data, error } = await supabase
+      .from("ai_runs")
+      .select("id, status, created_at")
+      .eq("ingestion_id", ingestionId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (error) { lastError = error; continue; }
+    if (data?.length) {
+      const run = data[0];
+      const { count, error: countErr } = await supabase
+        .from("ai_actions")
+        .select("id", { count: "exact", head: true })
+        .eq("ai_run_id", run.id);
+      if (countErr) console.error("[agent-runner] recovered run found, action count unavailable:", countErr);
+      // null, never 0 — an unknown count must not render as "wrote nothing".
+      return { run, actionCount: countErr ? null : (count ?? null), error: null };
+    }
+  }
+  if (lastError) console.error("[agent-runner] could not verify whether a run landed:", lastError);
+  return { run: null, actionCount: null, error: lastError };
 }
 
 async function runLocalCapture({ text, files, captureType, transcript, sourceType }, { onStage } = {}) {

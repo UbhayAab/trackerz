@@ -687,6 +687,195 @@ async function logVoiceRun(admin: any, userId: string, provider: string, model: 
 
 // -------- delivery: Resend email + Web Push --------
 
+// ==== EMAIL-TEMPLATE MIRROR START (byte-identical in lib/email-template.mjs) ====
+var ET_APP_URL = "https://ubhayaab.github.io/trackerz/";
+var ET_INK = "#17211c";
+var ET_MUTED = "#7c8a82";
+var ET_ACCENT = "#138a5b";
+var ET_LINE = "#e3e9e5";
+var ET_BG = "#f6f8f7";
+
+function etEscape(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function etRupees(n) {
+  return "Rs " + (Math.round(Number(n) || 0)).toLocaleString("en-IN");
+}
+
+// A stat is worth showing only when it is a real number. null/undefined/NaN mean
+// "not measured" and must vanish entirely rather than becoming a zero.
+function etHasValue(v) {
+  return v !== null && v !== undefined && !(typeof v === "number" && !isFinite(v));
+}
+
+// Build the stat rows for a brief from its facts JSON. Order is fixed so the
+// email reads the same every day.
+function etStatsFromFacts(facts) {
+  var out = [];
+  if (!facts) return out;
+  var y = facts.yesterday;
+  if (y) {
+    if (etHasValue(y.calories) && y.calories > 0) out.push({ label: "Calories yesterday", value: String(Math.round(y.calories)) + " kcal" });
+    if (etHasValue(y.protein) && y.protein > 0) out.push({ label: "Protein yesterday", value: String(Math.round(y.protein)) + " g" });
+    if (etHasValue(y.spend)) out.push({ label: "Spent yesterday", value: etRupees(y.spend) });
+    // sleep_h is null whenever no sleep was recorded — omit, never render 0.
+    if (etHasValue(y.sleep_h) && y.sleep_h > 0) out.push({ label: "Slept", value: String(y.sleep_h) + " h" });
+    if (etHasValue(y.weight_kg)) out.push({ label: "Weight", value: String(y.weight_kg) + " kg" });
+    out.push({ label: "Workout yesterday", value: y.workout_done ? "done" : (y.workout_ok ? "rest day" : "not logged") });
+  }
+  if (facts.workout && facts.workout.name) out.push({ label: "Today's workout", value: facts.workout.name });
+  if (facts.diet_label) out.push({ label: "Today's diet", value: facts.diet_label });
+  var t = facts.targets || {};
+  if (etHasValue(t.protein_g)) out.push({ label: "Protein target", value: String(Math.round(t.protein_g)) + " g" });
+  if (etHasValue(t.calories)) out.push({ label: "Calorie target", value: String(Math.round(t.calories)) + " kcal" });
+  if (facts.money && facts.money.hasBudget) {
+    out.push({ label: "Safe to spend today", value: etRupees(facts.money.perDay) });
+  }
+  var st = facts.streaks || {};
+  var streaks = [];
+  if (st.workout > 1) streaks.push("gym " + st.workout + "d");
+  if (st.protein > 1) streaks.push("protein " + st.protein + "d");
+  if (st.budget > 1) streaks.push("budget " + st.budget + "d");
+  if (st.logging > 1) streaks.push("logging " + st.logging + "d");
+  if (streaks.length) out.push({ label: "Streaks", value: streaks.join(" · ") });
+  return out;
+}
+
+function etStatRows(stats) {
+  var rows = "";
+  for (var i = 0; i < (stats || []).length; i++) {
+    var s = stats[i];
+    var border = i === 0 ? "none" : "1px solid " + ET_LINE;
+    rows += '<tr>'
+      + '<td style="padding:9px 0;border-top:' + border + ';font-size:14px;color:' + ET_MUTED + '">' + etEscape(s.label) + '</td>'
+      + '<td style="padding:9px 0;border-top:' + border + ';font-size:14px;color:' + ET_INK + ';font-weight:600;text-align:right;white-space:nowrap">' + etEscape(s.value) + '</td>'
+      + '</tr>';
+  }
+  return rows;
+}
+
+function etBulletList(items) {
+  if (!items || !items.length) return "";
+  var lis = "";
+  for (var i = 0; i < items.length; i++) {
+    lis += '<li style="margin:0 0 6px;font-size:15px;line-height:1.5;color:' + ET_INK + '">' + etEscape(items[i]) + "</li>";
+  }
+  return '<ul style="margin:14px 0 0;padding-left:20px">' + lis + "</ul>";
+}
+
+// The one email shell. `kind` only changes the eyebrow and the accent word.
+function etRenderEmail(o) {
+  var opts = o || {};
+  var title = opts.title || "Trackerz";
+  var eyebrow = opts.eyebrow || "Trackerz · Jarvis";
+  var body = opts.body || "";
+  var stats = opts.stats || [];
+  var bullets = opts.bullets || [];
+  var ctaLabel = opts.ctaLabel || "Open Trackerz";
+  var footerNote = opts.footerNote || "";
+
+  var statsBlock = stats.length
+    ? '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:18px 0 0;border-collapse:collapse">' + etStatRows(stats) + "</table>"
+    : "";
+
+  return '<!doctype html><html><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<meta name="color-scheme" content="light">'
+    + "<title>" + etEscape(title) + "</title></head>"
+    + '<body style="margin:0;padding:0;background:' + ET_BG + '">'
+    // Preheader: the grey preview line in the inbox list. Without it, clients
+    // show the eyebrow text, which is identical every day and tells you nothing.
+    + '<div style="display:none;max-height:0;overflow:hidden;opacity:0">' + etEscape(String(body).slice(0, 140)) + "</div>"
+    + '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:' + ET_BG + ';padding:24px 12px">'
+    + "<tr><td align=\"center\">"
+    + '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:#ffffff;border:1px solid ' + ET_LINE + ';border-radius:14px;overflow:hidden">'
+    + '<tr><td style="padding:22px 24px 0">'
+    + '<p style="margin:0 0 10px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:' + ET_ACCENT + ';font-weight:700">' + etEscape(eyebrow) + "</p>"
+    + '<p style="margin:0;font-size:16px;line-height:1.6;color:' + ET_INK + '">' + etEscape(body) + "</p>"
+    + etBulletList(bullets)
+    + statsBlock
+    + "</td></tr>"
+    + '<tr><td style="padding:20px 24px 24px">'
+    + '<a href="' + ET_APP_URL + '" style="display:inline-block;background:' + ET_ACCENT + ';color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 22px;border-radius:999px">' + etEscape(ctaLabel) + "</a>"
+    + "</td></tr>"
+    + '<tr><td style="padding:14px 24px 20px;border-top:1px solid ' + ET_LINE + ';background:#fbfcfb">'
+    + (footerNote ? '<p style="margin:0 0 6px;font-size:12px;line-height:1.5;color:' + ET_MUTED + '">' + etEscape(footerNote) + "</p>" : "")
+    + '<p style="margin:0;font-size:12px;line-height:1.5;color:' + ET_MUTED + '">'
+    + 'Every number here comes from what you logged. Turn these off any time in '
+    + '<a href="' + ET_APP_URL + 'pages/settings.html" style="color:' + ET_ACCENT + '">Settings &rarr; Jarvis</a>.'
+    + "</p></td></tr>"
+    + "</table></td></tr></table></body></html>";
+}
+
+// text/plain alternative. Spam filters penalise HTML-only mail, and it is what
+// a watch or a screen reader actually reads out.
+function etRenderText(o) {
+  var opts = o || {};
+  var lines = [String(opts.body || "").trim()];
+  var bullets = opts.bullets || [];
+  for (var i = 0; i < bullets.length; i++) lines.push("- " + bullets[i]);
+  var stats = opts.stats || [];
+  if (stats.length) {
+    lines.push("");
+    for (var j = 0; j < stats.length; j++) lines.push(stats[j].label + ": " + stats[j].value);
+  }
+  lines.push("");
+  lines.push(ET_APP_URL);
+  lines.push("Manage these emails: " + ET_APP_URL + "pages/settings.html");
+  return lines.join("\n");
+}
+
+// Subject lines carry the headline number so the inbox list is useful without
+// opening anything. Never invent one — fall back to a plain subject.
+function etSubjectFor(kind, facts, dateLabel) {
+  var y = facts && facts.yesterday;
+  if (kind === "morning") {
+    if (y && y.logged_anything && etHasValue(y.calories) && y.calories > 0) {
+      return "Morning brief — " + Math.round(y.calories) + " kcal yesterday";
+    }
+    return "Morning brief" + (dateLabel ? " — " + dateLabel : "");
+  }
+  if (kind === "evening") return "Evening check-in — still time";
+  if (kind === "closeout") return "Day closed" + (dateLabel ? " — " + dateLabel : "");
+  if (kind === "weekly") return "Your week in review";
+  return "Trackerz";
+}
+
+var ET_EYEBROWS = {
+  morning: "Trackerz · Morning brief",
+  evening: "Trackerz · Evening check-in",
+  closeout: "Trackerz · Day closed",
+  weekly: "Trackerz · Weekly review",
+  alert: "Trackerz · Alert",
+  test: "Trackerz · Test",
+};
+
+// One call site for the whole service: kind + body + facts -> {subject, html, text}.
+function etBuildMessage(o) {
+  var opts = o || {};
+  var kind = opts.kind || "morning";
+  var facts = opts.facts || null;
+  var stats = opts.stats || (facts ? etStatsFromFacts(facts) : []);
+  var payload = {
+    title: opts.subject || etSubjectFor(kind, facts, opts.dateLabel),
+    eyebrow: ET_EYEBROWS[kind] || ET_EYEBROWS.morning,
+    body: opts.body || "",
+    stats: stats,
+    bullets: opts.bullets || [],
+    ctaLabel: opts.ctaLabel || (kind === "evening" ? "Log the rest of today" : "Open Trackerz"),
+    footerNote: opts.footerNote || "",
+  };
+  return {
+    subject: payload.title,
+    html: etRenderEmail(payload),
+    text: etRenderText(payload),
+  };
+}
+// ==== EMAIL-TEMPLATE MIRROR END ====
+
 async function userEmail(admin: any, userId: string): Promise<string | null> {
   try {
     const { data } = await admin.auth.admin.getUserById(userId);
@@ -694,28 +883,103 @@ async function userEmail(admin: any, userId: string): Promise<string | null> {
   } catch { return null; }
 }
 
-async function sendEmail(admin: any, userId: string, subject: string, bodyText: string) {
+// Per-kind opt-outs. One master switch used to gate every message, so silencing
+// the 20:30 nudge also silenced the morning brief.
+const EMAIL_PREF_COLUMN: Record<string, string> = {
+  morning: "email_morning",
+  evening: "email_evening",
+  closeout: "email_closeout",
+  weekly: "email_weekly",
+  alert: "email_alerts",
+};
+
+function emailEnabledFor(profile: any, kind: string): boolean {
+  if (profile?.email_brief === false) return false; // master switch still wins
+  const col = EMAIL_PREF_COLUMN[kind];
+  if (!col) return true;
+  return profile?.[col] !== false;
+}
+
+// Retryable: a network blip or a Resend 429/5xx. A 4xx is a real rejection
+// (bad address, unverified sender) and retrying it just burns quota.
+function isRetryableEmailStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+/**
+ * Send one Jarvis email and RECORD the attempt.
+ *
+ * Every send writes an email_deliveries row, so a bounce or a rejected sender
+ * is inspectable in the app afterwards instead of vanishing into a function
+ * log. A partial unique index on (user, kind, for_date) where status='sent'
+ * makes a re-fired cron slot collide rather than send a duplicate.
+ */
+async function sendEmail(
+  admin: any,
+  userId: string,
+  kind: string,
+  opts: { body: string; facts?: any; bullets?: string[]; subject?: string; forDate?: string | null; dateLabel?: string; profile?: any },
+) {
+  if (opts.profile && !emailEnabledFor(opts.profile, kind)) {
+    return { sent: false, reason: "disabled_by_preference" };
+  }
   const key = await resolveSecretOptional("RESEND_API_KEY");
   if (!key) return { sent: false, reason: "no_resend_key" };
   const to = await userEmail(admin, userId);
   if (!to) return { sent: false, reason: "no_email" };
+
   const from = (await resolveSecretOptional("JARVIS_EMAIL_FROM")) || "Jarvis <onboarding@resend.dev>";
-  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:16px;color:#17211c">`
-    + `<p style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#138a5b;margin:0 0 8px">Trackerz · Jarvis</p>`
-    + `<p style="font-size:16px;line-height:1.55;margin:0">${bodyText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`
-    + `<p style="font-size:12px;color:#7c8a82;margin:16px 0 0">Open <a href="https://ubhayaab.github.io/trackerz/" style="color:#138a5b">Trackerz</a> for the full picture. Manage delivery in Settings.</p>`
-    + `</div>`;
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify({ from, to, subject, html, text: bodyText }),
-    });
-    if (!res.ok) return { sent: false, reason: `resend_${res.status}: ${(await res.text()).slice(0, 160)}` };
-    return { sent: true };
-  } catch (err) {
-    return { sent: false, reason: String(err).slice(0, 160) };
+  const message = etBuildMessage({
+    kind,
+    body: opts.body,
+    facts: opts.facts || null,
+    bullets: opts.bullets || [],
+    subject: opts.subject,
+    dateLabel: opts.dateLabel,
+  });
+  const forDate = opts.forDate ?? null;
+
+  // Claim the slot first. A unique-violation here means this exact message was
+  // already delivered — that is a successful no-op, not an error.
+  const { data: claim, error: claimErr } = await admin.from("email_deliveries").insert({
+    user_id: userId, kind, for_date: forDate, to_email: to, subject: message.subject, status: "queued",
+  }).select("id").single();
+  if (claimErr && /duplicate key|unique/i.test(claimErr.message || "")) {
+    return { sent: false, reason: "already_sent" };
   }
+  const deliveryId = claim?.id ?? null;
+
+  let lastError = "";
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify({ from, to, subject: message.subject, html: message.html, text: message.text }),
+      });
+      const raw = await res.text();
+      if (res.ok) {
+        let providerId: string | null = null;
+        try { providerId = JSON.parse(raw)?.id ?? null; } catch { /* id is a nicety */ }
+        if (deliveryId) {
+          await admin.from("email_deliveries").update({
+            status: "sent", provider_message_id: providerId, attempts: attempt, sent_at: new Date().toISOString(),
+          }).eq("id", deliveryId);
+        }
+        return { sent: true, id: providerId, attempts: attempt };
+      }
+      lastError = `resend_${res.status}: ${raw.slice(0, 200)}`;
+      if (!isRetryableEmailStatus(res.status)) break;
+    } catch (err) {
+      lastError = String(err).slice(0, 200);
+    }
+    if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 700));
+  }
+
+  if (deliveryId) {
+    await admin.from("email_deliveries").update({ status: "failed", error: lastError, attempts: 3 }).eq("id", deliveryId);
+  }
+  return { sent: false, reason: lastError || "unknown" };
 }
 
 let _appServer: any = null;
@@ -807,6 +1071,7 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
   const body = jbCloseoutBody(day, streaks);
   const briefingId = await upsertBriefing(admin, profile.id, "closeout", dateKey, body, { summary: day, streaks });
 
+  const delivery: Record<string, unknown> = {};
   let weekly = null;
   if (jbWeekdayFromKey(dateKey) === 7) {
     const weekStart = jbAddDays(dateKey, -6);
@@ -823,10 +1088,43 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
     const wBody = `Week closed: ${weekly.totals.workouts} workouts, protein hit ${weekly.hits.protein_days}/${weekly.days} days, `
       + `under budget ${weekly.hits.budget_days}/${weekly.days}, ${jbRupees(weekly.totals.spend)} spent.`;
     await upsertBriefing(admin, profile.id, "weekly", dateKey, wBody, { weekly, week_start: weekStart });
+
+    // The weekly review is the one message worth reading in full, and it was
+    // never emailed — it only ever existed as a row nobody opened.
+    delivery.weeklyEmail = await sendEmail(admin, profile.id, "weekly", {
+      body: wBody,
+      forDate: dateKey,
+      profile,
+      stats: [
+        { label: "Workouts", value: `${weekly.totals.workouts} / ${weekly.days} days` },
+        { label: "Protein hit", value: `${weekly.hits.protein_days} / ${weekly.days} days` },
+        { label: "Under budget", value: `${weekly.hits.budget_days} / ${weekly.days} days` },
+        { label: "Days logged", value: `${weekly.hits.logged_days} / ${weekly.days}` },
+        { label: "Spent", value: jbRupees(weekly.totals.spend) },
+        { label: "Avg protein", value: `${weekly.averages.protein} g` },
+        { label: "Avg calories", value: `${weekly.averages.calories} kcal` },
+      ].concat(
+        // sleep_h is null when the week has no sleep data at all — omit the row
+        // rather than reporting an average of zero.
+        weekly.averages.sleep_h != null ? [{ label: "Avg sleep", value: `${weekly.averages.sleep_h} h` }] : [],
+      ),
+    });
   }
 
-  await auditLog(admin, profile.id, "jarvis.closeout", { forDate: dateKey, briefingId, flags: day.flags, streaks, weekly: Boolean(weekly) });
-  return { userId: profile.id, action: "closeout", forDate: dateKey, briefingId, flags: day.flags, streaks, weekly: Boolean(weekly) };
+  // Off by default: this fires at 00:05 and is the least useful thing to be
+  // emailed at midnight. Opt in per-kind in Settings.
+  delivery.email = await sendEmail(admin, profile.id, "closeout", {
+    body, forDate: dateKey, dateLabel: dateKey, profile,
+    stats: [
+      { label: "Spent", value: jbRupees(day.spend) },
+      { label: "Calories", value: `${day.calories} kcal` },
+      { label: "Protein", value: `${day.protein} g` },
+      { label: "Workout", value: day.workoutDone ? "done" : (day.flags.workout_forgiven ? "rest day" : "not logged") },
+    ],
+  });
+
+  await auditLog(admin, profile.id, "jarvis.closeout", { forDate: dateKey, briefingId, flags: day.flags, streaks, weekly: Boolean(weekly), delivery });
+  return { userId: profile.id, action: "closeout", forDate: dateKey, briefingId, flags: day.flags, streaks, weekly: Boolean(weekly), delivery };
 }
 
 // Morning brief: self-heal yesterday's closeout, build facts, narrate, deliver.
@@ -868,7 +1166,9 @@ async function runMorning(admin: any, profile: Profile, now: Date, force: boolea
 
   const delivery: Record<string, unknown> = {};
   if (profile.email_brief !== false) {
-    delivery.email = await sendEmail(admin, profile.id, `Jarvis — ${facts.weekday} morning brief`, body);
+    delivery.email = await sendEmail(admin, profile.id, "morning", {
+      body, facts, forDate: todayKey, dateLabel: facts.weekday, profile,
+    });
   }
   delivery.push = await sendPush(admin, profile, "Morning brief", body.slice(0, 160), now);
 
@@ -907,8 +1207,14 @@ async function runEvening(admin: any, profile: Profile, now: Date, force: boolea
 
   const delivery: Record<string, unknown> = {};
   delivery.push = await sendPush(admin, profile, evening.headline, evening.nudges.join(" · ") || evening.body, now);
-  if (evening.nudges.length && profile.email_brief !== false) {
-    delivery.email = await sendEmail(admin, profile.id, `Jarvis — evening check-in`, evening.body);
+  // Only email when something is still fixable — an "all clear" at 20:30 is not
+  // worth an inbox interruption, and unread mail is how people learn to ignore
+  // the ones that matter.
+  if (evening.nudges.length) {
+    delivery.email = await sendEmail(admin, profile.id, "evening", {
+      body: evening.body, bullets: evening.nudges, forDate: todayKey, profile,
+      subject: `Evening check-in — ${evening.nudges.length} thing${evening.nudges.length === 1 ? "" : "s"} still open`,
+    });
   }
 
   await auditLog(admin, profile.id, "jarvis.evening", { forDate: todayKey, briefingId, nudges: evening.nudges.length, delivery });

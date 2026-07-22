@@ -1,0 +1,3 @@
+/* esm.sh - @supabase/node-fetch@2.6.15 */
+var t=function(){if(typeof self<"u")return self;if(typeof window<"u")return window;if(typeof globalThis<"u")return globalThis;throw new Error("unable to locate global object")},e=t(),o=e.fetch,n=e.fetch.bind(e),r=e.Headers,f=e.Request,s=e.Response;export{r as Headers,f as Request,s as Response,n as default,o as fetch};
+//# sourceMappingURL=node-fetch.mjs.map
