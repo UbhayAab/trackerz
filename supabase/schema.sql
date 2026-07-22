@@ -25,6 +25,12 @@ create table if not exists public.raw_ingestions (
   raw_text text,
   occurred_at timestamptz,
   status text not null default 'queued',
+  -- Clock-free hash of (user, normalised text, media ids). The edge function
+  -- checks it before running anything, so a retried invoke replays the earlier
+  -- run instead of writing the ledger a second time. Deliberately NOT unique:
+  -- buying the same lunch twice in a week is legitimate.
+  capture_fingerprint text,
+  duplicate_of_ingestion_id uuid references public.raw_ingestions(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -133,9 +139,16 @@ create table if not exists public.statement_rows (
   balance numeric(14,2),
   reference text,
   ledger_entry_id uuid references public.ledger_entries(id) on delete set null,
-  created_at timestamptz not null default now(),
-  unique(user_id, import_id, row_hash)
+  -- Content-only dedupe key (no import_id). Keying on the import id guaranteed a
+  -- miss: a re-import mints a new id, so every row looked new. See the unique
+  -- index below, which replaces the old unique(user_id, import_id, row_hash).
+  content_key text,
+  promoted_at timestamptz,
+  promotion_error text,
+  created_at timestamptz not null default now()
 );
+create unique index if not exists ux_statement_rows_user_content
+  on public.statement_rows(user_id, content_key);
 
 create table if not exists public.budgets (
   id uuid primary key default gen_random_uuid(),
@@ -416,6 +429,29 @@ create table if not exists public.push_subscriptions (
   last_ok_at timestamptz
 );
 
+-- One row per email send ATTEMPT. Without it "sent: true" only ever meant
+-- "Resend accepted the request", the message id was discarded, and a bounce was
+-- invisible. The partial unique index below is also what makes a re-fired cron
+-- slot safe: the second attempt collides instead of sending the brief twice.
+create table if not exists public.email_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  kind text not null,
+  for_date date,
+  to_email text not null,
+  subject text not null,
+  status text not null default 'queued',
+  provider_message_id text,
+  error text,
+  attempts smallint not null default 0,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  constraint email_deliveries_status_check check (status in ('queued', 'sent', 'failed'))
+);
+create unique index if not exists ux_email_delivery_once
+  on public.email_deliveries(user_id, kind, for_date)
+  where status = 'sent' and for_date is not null;
+
 create table if not exists public.invited_emails (
   email text primary key,
   invited_by uuid references public.profiles(id) on delete set null,
@@ -550,7 +586,7 @@ begin
       'workout_logs','merchant_aliases','category_memory','subscriptions',
       'bank_format_memory','meal_templates','hydration_logs','weekly_reviews',
       'audit_log','user_secrets','user_plans','memory_facts','notes','briefings',
-      'habit_days','push_subscriptions','sleep_sessions'
+      'habit_days','push_subscriptions','sleep_sessions','email_deliveries'
     ])
   loop
     execute format('alter table public.%I enable row level security', t);

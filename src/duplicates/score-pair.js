@@ -5,9 +5,21 @@ const ABS_AMOUNT_TOLERANCE = 5;
 const REL_AMOUNT_TOLERANCE = 0.03;
 export const MIN_SCORE_TO_FLAG = 0.6;
 
+// Two rows in different currencies are never the same payment, however well the
+// numbers line up — "$80" and "₹80" would otherwise score as an exact amount
+// match. An ABSENT currency is not a match either: it is unknown, so it neither
+// confirms nor denies, and we fall through to the other signals without credit.
+export function currencyConflict(a, b) {
+  const cA = String(a?.currency || "").trim().toUpperCase();
+  const cB = String(b?.currency || "").trim().toUpperCase();
+  return Boolean(cA && cB && cA !== cB);
+}
+
 export function scorePair(a, b) {
   const reasons = [];
   let score = 0;
+
+  if (currencyConflict(a, b)) return { score: 0, reasons: ["currency_mismatch"] };
 
   const amtA = Number(a.amount || 0);
   const amtB = Number(b.amount || 0);

@@ -336,6 +336,94 @@ async function withinDailyCap(supabase: ReturnType<typeof adminClient>, userId: 
   return sum < DEFAULT_DAILY_COST_CAP_USD;
 }
 
+// -------- capture idempotency --------
+//
+// The edge function is the WRITER, so the guard has to live here: a client-side
+// fingerprint protects nothing when the client is the party that crashed. On
+// 2026-07-09 a transport error plus one user re-submit wrote the same Rs 80
+// purchase three times (~Rs 240 in the ledger).
+
+// ==== CAPTURE FINGERPRINT MIRROR START (pure; extracted and executed by tests/capture-idempotency.test.mjs) ====
+// Derived from WHO + WHAT, never from the clock: that capture was submitted at
+// 09:03:21 and again at 09:04:21, so any wall-clock bucket (even a rounded
+// minute) sees two different captures and happily writes both.
+function normaliseCaptureText(raw: string): string {
+  return String(raw || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Returns null when there is nothing to fingerprint — no text and no media.
+// Hashing "empty" would collapse every blank capture in the window into one.
+async function captureFingerprint(userId: string, rawText: string, mediaAssetIds: string[]): Promise<string | null> {
+  const text = normaliseCaptureText(rawText);
+  const media = [...new Set((mediaAssetIds || []).map((id) => String(id)))].sort().join(",");
+  if (!text && !media) return null;
+  const key = `v1|${userId}|${text}|${media}`;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+// ==== CAPTURE FINGERPRINT MIRROR END ====
+
+// Window, not a constraint: a repeat inside this many minutes is the same
+// capture arriving twice; the same purchase made again an hour later is real.
+const CAPTURE_DEDUPE_WINDOW_MIN = 10;
+
+// The most recent COMPLETED run for this capture, or null. Throws on a read
+// failure — a guard that silently degrades to "no prior run" is worse than an
+// error, because the failure mode is a duplicated ledger.
+//
+// This ingestion is always in scope even without a fingerprint, so a retried
+// invoke of an ingestion that already completed is a no-op no matter what.
+async function findPriorCompletedRun(
+  supabase: ReturnType<typeof adminClient>, userId: string, ingestionId: string, fingerprint: string | null,
+) {
+  const windowStart = new Date(Date.now() - CAPTURE_DEDUPE_WINDOW_MIN * 60_000).toISOString();
+  const ids = new Set<string>([ingestionId]);
+  if (fingerprint) {
+    const { data: ingestions, error: ingErr } = await supabase
+      .from("raw_ingestions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("capture_fingerprint", fingerprint)
+      .gte("created_at", windowStart);
+    if (ingErr) throw new Error(`capture_guard_unavailable: ${ingErr.message} — nothing was written`);
+    for (const r of ingestions || []) ids.add((r as any).id);
+  }
+
+  const { data: runs, error: runErr } = await supabase
+    .from("ai_runs")
+    .select("id, ingestion_id, estimated_cost_usd, created_at")
+    .eq("user_id", userId)
+    .in("ingestion_id", [...ids])
+    .eq("status", "completed")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (runErr) throw new Error(`capture_guard_unavailable: ${runErr.message} — nothing was written`);
+  return runs?.[0] || null;
+}
+
+// Replays what the earlier run actually produced, so the caller gets the real
+// outcome instead of a fresh (and duplicating) pipeline. Each call carries its
+// stored status — a replay must never imply a write that never happened.
+async function replayRunResult(supabase: ReturnType<typeof adminClient>, aiRunId: string) {
+  const { data, error } = await supabase
+    .from("ai_actions")
+    .select("tool_name, arguments, confidence, status")
+    .eq("ai_run_id", aiRunId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(`capture_replay_unavailable: ${error.message}`);
+  const actions = data || [];
+  return {
+    toolCalls: actions
+      .filter((a: any) => a.status !== "rejected")
+      .map((a: any) => ({ name: a.tool_name, arguments: a.arguments, confidence: Number(a.confidence), status: a.status })),
+    rejected: actions.filter((a: any) => a.status === "rejected").length,
+  };
+}
+
 // -------- gemini call --------
 
 async function loadMediaInline(supabase: ReturnType<typeof adminClient>, mediaAssetIds: string[]) {
@@ -1573,12 +1661,55 @@ Deno.serve(async (req) => {
     // 3. Verify the ingestion belongs to this user. The ingestion already has
     //    user_id from the client (RLS would reject otherwise), but recheck.
     const { data: ing, error: ingErr } = await supabase
-      .from("raw_ingestions").select("id, user_id").eq("id", payload.ingestionId).single();
+      .from("raw_ingestions").select("id, user_id, raw_text").eq("id", payload.ingestionId).single();
     if (ingErr || ing?.user_id !== userId) {
       return Response.json({ ok: false, error: "ingestion_not_owned" }, { status: 403, headers: corsHeaders });
     }
 
-    // 4. Rate limit + cost cap.
+    // 4. Idempotency guard — BEFORE the pipeline, because the pipeline is what
+    //    writes. Every input is read server-side (the ingestion's own raw_text,
+    //    the media rows actually attached to it), never taken from the body: a
+    //    retried invoke with a mangled body must still hash to the same capture.
+    const { data: mediaRows, error: mediaErr } = await supabase
+      .from("media_assets").select("id").eq("ingestion_id", payload.ingestionId);
+    if (mediaErr) {
+      return Response.json(
+        { ok: false, error: `capture_guard_unavailable: ${mediaErr.message} — nothing was written` },
+        { status: 503, headers: corsHeaders },
+      );
+    }
+    const fingerprint = await captureFingerprint(
+      userId, ing.raw_text ?? payload.text ?? "", (mediaRows || []).map((m: any) => m.id),
+    );
+    let warning: string | null = null;
+    const prior = await findPriorCompletedRun(supabase, userId, payload.ingestionId, fingerprint);
+    if (prior) {
+      // Same capture, already processed. Return what that run produced; do NOT
+      // re-run and do NOT re-apply. This is what makes a retried invoke a no-op.
+      if (prior.ingestion_id !== payload.ingestionId) {
+        const { error: markErr } = await supabase.from("raw_ingestions").update({
+          status: "duplicate",
+          capture_fingerprint: fingerprint,
+          duplicate_of_ingestion_id: prior.ingestion_id,
+        }).eq("id", payload.ingestionId);
+        if (markErr) warning = `duplicate_link_not_stored: ${markErr.message}`;
+      }
+      const replay = await replayRunResult(supabase, prior.id);
+      return Response.json({
+        ok: true, aiRunId: prior.id, toolCalls: replay.toolCalls, rejected: replay.rejected,
+        // 0 is a real measurement of THIS invocation: no provider call was made.
+        cost: 0, duplicate: true, duplicateOfIngestionId: prior.ingestion_id, warning,
+      }, { headers: corsHeaders });
+    }
+    if (fingerprint) {
+      // Stamp before running so the NEXT arrival of this capture can find it the
+      // moment this run completes.
+      const { error: fpErr } = await supabase
+        .from("raw_ingestions").update({ capture_fingerprint: fingerprint }).eq("id", payload.ingestionId);
+      if (fpErr) warning = `fingerprint_not_stored: ${fpErr.message} — a re-submit of this capture may double-write`;
+    }
+
+    // 5. Rate limit + cost cap.
     if (!(await rateLimitOk(supabase, userId))) {
       return Response.json({ ok: false, error: "rate_limited" }, { status: 429, headers: corsHeaders });
     }
@@ -1586,7 +1717,7 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: "daily_cap_reached" }, { status: 402, headers: corsHeaders });
     }
 
-    // 5. Run the two-model pipeline (build-context → Gemini extract → DeepSeek reason).
+    // 6. Run the two-model pipeline (build-context → Gemini extract → DeepSeek reason).
     const inlineMedia = await loadMediaInline(supabase, payload.mediaAssetIds || []);
     const contextBlock = await fetchContextBlock(supabase, userId);
     const runInfo = await runPipeline({
@@ -1598,7 +1729,7 @@ Deno.serve(async (req) => {
     const { aiRunId, cost } = await persistRunAndActions(supabase, userId, payload.ingestionId, runInfo);
 
     return Response.json(
-      { ok: true, aiRunId, toolCalls: runInfo.toolCalls, rejected: runInfo.rejected.length, cost },
+      { ok: true, aiRunId, toolCalls: runInfo.toolCalls, rejected: runInfo.rejected.length, cost, duplicate: false, warning },
       { headers: corsHeaders },
     );
   } catch (error) {
