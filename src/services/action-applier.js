@@ -3,7 +3,7 @@
 // supabase/functions/agent/index.ts so a manually-approved proposed action
 // creates exactly the same row the server auto-apply path would have.
 // tests/agent-contract.test.mjs asserts this list stays in sync with the edge
-// function's WRITE_TOOLS. No browser/Supabase imports — keep it pure.
+// function's WRITE_TOOLS. No browser/Supabase imports - keep it pure.
 
 import { goalDef } from "../domain/goals.js";
 

@@ -1,7 +1,7 @@
 // Replays the exact production captures that created phantom workout rows.
 //
 // Before the negation guard, 5 of the 7 rows in workout_logs came from captures
-// where the user said they had NOT trained — including the capture in which they
+// where the user said they had NOT trained - including the capture in which they
 // reported the bug. habit_days then counted any workout row as "workout done",
 // so the next morning's brief congratulated them on a gym session they had
 // explicitly denied.

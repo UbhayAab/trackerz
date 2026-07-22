@@ -12,7 +12,7 @@ for (const [name, lex] of Object.entries({ GYM_WORDS, CARDIO_WORDS })) {
 assert.ok(SET_REP_RE instanceof RegExp && WEIGHT_RE instanceof RegExp);
 
 // ---------------------------------------------------------------------------
-// looksLikeGym — workout free text, even without the word "gym"
+// looksLikeGym - workout free text, even without the word "gym"
 // ---------------------------------------------------------------------------
 assert.ok(looksLikeGym("I just did Workout A"));
 assert.ok(looksLikeGym("did legs"));
@@ -31,7 +31,7 @@ assert.ok(!looksLikeGym("grocery run at the bakery"), "grocery run is not cardio
 assert.ok(!looksLikeGym("need to run an errand"), "errand run is not cardio");
 
 // ---------------------------------------------------------------------------
-// parseExercises — best-effort set×rep×weight, never invents reps/sets
+// parseExercises - best-effort set×rep×weight, never invents reps/sets
 // ---------------------------------------------------------------------------
 assert.deepEqual(parseExercises("bench 3x10 60kg"), [
   { exercise: "bench", sets: 3, reps: 10, weight_kg: 60 },

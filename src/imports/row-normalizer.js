@@ -52,7 +52,7 @@ export function toIsoDate(d) {
 }
 
 // Accepts a Date, an ISO/PG date string, or a dd/mm/yyyy statement cell.
-// Returns YYYY-MM-DD or null — never "today" as a stand-in for an unknown date.
+// Returns YYYY-MM-DD or null - never "today" as a stand-in for an unknown date.
 export function isoDateOf(value) {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : toIsoDate(value);

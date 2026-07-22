@@ -1,4 +1,4 @@
-// CURATED CAPTURE CASES — the subtle routing calls the combinatorial matrix
+// CURATED CAPTURE CASES - the subtle routing calls the combinatorial matrix
 // can't express. Same scope as labeller-matrix: the DETERMINISTIC net (the LLM
 // does primary routing). Where a case's money/date is only recoverable by the
 // model (no explicit cue), the comment says so and we assert what IS deterministic.
@@ -45,7 +45,7 @@ const CASES = [
   ["paid rs 250", { amount: 250, expense: true }],
   ["Rs.250 debited from account", { amount: 250, expense: true }],
   ["₹1,250 at the store", { amount: 1250, expense: true }],
-  // "lunch" names WHEN, not WHAT — no dish, so no macros are derivable. We used
+  // "lunch" names WHEN, not WHAT - no dish, so no macros are derivable. We used
   // to synthesize a food row anyway, which showed up in production as a blank
   // "lunch (auto from spend)" meal with NULL calories/protein sitting next to the
   // real meal. It stays an expense only; looksLikeFood is still true (the word IS

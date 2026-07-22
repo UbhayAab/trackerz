@@ -4,7 +4,7 @@
 --
 -- 1. workout_logs had no notion of "I did NOT train". The fan-out expander logged
 --    a workout whenever a capture MENTIONED the gym, so "Did not go to gym bro"
---    became a completed workout, and jbCloseDay counts any row as workout_done —
+--    became a completed workout, and jbCloseDay counts any row as workout_done -
 --    which is why the next morning's brief said the user had trained. Rows now
 --    carry status done|skipped|rest and only 'done' counts toward the streak.
 --
@@ -74,4 +74,4 @@ end$rls$;
 
 -- NOTE: this migration is schema-only and touches no existing rows. Repairing
 -- the five phantom workout rows already in production is a separate, explicit
--- step — see scripts/repair-phantom-workouts.mjs (dry-run by default).
+-- step - see scripts/repair-phantom-workouts.mjs (dry-run by default).

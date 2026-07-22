@@ -1,5 +1,5 @@
 // Receives content from the OS share sheet (Android, ChromeOS, etc.).
-// For browsers that POST the form, we cannot read the body from JS — so we
+// For browsers that POST the form, we cannot read the body from JS - so we
 // stash it server-side via the service worker, which forwards the multipart
 // payload into IndexedDB and redirects here. As a fallback (and for desktop
 // drag-and-drop testing), we also accept query-string text/url/title.

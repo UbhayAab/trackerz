@@ -19,7 +19,7 @@ export function createEmptyState() {
     userPlans: [],
     insights: [],
     metrics: {
-      // proteinTarget / caloriesTarget are SEED fallbacks only — sync.js overwrites
+      // proteinTarget / caloriesTarget are SEED fallbacks only - sync.js overwrites
       // them from the single source (budget goals → scaffold) on every hydrate.
       todaySpend: 0,
       budgetPace: 0,

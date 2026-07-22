@@ -664,7 +664,7 @@ declare
 begin
   select value into secret from public.app_secrets where name = 'JARVIS_CRON_SECRET';
   if secret is null then
-    raise warning 'jarvis_ping: JARVIS_CRON_SECRET missing from app_secrets — skipping %', action;
+    raise warning 'jarvis_ping: JARVIS_CRON_SECRET missing from app_secrets - skipping %', action;
     return null;
   end if;
   select net.http_post(

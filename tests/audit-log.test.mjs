@@ -158,7 +158,7 @@ assert.deepEqual(totals.byDomain, { money: 3, diet: 1 });
 
 // ---- summarizeIngestion ----
 assert.equal(summarizeIngestion(by.A), "2 tool calls · 2 applied · money, diet · deepseek-reasoner · $0.00050 · 1000ms");
-assert.equal(summarizeIngestion(by.D), "queued — agent offline, nothing processed yet");
+assert.equal(summarizeIngestion(by.D), "queued - agent offline, nothing processed yet");
 assert.equal(summarizeIngestion(by.F), "errored · deepseek-reasoner");
 assert.equal(summarizeIngestion(by.E), "1 tool call · 1 to review · deepseek-reasoner · $0.00010 · 300ms");
 assert.equal(summarizeIngestion(by.C), "1 tool call · 1 rejected · money · gemini-2.5-flash · $0.00030 · 900ms");

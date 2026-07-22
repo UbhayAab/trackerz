@@ -1,15 +1,15 @@
-// ONE-TAP ROW — the things you cannot be bothered to type.
+// ONE-TAP ROW - the things you cannot be bothered to type.
 //
 // Everything here writes straight to Postgres from the user's own client: no
-// Gemini, no DeepSeek, no capture pipeline, no guessing. That is the point —
+// Gemini, no DeepSeek, no capture pipeline, no guessing. That is the point -
 // these are facts the user is asserting, so the AI must not get a vote.
 //
 // Three groups:
-//   Sleep  — "Sleeping" opens a session, "Woke up" closes it and shows the hours.
+//   Sleep  - "Sleeping" opens a session, "Woke up" closes it and shows the hours.
 //            Duration is derived from the two timestamps, never typed.
-//   Water  — +250 / +500 / +1L against today's running total, with an Undo,
+//   Water  - +250 / +500 / +1L against today's running total, with an Undo,
 //            because the only real risk of a one-tap control is a mis-tap.
-//   Gym    — "Went" / "Skipped". Skipped is recorded, not ignored: that is what
+//   Gym    - "Went" / "Skipped". Skipped is recorded, not ignored: that is what
 //            keeps "no gym today" out of the streak while still answering the day.
 //
 // Every handler reports success AND failure on screen. Silent catch blocks are
@@ -96,7 +96,7 @@ export function renderQuickActions() {
       </button>
       <span class="quick-note">${
         gymStatus === "done" ? "logged as done today"
-        : gymStatus === "skipped" ? "marked skipped — doesn't break your logging streak"
+        : gymStatus === "skipped" ? "marked skipped - doesn't break your logging streak"
         : "answer either way; skipped still counts as logged"
       }</span>
     </div>
@@ -104,7 +104,7 @@ export function renderQuickActions() {
 }
 
 async function refresh() {
-  // Each read is independent — one failing must not blank the other two.
+  // Each read is independent - one failing must not blank the other two.
   const [sleep, water, gym] = await Promise.allSettled([
     fetchOpenSleepSession(),
     fetchHydrationTotal(new Date()),
@@ -127,7 +127,7 @@ async function withBusy(btn, fn) {
   try {
     await fn();
   } catch (err) {
-    // Loudly. A quick action that fails quietly is worse than no button at all —
+    // Loudly. A quick action that fails quietly is worse than no button at all -
     // the user walks away believing it was recorded.
     showToast(`Didn't save: ${err?.message || err}`, { kind: "error", duration: 5000 });
   } finally {
@@ -150,7 +150,7 @@ export function bindQuickActions() {
       await withBusy(btn, async () => {
         if (state.sleep) {
           const done = await endSleepSession();
-          showToast(done ? `Slept ${done.hours}h — logged.` : "No open sleep session.");
+          showToast(done ? `Slept ${done.hours}h - logged.` : "No open sleep session.");
         } else {
           await startSleepSession();
           showToast("Sleep started. Tap again when you wake up.");

@@ -21,7 +21,7 @@ function approx(actual, expected, tol, msg) {
   assert.equal(cookie.qty, 5, "must count 5 cookies");
 }
 
-// "5 choc chip cookies" — number separated from the food by modifier words.
+// "5 choc chip cookies" - number separated from the food by modifier words.
 {
   const r = estimateNutrition("5 choc chip cookies");
   const cookie = r.items.find((i) => i.key === "cookie");
@@ -44,7 +44,7 @@ function approx(actual, expected, tol, msg) {
   approx(r.totals.protein_g, 19.6, 1, "2 eggs 2 rotis protein");
 }
 
-// "egg curry, just ate 2 eggs and 2 rotis" — the dish name mentions "egg" too,
+// "egg curry, just ate 2 eggs and 2 rotis" - the dish name mentions "egg" too,
 // but the explicit "2 eggs" must win (no double counting to 3 eggs).
 {
   const r = estimateNutrition("egg curry, just ate 2 eggs and 2 rotis");
@@ -57,7 +57,7 @@ function approx(actual, expected, tol, msg) {
   assert.deepEqual(r.unknown, [], `no unknown foods expected, got ${JSON.stringify(r.unknown)}`);
 }
 
-// "3 rotis dal sabzi" — number binds to the nearest following food only.
+// "3 rotis dal sabzi" - number binds to the nearest following food only.
 {
   const r = estimateNutrition("3 rotis dal sabzi");
   const roti = r.items.find((i) => i.key === "roti");

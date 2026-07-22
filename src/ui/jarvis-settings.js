@@ -20,7 +20,7 @@ function pushFailureText(res) {
     case "denied":
       return "Blocked for this site. Allow notifications in the browser's site settings, then press Enable again.";
     case "default":
-      return "Permission dismissed — nothing was enabled. Press Enable again and choose Allow.";
+      return "Permission dismissed - nothing was enabled. Press Enable again and choose Allow.";
     case "unsupported_install_first":
       return "This browser can't do Web Push here. On iPhone, add Trackerz to the Home Screen and open it from there.";
     case "unsupported":
@@ -30,7 +30,7 @@ function pushFailureText(res) {
     case "subscribe_failed":
       return `The browser refused the push subscription${detail}.`;
     case "save_failed":
-      return `Subscribed on this device but the endpoint could NOT be saved${detail} — the server still can't reach you. Try again.`;
+      return `Subscribed on this device but the endpoint could NOT be saved${detail} - the server still can't reach you. Try again.`;
     case "unsubscribe_failed":
       return `Couldn't unsubscribe this device${detail}.`;
     case "show_failed":
@@ -41,7 +41,7 @@ function pushFailureText(res) {
 }
 
 // Honest rendering: when we can't reach the service worker the subscription is
-// UNKNOWN, not off — say so rather than showing a confident empty checkbox.
+// UNKNOWN, not off - say so rather than showing a confident empty checkbox.
 function renderPushState(state, { line, toggle, profile }) {
   if (toggle) toggle.indeterminate = false;
   if (!pushSupported()) {
@@ -51,7 +51,7 @@ function renderPushState(state, { line, toggle, profile }) {
   }
   if (!state.ready) {
     if (toggle) { toggle.checked = false; toggle.indeterminate = true; }
-    setStatus(line, "Notifications on this device: — (couldn't reach the service worker; reload the page)");
+    setStatus(line, "Notifications on this device: - (couldn't reach the service worker; reload the page)");
     return;
   }
   if (toggle) toggle.disabled = false;
@@ -63,7 +63,7 @@ function renderPushState(state, { line, toggle, profile }) {
   }
   if (state.subscribed) {
     if (toggle) toggle.checked = prefOn;
-    let host = "—";
+    let host = "-";
     try { if (state.endpoint) host = new URL(state.endpoint).host; } catch { /* keep the em-dash */ }
     setStatus(line, prefOn
       ? `Notifications on this device: on (subscribed via ${host}).`
@@ -72,8 +72,8 @@ function renderPushState(state, { line, toggle, profile }) {
   }
   if (toggle) toggle.checked = false;
   setStatus(line, state.permission === "granted"
-    ? "Notifications on this device: allowed but not subscribed yet — press Enable notifications."
-    : "Notifications on this device: off — press Enable notifications.");
+    ? "Notifications on this device: allowed but not subscribed yet - press Enable notifications."
+    : "Notifications on this device: off - press Enable notifications.");
 }
 
 export async function bindJarvisCard() {
@@ -92,7 +92,7 @@ export async function bindJarvisCard() {
   try {
     profile = await fetchJarvisProfile();
   } catch (err) {
-    // Bail out loudly — the card's controls all write to profiles, and the push
+    // Bail out loudly - the card's controls all write to profiles, and the push
     // status line must not sit on "checking…" forever.
     setStatus(status, "offline", false);
     setStatus(pushLine, `Couldn't load delivery settings: ${err?.message || err}`, false);
@@ -127,7 +127,7 @@ export async function bindJarvisCard() {
   });
 
   // The real entry point. A checkbox can't be trusted to trigger the permission
-  // prompt (it never did — that is why push_subscriptions was empty), so this is
+  // prompt (it never did - that is why push_subscriptions was empty), so this is
   // an explicit action that asks, subscribes, saves, and reports what happened.
   const turnOnPush = async (btn) => {
     const label = btn?.textContent;
@@ -151,7 +151,7 @@ export async function bindJarvisCard() {
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = label; }
       // refreshPush() re-renders the status line from the BROWSER's view, which
-      // knows nothing about a failed server save — it would happily overwrite
+      // knows nothing about a failed server save - it would happily overwrite
       // "couldn't reach the server" with "on (subscribed)". So refresh first,
       // then put the failure back on top and keep the Enable button available.
       await refreshPush();
@@ -172,7 +172,7 @@ export async function bindJarvisCard() {
         setStatus(pushLine, pushFailureText(res), false);
         showToast(pushFailureText(res), { kind: "error", duration: 6000 });
       } else {
-        showToast("Test notification shown (local only — not a server push).", { kind: "success" });
+        showToast("Test notification shown (local only - not a server push).", { kind: "success" });
       }
     } finally {
       testPushBtn.disabled = false;

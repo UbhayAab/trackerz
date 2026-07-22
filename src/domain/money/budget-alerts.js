@@ -38,7 +38,7 @@ function expectedPaceShare(period, today) {
 export function computeBudgetAlerts({ ledger = [], budgets = [], today = new Date() } = {}) {
   const out = [];
   for (const budget of budgets) {
-    // Every goal shares the `budgets` table — daily_protein (160g), daily_calories
+    // Every goal shares the `budgets` table - daily_protein (160g), daily_calories
     // (2200), weekly_workouts (4) all sit alongside monthly_spend. Without this
     // guard the loop compared today's RUPEE spend against a protein target of
     // 160 and a workout target of 4, so spending Rs 500 produced "daily budget

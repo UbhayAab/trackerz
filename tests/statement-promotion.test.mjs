@@ -147,7 +147,7 @@ assert.equal(merchantFromNarration(null), null, "no narration means no merchant,
   const service = readFileSync("src/services/statement-import.js", "utf8");
   assert.ok(
     /onConflict:\s*"user_id,content_key"/.test(service),
-    "statement_rows must upsert on content only — an import_id in the conflict target can never collide",
+    "statement_rows must upsert on content only - an import_id in the conflict target can never collide",
   );
   assert.ok(!/onConflict:\s*"user_id,import_id/.test(service), "the import_id dedupe key is gone");
   assert.ok(/source_type/.test(readFileSync("src/imports/row-normalizer.js", "utf8")));

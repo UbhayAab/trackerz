@@ -53,7 +53,7 @@ export function suggestProteinFixes(foodLogs, targetProteinG, options = {}) {
   const target = Number(targetProteinG) || 0;
   const gap = target - consumed;
   if (gap <= 0) {
-    return ["Protein target met — keep hydration up."];
+    return ["Protein target met - keep hydration up."];
   }
 
   const wantVeg = options.vegOnly === true;

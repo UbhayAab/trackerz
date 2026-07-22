@@ -1,5 +1,5 @@
 // Wave 3 money intelligence test suite.
-// Standalone node script — run with `node tests/money-intelligence.test.mjs`.
+// Standalone node script - run with `node tests/money-intelligence.test.mjs`.
 // Covers bank-format-detector, column-candidates, transfer-detector,
 // refund-matcher, subscription-detector, budget-alerts, merchant-aliases.
 
@@ -79,7 +79,7 @@ checkEq(detectBankFormat({ filename: "kotak-mahindra-feb.csv" }), "kotak",
 checkEq(detectBankFormat({ filename: "indusind-bank-statement.xlsx" }), "indusind",
   "IndusInd");
 
-// Bank of Baroda — both abbreviation and full name.
+// Bank of Baroda - both abbreviation and full name.
 checkEq(detectBankFormat({ filename: "bob-may.csv" }), "bob",
   "Bank of Baroda via BOB");
 checkEq(detectBankFormat({ sampleText: "Bank of Baroda credit summary" }), "bob",

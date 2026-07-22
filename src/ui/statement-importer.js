@@ -47,7 +47,7 @@ export function bindStatementImporter() {
     } catch (err) {
       parsedCache = null;
       setState("error");
-      preview.innerHTML = `<div class="import-error"><span class="toast-dot"></span>Couldn’t read that file — ${escapeHtml(err.message || String(err))}</div>`;
+      preview.innerHTML = `<div class="import-error"><span class="toast-dot"></span>Couldn’t read that file - ${escapeHtml(err.message || String(err))}</div>`;
     }
   }
 
@@ -89,7 +89,7 @@ export function bindStatementImporter() {
     } catch (err) {
       button.disabled = false;
       button.textContent = "Retry";
-      showToast(`Could not add older rows — ${err.message || err}`, { kind: "error" });
+      showToast(`Could not add older rows - ${err.message || err}`, { kind: "error" });
     }
   });
 
@@ -119,7 +119,7 @@ export function bindStatementImporter() {
       setState("parsed");
       importBtn.disabled = false;
       importBtn.textContent = "Retry import";
-      showToast(`Import failed — ${err.message || err}`, { kind: "error" });
+      showToast(`Import failed - ${err.message || err}`, { kind: "error" });
     }
   });
 }
@@ -129,7 +129,7 @@ function renderPreview(host, parsed, summary) {
   const samples = parsed.rows.slice(0, 5);
   const head = cols.map((c) => `<th>${c}</th>`).join("");
   const body = samples
-    .map((r) => `<tr>${cols.map((c) => `<td>${escapeHtml(String(r[parsed.mapping[c]] ?? "—"))}</td>`).join("")}</tr>`)
+    .map((r) => `<tr>${cols.map((c) => `<td>${escapeHtml(String(r[parsed.mapping[c]] ?? "-"))}</td>`).join("")}</tr>`)
     .join("");
   const chip = (label, val) =>
     `<span class="map-chip ${val ? "" : "is-missing"}">${label} <b>${val ? escapeHtml(val) : "not found"}</b></span>`;
@@ -162,7 +162,7 @@ function blockedNotice(summary) {
   const reasons = Object.entries(summary.blockers)
     .map(([code, n]) => `${n} × ${PROMOTION_BLOCKERS[code] || code}`)
     .join(", ");
-  return `<div class="import-error"><span class="toast-dot"></span>${summary.promotableRows} of ${summary.totalRows} rows can become ledger entries. ${summary.blockedRows} cannot — ${escapeHtml(reasons)}.</div>`;
+  return `<div class="import-error"><span class="toast-dot"></span>${summary.promotableRows} of ${summary.totalRows} rows can become ledger entries. ${summary.blockedRows} cannot - ${escapeHtml(reasons)}.</div>`;
 }
 
 function summarizeResult({ rowsParsed, rowsAlreadyStored, promotion }) {
@@ -170,7 +170,7 @@ function summarizeResult({ rowsParsed, rowsAlreadyStored, promotion }) {
   if (promotion.alreadyPresent) parts.push(`${promotion.alreadyPresent} already there`);
   if (rowsAlreadyStored) parts.push(`${rowsAlreadyStored} already imported`);
   if (promotion.failed.length) parts.push(`${promotion.failed.length} could not be added`);
-  return `${rowsParsed} row${rowsParsed === 1 ? "" : "s"} read — ${parts.join(", ")}`;
+  return `${rowsParsed} row${rowsParsed === 1 ? "" : "s"} read - ${parts.join(", ")}`;
 }
 
 function renderResult(host, result) {
@@ -185,7 +185,7 @@ function renderResult(host, result) {
     byReason.set(text, (byReason.get(text) || 0) + 1);
   }
   const failList = [...byReason.entries()]
-    .map(([reason, n]) => `<li>${n} row${n === 1 ? "" : "s"} — ${escapeHtml(reason)}</li>`)
+    .map(([reason, n]) => `<li>${n} row${n === 1 ? "" : "s"} - ${escapeHtml(reason)}</li>`)
     .join("");
   const warnList = promotion.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("");
 
@@ -203,7 +203,7 @@ function renderResult(host, result) {
   `;
 }
 
-// remainingUnpromoted is null when the count could not be read — say "unknown"
+// remainingUnpromoted is null when the count could not be read - say "unknown"
 // rather than showing a reassuring 0 nobody measured.
 function backlogNotice(remaining) {
   if (remaining == null) return "";

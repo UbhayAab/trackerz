@@ -67,7 +67,7 @@ ok(decideActionPolicy(safeAction).reasons.length === 0, "clean action carries no
 
 // No approve gate (capture-first): a non-blocked action ALWAYS auto-applies, but
 // low confidence / missing evidence / high risk must be surfaced as `reasons` so
-// the UI flags the row for a quick look — the user deletes anything wrong instead
+// the UI flags the row for a quick look - the user deletes anything wrong instead
 // of approving everything up front.
 const lowConf = decideActionPolicy({ name: "create_expense_candidate", confidence: 0.5, evidenceId: "ingest-1" });
 eq(lowConf.mode, "auto_apply");
@@ -77,7 +77,7 @@ const noEvidence = decideActionPolicy({ name: "create_expense_candidate", confid
 eq(noEvidence.mode, "auto_apply");
 ok(noEvidence.reasons.includes("missing_evidence"), "missing evidence is flagged for review");
 
-// Destructive / unknown tools are the ONE hard gate — always blocked.
+// Destructive / unknown tools are the ONE hard gate - always blocked.
 const unknown = { name: "drop_table", confidence: 0.99, evidenceId: "x" };
 eq(decideActionPolicy(unknown).mode, "block");
 

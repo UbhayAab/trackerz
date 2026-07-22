@@ -1,7 +1,7 @@
 // Full macro + micronutrient panel for the fixed plan, transcribed from the
 // plan's own Macro/Vitamin/Mineral verification tables. Each entry carries the
 // daily target (RDA, or an upper limit for `limit` nutrients) plus what the plan
-// delivers on a Soybean day vs a Paneer-Soy day. Pure data + helpers — tested.
+// delivers on a Soybean day vs a Paneer-Soy day. Pure data + helpers - tested.
 
 export const NUTRIENTS = [
   // Macros
@@ -63,7 +63,7 @@ export function planNutrients(dietType) {
 }
 
 // Given the fraction of the day's calories already eaten (0..1), how much of each
-// nutrient is logged so far — a proportional estimate so the panel fills in as
+// nutrient is logged so far - a proportional estimate so the panel fills in as
 // meals are checked, hitting the full plan value when the day is complete.
 export function nutrientsSoFar(dietType, fractionOfDay) {
   const f = Math.max(0, Math.min(1, Number(fractionOfDay) || 0));

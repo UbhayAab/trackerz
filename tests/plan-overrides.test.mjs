@@ -104,7 +104,7 @@ assert.equal(planForDate(TUE).workout.name, "Push", "off-date still shows the pl
 
 // --- one-shot DELTA edits fold onto the scaffold for that date --------------
 reset();
-const WED = new Date(2026, 6, 8); // a Wednesday (paneer-soy) — scaffold has 4 meals
+const WED = new Date(2026, 6, 8); // a Wednesday (paneer-soy) - scaffold has 4 meals
 const wedKey = localDateKey(WED);
 const scaffoldMealCount = planForDate(new Date(2026, 6, 15)).meals.length; // another Wed, no override
 assert.equal(scaffoldMealCount, 4, "baseline scaffold has 4 meals");

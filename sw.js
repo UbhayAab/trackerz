@@ -52,8 +52,8 @@ self.addEventListener("install", (event) => {
       // Two separate addAll calls: one bad shell URL must not take the vendored
       // library down with it (addAll is all-or-nothing), and vice versa.
       const results = await Promise.allSettled([cache.addAll(APP_SHELL), cache.addAll(VENDOR)]);
-      // A precache miss is not fatal — the network-first handler still works
-      // online — but it is exactly why "it worked yesterday, offline it's
+      // A precache miss is not fatal - the network-first handler still works
+      // online - but it is exactly why "it worked yesterday, offline it's
       // blank", so it must be visible in the console rather than swallowed.
       for (const r of results) {
         if (r.status === "rejected") console.error("[sw] precache failed:", r.reason);
@@ -85,7 +85,7 @@ self.addEventListener("fetch", (event) => {
   // Supabase API + storage + functions: pass through, never cache.
   if (/supabase\.co|esm\.sh|cdn\.|fonts\./.test(url.hostname)) return;
 
-  // Vendored library chunks are immutable — the version is in the path, so a
+  // Vendored library chunks are immutable - the version is in the path, so a
   // new version is a new URL. Serve them from cache first: they are ~220KB
   // across 13 files and network-first would re-fetch all of them, uncached, on
   // every single page load.
@@ -109,14 +109,14 @@ async function networkFirst(req) {
     // Only ok, non-opaque responses are cacheable. Caching a 404/503 (a
     // mid-deploy Pages blip, or a path that briefly doesn't exist) used to make
     // that error the permanent offline page for the URL until the next version
-    // bump — the user would see "offline" on a route that was actually fine.
+    // bump - the user would see "offline" on a route that was actually fine.
     if (fresh && fresh.ok && fresh.type !== "opaque") {
       const cache = await caches.open(VERSION);
       cache.put(req, fresh.clone());
       return fresh;
     }
     // A 5xx (a mid-deploy Pages blip) is a transport problem, not the truth
-    // about this URL — serve the last good copy if we have one, exactly as we
+    // about this URL - serve the last good copy if we have one, exactly as we
     // do for a thrown fetch. A 4xx IS the truth, so it passes through.
     if (fresh && fresh.status >= 500) {
       const cached = await caches.match(req);

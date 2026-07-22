@@ -10,14 +10,14 @@ Hosted on GitHub Pages. Auth + DB on Supabase. AI brain via Gemini 2.5 Flash (in
 
 ## First-time setup (do these IN ORDER, all from your phone)
 
-### Step 1 — Apply database setup (one time)
+### Step 1 - Apply database setup (one time)
 
 Open the Supabase dashboard SQL Editor on your phone:
 `https://supabase.com/dashboard/project/yyoewdcijplkhxleejtm/sql/new`
 
 Open `supabase/setup.sql` from the repo on GitHub mobile (or just copy from below), paste it into the SQL Editor, run it. It applies RLS policies, storage buckets, the discretionary/tags columns, and the Nifty reference table. Safe to re-run.
 
-### Step 2 — Redeploy the edge function (one time)
+### Step 2 - Redeploy the edge function (one time)
 
 The deployed version still uses the old NVIDIA/DeepSeek path. The new one uses Gemini 2.5 Flash for everything and writes ai_actions/ledger directly. Redeploy from a laptop later:
 
@@ -25,9 +25,9 @@ The deployed version still uses the old NVIDIA/DeepSeek path. The new one uses G
 supabase functions deploy agent
 ```
 
-Until you redeploy, captures still save as review items so nothing is lost — you'll see "Agent unavailable; capture queued for review" in the log.
+Until you redeploy, captures still save as review items so nothing is lost - you'll see "Agent unavailable; capture queued for review" in the log.
 
-### Step 3 — Open the app on your phone
+### Step 3 - Open the app on your phone
 
 1. Open https://ubhayaab.github.io/trackerz/
 2. The one-time setup card appears. Paste:

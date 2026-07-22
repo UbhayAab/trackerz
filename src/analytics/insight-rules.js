@@ -12,7 +12,7 @@ export function getInsightSeverity({ pace = 1, confidence = 1 }) {
 // Money caps and diet/gym targets share ONE `budgets` table keyed by `kind`, so
 // anything that compares rupee spend against a budget row MUST filter first.
 // Without this, a `daily_calories` target of 2300 was read as a ₹2300 daily cap
-// and fired "budget exceeded" money alerts off the user's food logging — the
+// and fired "budget exceeded" money alerts off the user's food logging - the
 // alert engine has no idea the number is kilocalories.
 //
 // Listed non-money kinds are excluded; anything unrecognised (including legacy

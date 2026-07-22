@@ -1,4 +1,4 @@
-// Theme controller — light / dark with a system default. The initial value is
+// Theme controller - light / dark with a system default. The initial value is
 // applied before first paint by a tiny inline script in each page <head> (no
 // flash); this module keeps it in sync, mounts the topbar toggle, and reacts to
 // OS changes while the user is on "system". Persisted in localStorage.

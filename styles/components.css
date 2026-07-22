@@ -53,7 +53,7 @@
   filter: none;
 }
 
-/* AI insight feed — severity-accented rows. */
+/* AI insight feed - severity-accented rows. */
 .insight-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .insight {
   display: grid;

@@ -12,3 +12,6 @@ package-lock.json
 
 # Supabase CLI scratch
 supabase/.temp/
+
+# Capacitor staged web assets (generated in CI from the repo's own web files)
+www/

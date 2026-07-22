@@ -1,5 +1,5 @@
 // Computes a 0-100 habit score with per-component breakdown.
-// Pure function — inputs are arrays of rows shaped like the supabase tables
+// Pure function - inputs are arrays of rows shaped like the supabase tables
 // (wellness_logs, body_metrics, food_logs, ledger_entries). `todayISO` is an
 // ISO date string anchoring the 7-day window.
 

@@ -30,7 +30,7 @@ assert.equal(mealSlotFromTime("2026-06-23T20:30:00+05:30"), "dinner");
 assert.equal(mealSlotFromTime("2026-06-23T21:00:00+05:30"), "dinner");
 
 // ---------------------------------------------------------------------------
-// amount extraction — only with a real money cue, never a bare quantity
+// amount extraction - only with a real money cue, never a bare quantity
 // ---------------------------------------------------------------------------
 assert.equal(extractAmount("I'm just spent 120 on Rose milk and mushroom sandwich"), 120);
 assert.equal(extractAmount("had 4 eggs and 1 roti - 120"), 120);
@@ -44,7 +44,7 @@ assert.equal(extractAmount("weight 75 kg today"), null, "kg is not money");
 assert.equal(extractAmount("ate 3 rotis dal sabzi"), null);
 
 // ---------------------------------------------------------------------------
-// date resolution — relative + explicit, in IST
+// date resolution - relative + explicit, in IST
 // ---------------------------------------------------------------------------
 assert.equal(resolveOccurredAt("had it yesterday night", NOW), "2026-06-25T21:00:00+05:30");
 assert.equal(resolveOccurredAt("last night", NOW), "2026-06-25T21:00:00+05:30");
@@ -80,7 +80,7 @@ assert.equal(has(expandToolCalls([
 ]), "create_food_log_candidate").length, 1);
 
 // ---------------------------------------------------------------------------
-// SALVAGE — the actual user complaints. A review-only result for a clear capture
+// SALVAGE - the actual user complaints. A review-only result for a clear capture
 // must become real rows, with the review request dropped.
 // ---------------------------------------------------------------------------
 const review = (reason = "domain unclear") => [{ name: "request_user_review", arguments: { reason }, confidence: 0.5 }];
@@ -139,7 +139,7 @@ const review = (reason = "domain unclear") => [{ name: "request_user_review", ar
 }
 
 // ---------------------------------------------------------------------------
-// BUYING vs EATING — a grocery purchase is an expense, never a meal
+// BUYING vs EATING - a grocery purchase is an expense, never a meal
 // ---------------------------------------------------------------------------
 
 // Model emits expense + (wrong) food log for a grocery run -> food dropped.
@@ -169,7 +169,7 @@ const review = (reason = "domain unclear") => [{ name: "request_user_review", ar
 }
 
 // ---------------------------------------------------------------------------
-// guards — don't salvage what isn't there, don't drop safety reviews
+// guards - don't salvage what isn't there, don't drop safety reviews
 // ---------------------------------------------------------------------------
 
 // Non-food, non-money note -> review stays, nothing synthesized.
@@ -200,12 +200,12 @@ const review = (reason = "domain unclear") => [{ name: "request_user_review", ar
 }
 
 // ---------------------------------------------------------------------------
-// EAT vs BUY — a grocery/stock purchase is an expense ONLY, never calories.
+// EAT vs BUY - a grocery/stock purchase is an expense ONLY, never calories.
 // ---------------------------------------------------------------------------
 
 // "groceries for the week" -> expense salvaged, NO food_log (it wasn't eaten).
 {
-  const r = expandToolCalls(review(), { evidence: "groceries for the week — paneer and rice, paid 800", now: NOW });
+  const r = expandToolCalls(review(), { evidence: "groceries for the week - paneer and rice, paid 800", now: NOW });
   assert.equal(one(r, "create_expense_candidate").arguments.amount, 800);
   assert.equal(has(r, "create_food_log_candidate").length, 0, "groceries are not a meal");
 }
@@ -227,7 +227,7 @@ const review = (reason = "domain unclear") => [{ name: "request_user_review", ar
 }
 
 // ---------------------------------------------------------------------------
-// GYM salvage — workout free text becomes a workout_log, even without "gym".
+// GYM salvage - workout free text becomes a workout_log, even without "gym".
 // ---------------------------------------------------------------------------
 
 // "did Workout A ..." review-only -> a workout_log, review dropped.
@@ -254,7 +254,7 @@ assert.ok(one(expandToolCalls(review(), { evidence: "ran 5k this morning", now: 
 assert.equal(has(expandToolCalls(review(), { evidence: "grocery run at dmart - 1200", now: NOW }), "create_workout_log_candidate").length, 0);
 
 // ---------------------------------------------------------------------------
-// CHANGE REQUEST / QUERY suppression — a command must NOT synthesize any log
+// CHANGE REQUEST / QUERY suppression - a command must NOT synthesize any log
 // (no ledger / food / workout row, nothing to tick). The brain routes it to
 // update_plan_candidate / set_target_candidate instead.
 // ---------------------------------------------------------------------------

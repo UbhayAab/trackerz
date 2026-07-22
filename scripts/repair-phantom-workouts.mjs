@@ -20,7 +20,7 @@ import { looksLikeGym } from "../lib/capture-intent.mjs";
 
 loadEnv({ path: ".env.local" });
 // Pooler fallback for when the direct db.* host is IPv6-only and fails to
-// resolve. Never inline the password here — set SUPABASE_DB_URL_POOLER in
+// resolve. Never inline the password here - set SUPABASE_DB_URL_POOLER in
 // .env.local (gitignored) alongside SUPABASE_DB_URL.
 const FALLBACK = process.env.SUPABASE_DB_URL_POOLER || "";
 const APPLY = process.argv.includes("--apply");
@@ -59,7 +59,7 @@ try {
   }
 
   if (!targets.length) { console.log("\nnothing to repair."); process.exit(0); }
-  if (!APPLY) { console.log("\ndry run — pass --apply to write"); process.exit(0); }
+  if (!APPLY) { console.log("\ndry run - pass --apply to write"); process.exit(0); }
 
   await client.query("begin");
   for (const r of targets) {
@@ -81,7 +81,7 @@ try {
   await client.query("commit");
 
   console.log(`\nre-marked ${targets.length} rows as skipped (audit_log has the previous values)`);
-  console.log(`cleared ${del.rowCount} habit_days rows for ${days.join(", ")} — they recompute on the next close-out`);
+  console.log(`cleared ${del.rowCount} habit_days rows for ${days.join(", ")} - they recompute on the next close-out`);
 } catch (err) {
   await client.query("rollback").catch(() => {});
   console.error("rolled back:", err.message);

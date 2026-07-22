@@ -1,7 +1,7 @@
 // Possible-duplicates panel: renders open duplicate_candidates rows (built by
 // src/services/dedupe-scan.js) as a pair to compare, with Merge (stamp the
 // loser's merged_into and keep the row) / Dismiss (not a duplicate) actions.
-// The scan + data model existed with no UI ever reading them — this is that
+// The scan + data model existed with no UI ever reading them - this is that
 // missing surface. Merge never deletes: the losing capture stays visible in the
 // audit trail, it just stops counting toward money totals.
 //
@@ -29,7 +29,7 @@ export function isMerged(rec) {
 export function summarizeSide(rec) {
   if (!rec) return "(already removed)";
   const amount = rec.amount != null ? `₹${Number(rec.amount).toLocaleString("en-IN")}` : "₹?";
-  const label = rec.merchant || rec.description || "—";
+  const label = rec.merchant || rec.description || "-";
   const when = fmtWhen(rec.occurred_at);
   return `${amount} · ${label}${when ? ` · ${when}` : ""}${isMerged(rec) ? " · already merged" : ""}`;
 }
@@ -40,7 +40,7 @@ export function summarizeSide(rec) {
 export function pickDefaultKeep(row) {
   const { a, b } = row;
   if (!a || !b) return a ? "a" : "b";
-  // Never default to keeping a row that was already merged away — it no longer
+  // Never default to keeping a row that was already merged away - it no longer
   // counts anywhere, so making it the survivor would drop both sides.
   if (isMerged(a) !== isMerged(b)) return isMerged(a) ? "b" : "a";
   if (Boolean(a.merchant) !== Boolean(b.merchant)) return a.merchant ? "a" : "b";

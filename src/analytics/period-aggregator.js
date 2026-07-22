@@ -3,12 +3,12 @@
 // the shape the dashboard renderers consume.
 //
 // Buckets:
-//   today      — 00:00 → now of `today`
-//   yesterday  — full prior day
-//   week       — last 7 calendar days incl. today
-//   prev_week  — previous 7d block
-//   month      — calendar month containing `today`
-//   prev_month — prior calendar month
+//   today      - 00:00 → now of `today`
+//   yesterday  - full prior day
+//   week       - last 7 calendar days incl. today
+//   prev_week  - previous 7d block
+//   month      - calendar month containing `today`
+//   prev_month - prior calendar month
 //
 // For each bucket we emit { spend, income, mealCount, calories, protein, steps, sleepHours, moodAvg }.
 

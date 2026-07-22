@@ -1,0 +1,6 @@
+# The Gradle wrapper script must keep LF endings or `./gradlew` fails on the
+# Linux CI runner with "bad interpreter". This repo is authored on Windows, so
+# pin it explicitly instead of relying on core.autocrlf.
+android/gradlew text eol=lf
+*.sh text eol=lf
+gradlew text eol=lf

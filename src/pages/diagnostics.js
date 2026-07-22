@@ -14,7 +14,7 @@ bootWithAuth(async () => {
 });
 
 // Every check resolves to one of these. A check that succeeds with something
-// worth reporting (a row sample, a rejection reason) still has to score green —
+// worth reporting (a row sample, a rejection reason) still has to score green -
 // scoring a detail string as failure is what made this page lie.
 const ok = (detail = "") => ({ status: "ok", detail });
 const warn = (detail) => ({ status: "warn", detail });
@@ -43,7 +43,7 @@ async function runChecks() {
       name: "Web Speech (Chrome only)",
       run: () => (isLiveTranscriptionSupported()
         ? ok()
-        : warn("no SpeechRecognition in this browser — voice capture falls back to upload")),
+        : warn("no SpeechRecognition in this browser - voice capture falls back to upload")),
     },
     { name: "Supabase reachable", run: pingSupabase },
     { name: "Profile row exists", run: profileExists },
@@ -85,7 +85,7 @@ function normalize(result) {
 
 function paint(cell, { status, detail }) {
   const label = status === "ok" ? "OK" : status === "warn" ? "WARN" : "FAIL";
-  const text = detail ? `${label} — ${detail}` : label;
+  const text = detail ? `${label} - ${detail}` : label;
   cell.textContent = text.length > 200 ? `${text.slice(0, 200)}…` : text;
   cell.title = text; // full error survives the visual truncation
   cell.className = `diag-status ${status}`;
@@ -109,7 +109,7 @@ async function describeError(err) {
   const body = await readErrorBody(err);
   if (body) parts.push(body);
   if (!parts.length) parts.push(stringifyUnknown(err));
-  return parts.join(" — ");
+  return parts.join(" - ");
 }
 
 async function readErrorBody(err) {
@@ -143,7 +143,7 @@ async function pingSupabase() {
 async function profileExists() {
   const supabase = await getSupabaseClient();
   const session = getCurrentSession();
-  if (!session) return warn("not signed in — cannot check");
+  if (!session) return warn("not signed in - cannot check");
   const { data, error } = await supabase.from("profiles").select("id").eq("id", session.user.id).maybeSingle();
   if (error) throw error;
   return data ? ok() : fail("no profiles row for this user id");
@@ -166,13 +166,13 @@ async function readFoodLogs() {
 async function readBucket() {
   const supabase = await getSupabaseClient();
   const session = getCurrentSession();
-  if (!session) return warn("not signed in — cannot check");
+  if (!session) return warn("not signed in - cannot check");
   const { data, error } = await supabase.storage.from("raw-media").list(session.user.id, { limit: 1 });
   if (error) throw error;
   return ok(Array.isArray(data) ? `${data.length} object sample` : "read succeeded, object count not reported");
 }
 
-// A zero-row read is a successful read, not a missing number — say so plainly.
+// A zero-row read is a successful read, not a missing number - say so plainly.
 function sampleNote(data) {
   return Array.isArray(data) ? `${data.length} row sample (limit 1)` : "read succeeded, row count not reported";
 }

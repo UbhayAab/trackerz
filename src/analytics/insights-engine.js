@@ -51,7 +51,7 @@ export function buildInsightFeed({
     push(it.kind, it.severity, it.text);
   }
 
-  // Diet — protein gap with a concrete fix for today.
+  // Diet - protein gap with a concrete fix for today.
   const todayFoods = foodLogs.filter((r) => isSameLocalDay(r.occurred_at, today));
   const proteinToday = todayFoods.reduce((s, r) => s + (Number(r.protein_g) || 0), 0);
   const proteinGap = proteinTargetG - proteinToday;
@@ -60,7 +60,7 @@ export function buildInsightFeed({
     push("diet", "warning", `Protein gap ${Math.round(proteinGap)}g. ${fix}`);
   }
 
-  // Diet — eating window / late snack today.
+  // Diet - eating window / late snack today.
   const todayWindow = computeEatingWindow(todayFoods);
   if (todayWindow.lateNightSnack) {
     push("diet", "info", `Late-night eating today (last meal after 22:30).`);
@@ -70,7 +70,7 @@ export function buildInsightFeed({
     push("diet", "warning", `Late snacking ${lateSnack.lateNightDayCount}/${lateSnack.totalDays} days (streak ${lateSnack.longestStreak}).`);
   }
 
-  // Diet/Fitness — weight trend (7-day rolling avg vs 14-day).
+  // Diet/Fitness - weight trend (7-day rolling avg vs 14-day).
   const weight = rollingWeightAverages(bodyMetrics);
   if (weight.latestAvg7 != null && weight.latestAvg14 != null) {
     const diff = weight.latestAvg7 - weight.latestAvg14;
@@ -80,30 +80,30 @@ export function buildInsightFeed({
     }
   }
 
-  // Wellness — sleep debt over the last 7 days.
+  // Wellness - sleep debt over the last 7 days.
   const sleep = computeSleepDebt(bodyMetrics, sleepTargetH);
   if (sleep.debtHours >= 3) {
     push("wellness", sleep.debtHours >= 6 ? "warning" : "info", `Sleep debt ${sleep.debtHours}h this week (avg ${sleep.dailyAvg}h/night).`);
   }
 
-  // Money — forward-looking "safe to spend today" from budget + pace + upcoming subs.
+  // Money - forward-looking "safe to spend today" from budget + pace + upcoming subs.
   const safe = safeToSpendToday({ ledger, budgets, subscriptions, today });
   if (safe.hasBudget) {
     const sev = safe.perDay <= 0 ? "critical" : safe.remaining < safe.monthlyCap * 0.1 ? "warning" : "good";
     push("money", sev, `Safe to spend today: ${fmtRupees(safe.perDay)} (${fmtRupees(safe.remaining)} left over ${safe.daysLeft}d).`);
   }
 
-  // Money — opportunity cost of discretionary spend (motivational, not advice).
+  // Money - opportunity cost of discretionary spend (motivational, not advice).
   const oc = computeOpportunityCost(ledger);
   if (oc.count >= 3 && oc.gain !== 0) {
     const verb = oc.gain > 0 ? "would be worth" : "would be";
     push("money", "info", `${fmtRupees(oc.totalSpent)} of discretionary spend ${verb} ${fmtRupees(oc.hypotheticalNow)} in Nifty 50 today (${oc.pct >= 0 ? "+" : ""}${oc.pct}%).`);
   }
 
-  // Money — internal transfers + refunds detected (informational, no auto-edit).
+  // Money - internal transfers + refunds detected (informational, no auto-edit).
   const transfers = detectTransfers(ledger);
   if (transfers.length) {
-    push("money", "info", `${transfers.length} likely internal transfer${transfers.length > 1 ? "s" : ""} detected — exclude from spend?`);
+    push("money", "info", `${transfers.length} likely internal transfer${transfers.length > 1 ? "s" : ""} detected - exclude from spend?`);
   }
   const refunds = matchRefunds(ledger);
   if (refunds.length) {

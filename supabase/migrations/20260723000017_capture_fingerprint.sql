@@ -3,8 +3,8 @@
 -- of writing the ledger a second and third time.
 --
 -- The defect this closes (2026-07-09): "Just ate 20 rupees lays and 60 for 3
--- boiled eggs and some riata" produced ledger rows THREE times — 80, then 20+60,
--- then 20+60 — after a transport error convinced the client nothing had landed
+-- boiled eggs and some riata" produced ledger rows THREE times - 80, then 20+60,
+-- then 20+60 - after a transport error convinced the client nothing had landed
 -- and the user re-submitted. ~Rs 240 recorded for an Rs 80 purchase.
 --
 -- Deliberately NOT a unique constraint on (user_id, amount, direction, minute,
@@ -13,7 +13,7 @@
 --     same Rs 20 chai twice in an afternoon is real data, not a duplicate), and
 --   * when it fired, the constraint violation would be caught by the edge
 --     function's applyTool try/catch and buried in an ai_actions row with
---     status='errored' — silent data loss, the exact failure mode this codebase
+--     status='errored' - silent data loss, the exact failure mode this codebase
 --     exists to prevent.
 -- The guard is instead a LOOKUP in the edge function over a short window: a
 -- repeat inside 10 minutes is folded into the first run, and the identical
@@ -21,7 +21,7 @@
 --
 -- The fingerprint is computed SERVER-SIDE (see captureFingerprint() in
 -- supabase/functions/agent/index.ts) from (user_id, normalised raw text, media
--- asset ids) and never from wall-clock time — the two submits above were 60
+-- asset ids) and never from wall-clock time - the two submits above were 60
 -- seconds apart, so any minute bucket sees two different captures.
 --
 -- Idempotent. Schema-only: touches no existing rows. Repairing the Rs 240 of
@@ -32,7 +32,7 @@ alter table public.raw_ingestions
 
 -- Set when a capture was recognised as a repeat: this ingestion never ran a
 -- pipeline of its own, and points at the ingestion whose run it reused. Null
--- means "not a duplicate" — never confuse it with "duplicate of nothing".
+-- means "not a duplicate" - never confuse it with "duplicate of nothing".
 alter table public.raw_ingestions
   add column if not exists duplicate_of_ingestion_id uuid
     references public.raw_ingestions(id) on delete set null;

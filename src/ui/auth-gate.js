@@ -51,7 +51,7 @@ function isRecoveryLanding() {
 }
 
 // Local test mode is a developer escape hatch that looks identical to being
-// signed in — except none of the real account's data is there. Make it obvious,
+// signed in - except none of the real account's data is there. Make it obvious,
 // and give a one-tap way out.
 function renderLocalModeBanner(session) {
   document.getElementById("trackerz-local-banner")?.remove();
@@ -60,7 +60,7 @@ function renderLocalModeBanner(session) {
   bar.id = "trackerz-local-banner";
   bar.className = "local-mode-banner";
   bar.innerHTML = `
-    <span>Local test mode — nothing syncs and your real account's data is not shown.</span>
+    <span>Local test mode - nothing syncs and your real account's data is not shown.</span>
     <button type="button" id="exitLocalMode" class="secondary-button">Sign in for real</button>
   `;
   document.body.prepend(bar);
@@ -114,7 +114,7 @@ function showSignInCard() {
       <span class="auth-logo" aria-hidden="true">◆</span>
       <div class="auth-brand-text">
         <strong>Trackerz</strong>
-        <span>Capture money, food &amp; wellness — your AI sorts it.</span>
+        <span>Capture money, food &amp; wellness - your AI sorts it.</span>
       </div>
     </div>
     <h2>Sign in</h2>
@@ -178,7 +178,7 @@ function showSignInCard() {
 
   // Surface why sign-in is failing, instead of an empty card. Covers both a
   // bounced OAuth/magic-link redirect and a session-restore failure (offline,
-  // CDN blocked, project unreachable) — all of which used to look identical to
+  // CDN blocked, project unreachable) - all of which used to look identical to
   // "you are simply signed out".
   const banner = card.querySelector("#authBanner");
   const redirectError = readAuthRedirectError();
@@ -187,7 +187,7 @@ function showSignInCard() {
     banner.hidden = false;
     banner.textContent = redirectError
       ? `Sign-in was rejected: ${redirectError}`
-      : `Couldn't reach the account service: ${initError}. Check your connection — your data is safe.`;
+      : `Couldn't reach the account service: ${initError}. Check your connection - your data is safe.`;
   }
 
   card.querySelector("#pwForgot").addEventListener("click", async () => {
@@ -216,7 +216,7 @@ function showSignInCard() {
   });
   // Don't offer a button that cannot work. Both providers are disabled on this
   // project, so "Continue with Google" could only ever eject the user to a
-  // Supabase error page — which is exactly what the owner reported.
+  // Supabase error page - which is exactly what the owner reported.
   getEnabledProviders().then((external) => {
     if (!external) return; // couldn't tell; leave the buttons alone
     const row = card.querySelector(".oauth-row");
@@ -310,7 +310,7 @@ function showRecoveryCard() {
 }
 
 // The account control IS the existing topbar Settings link, collapsed to a
-// compact avatar (the user's initial) — no sprawling email in the bar. Account
+// compact avatar (the user's initial) - no sprawling email in the bar. Account
 // details + sign-out live on the Settings page the link already points to.
 function renderAuthPill(session) {
   const topbar = document.querySelector(".topbar");

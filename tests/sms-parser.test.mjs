@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { parseBankSms, looksLikeBankSms, smsToCaptureText } from "../src/imports/sms-parser.js";
 
-// Debit with balance — must not read the balance as the amount.
+// Debit with balance - must not read the balance as the amount.
 const debit = parseBankSms("Rs.500.00 debited from a/c **1234 on 12-06-24 to SWIGGY UPI Ref 401234567890. Avl Bal Rs.10,000.00");
 assert.equal(debit.ok, true);
 assert.equal(debit.amount, 500);

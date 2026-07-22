@@ -1,0 +1,20 @@
+{
+  "appId": "com.ubhayaab.trackerz",
+  "appName": "Trackerz",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost",
+    "allowNavigation": [
+      "yyoewdcijplkhxleejtm.supabase.co",
+      "*.supabase.co",
+      "*.supabase.in",
+      "accounts.google.com"
+    ]
+  }
+}

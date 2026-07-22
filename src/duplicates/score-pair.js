@@ -6,7 +6,7 @@ const REL_AMOUNT_TOLERANCE = 0.03;
 export const MIN_SCORE_TO_FLAG = 0.6;
 
 // Two rows in different currencies are never the same payment, however well the
-// numbers line up — "$80" and "₹80" would otherwise score as an exact amount
+// numbers line up - "$80" and "₹80" would otherwise score as an exact amount
 // match. An ABSENT currency is not a match either: it is unknown, so it neither
 // confirms nor denies, and we fall through to the other signals without credit.
 export function currencyConflict(a, b) {
@@ -65,7 +65,7 @@ export function scorePair(a, b) {
   }
 
   // Without a time-window match, "same merchant same amount different day"
-  // is not a duplicate — it's a recurring expense. Cap below flag threshold.
+  // is not a duplicate - it's a recurring expense. Cap below flag threshold.
   if (!hasTimeMatch) {
     score = Math.min(score, MIN_SCORE_TO_FLAG - 0.05);
   }

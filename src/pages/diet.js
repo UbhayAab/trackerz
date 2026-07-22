@@ -3,11 +3,12 @@ import { renderMetrics } from "../ui/metrics.js";
 import { renderOperationalTables } from "../ui/operational-tables.js";
 import { renderNav } from "../ui/navigation.js";
 import { bindBudgetInputs, renderBudgetInputs } from "../ui/budget-inputs.js";
+import { renderDietPlan, bindDietPlan } from "../ui/diet-plan-panel.js";
 import { subscribe } from "../state/app-state.js";
 import { bootWithAuth } from "./bootstrap.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 
-// Diet domain helpers (Wave 4) — re-exported so the page module is the
+// Diet domain helpers (Wave 4) - re-exported so the page module is the
 // single import surface used by the diet UI layer.
 export { computeMacroPace } from "../domain/diet/macro-pace.js";
 export { suggestProteinFixes, PROTEIN_SOURCES } from "../domain/diet/protein-gap.js";
@@ -25,8 +26,13 @@ bootWithAuth(async () => {
     renderOperationalTables(state);
     renderInsights(state);
     renderBudgetInputs(state);
+    // The day-navigable diet log (stepper + calendar + swipe strip). Same panel as
+    // the Home hub - additive here so the dedicated Diet page can reach past days.
+    renderDietPlan(state);
   });
   bindInsights();
   bindBudgetInputs("dietBudgetStatus");
+  bindDietPlan();
+  renderDietPlan(); // first paint before state hydrates
   await hydrateStateFromSupabase();
 });

@@ -20,14 +20,14 @@ function stage(key, overrides = {}) {
   return { ...base, ...overrides };
 }
 
-// A dropped invoke tells us nothing about what the server did — the edge function
+// A dropped invoke tells us nothing about what the server did - the edge function
 // is the writer, and on 2026-07-09 a transport error after a successful write plus
 // one re-submit put ~Rs 240 in the ledger for an Rs 80 purchase. So we ask the DB.
 const RUN_POLL_TRIES = 3;
 const RUN_POLL_MS = 1000;
 
 // options.ingestionId: reuse an existing raw_ingestions row (an explicit user
-// retry — see retryCapture); options.onIngestion: fires as soon as the row exists
+// retry - see retryCapture); options.onIngestion: fires as soon as the row exists
 // so a caller (e.g. the offline queue) can remember it and retry against it.
 export async function runCapture({ text = "", files = [], captureType = "auto", transcript = "" }, { onStage, ingestionId = null, onIngestion } = {}) {
   const sourceType = inferSourceType(text, files, transcript);
@@ -66,7 +66,7 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
 
   onStage?.(stage("uploading", {
     detail: reusedIngestion
-      ? `Retrying raw ingestion ${shortId(ingestion.id)} — no new capture row.`
+      ? `Retrying raw ingestion ${shortId(ingestion.id)} - no new capture row.`
       : `Saved raw ingestion ${shortId(ingestion.id)}.`,
   }), 1);
 
@@ -82,7 +82,7 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
 
   onStage?.(stage("extracting", {
     detail: !mediaAssets.length ? "Text input only."
-      : reusedMedia ? `${mediaAssets.length} media file(s) already uploaded — reused.`
+      : reusedMedia ? `${mediaAssets.length} media file(s) already uploaded - reused.`
       : `${mediaAssets.length} media file(s) uploaded.`,
   }), 2);
 
@@ -109,7 +109,7 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
 
   const failed = Boolean(fnErr) || !agentResp?.toolCalls;
   // A failed invoke does NOT mean nothing was written. Ask the DB whether a run
-  // landed for this ingestion before saying the agent was unavailable — claiming
+  // landed for this ingestion before saying the agent was unavailable - claiming
   // "unavailable" is what invites the re-submit that duplicates the ledger.
   const probe = failed ? await findRunForIngestion(supabase, ingestion.id) : { run: null, error: null };
 
@@ -143,11 +143,11 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
     if (reviewErr) throw new Error(`capture_review_row_failed: ${reviewErr.message} (agent also failed: ${fnErr?.message || fnErr || "empty response"})`);
     onStage?.(stage("dedupe", {
       detail: unverified
-        ? `Agent call failed and the run could not be checked — capture queued for review. Check the feed before re-submitting.`
+        ? `Agent call failed and the run could not be checked - capture queued for review. Check the feed before re-submitting.`
         : `Agent unavailable; capture queued for review.`,
     }), 4);
   } else if (agentResp.duplicate) {
-    onStage?.(stage("dedupe", { detail: `Already recorded by an earlier run — no new rows written.` }), 4);
+    onStage?.(stage("dedupe", { detail: `Already recorded by an earlier run - no new rows written.` }), 4);
   } else {
     onStage?.(stage("dedupe", { detail: `${agentResp.toolCalls.length || 0} tool call(s) proposed.` }), 4);
   }
@@ -160,19 +160,19 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
     onStage?.(stage("dedupe", { detail: `${dedupeResult.pairs} possible duplicate(s) flagged.` }), 4);
   } else if (dedupeResult.error) {
     // Surfaced, not swallowed: a thrown exception here used to look identical to
-    // "scanned cleanly, found nothing" — the duplicate-candidates pipeline went
+    // "scanned cleanly, found nothing" - the duplicate-candidates pipeline went
     // dark for weeks with zero signal anywhere. See dedupe-scan.js.
     console.error("[agent-runner] dedupe scan failed:", dedupeResult.error);
-    onStage?.(stage("dedupe", { detail: `Dedupe check failed (${dedupeResult.error.message || "see console"}) — capture still saved.` }), 4);
+    onStage?.(stage("dedupe", { detail: `Dedupe check failed (${dedupeResult.error.message || "see console"}) - capture still saved.` }), 4);
   }
   // Never narrate a write that this attempt did not perform.
   const duplicate = agentResp?.duplicate === true;
-  const writeDetail = duplicate ? "No rows written — this capture was already applied."
+  const writeDetail = duplicate ? "No rows written - this capture was already applied."
     : probe.run ? "Rows were written by the run that already landed."
     : failed ? "No agent rows written; capture is in the review queue."
     : null;
   onStage?.(stage("writing", writeDetail ? { detail: writeDetail } : {}), 5);
-  onStage?.(stage("done", duplicate || probe.run ? { detail: "Tables refreshed — nothing duplicated." } : {}), 6);
+  onStage?.(stage("done", duplicate || probe.run ? { detail: "Tables refreshed - nothing duplicated." } : {}), 6);
 
   return {
     ingestion,
@@ -180,6 +180,11 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
     agentResp,
     dedupe: dedupeResult,
     duplicate,
+    // A recurring-spend suggestion the server attached when the capture named a
+    // known meal but no price. It is an OFFER, never an applied write - the UI
+    // shows the evidence and lets the user tap to accept. Null = nothing to offer.
+    spendSuggestion: agentResp?.spendSuggestion || null,
+    suggestionIngestionId: ingestion.id,
     // The run the server had already completed for this ingestion, found after a
     // failed invoke. Null means "no such run", not "no run happened elsewhere".
     recoveredRun: probe.run,
@@ -189,7 +194,7 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
 }
 
 export async function retryCapture(input, { ingestionId, onStage } = {}) {
-  if (!ingestionId) throw new Error("retryCapture requires the original ingestionId — a retry must never mint a new capture row");
+  if (!ingestionId) throw new Error("retryCapture requires the original ingestionId - a retry must never mint a new capture row");
   return runCapture(input, { onStage, ingestionId });
 }
 
@@ -227,7 +232,7 @@ async function findRunForIngestion(supabase, ingestionId, { tries = RUN_POLL_TRI
         .select("id", { count: "exact", head: true })
         .eq("ai_run_id", run.id);
       if (countErr) console.error("[agent-runner] recovered run found, action count unavailable:", countErr);
-      // null, never 0 — an unknown count must not render as "wrote nothing".
+      // null, never 0 - an unknown count must not render as "wrote nothing".
       return { run, actionCount: countErr ? null : (count ?? null), error: null };
     }
   }
@@ -298,5 +303,5 @@ function pickKind(file) {
 }
 
 function shortId(id) {
-  return id?.slice(0, 8) || "—";
+  return id?.slice(0, 8) || "-";
 }

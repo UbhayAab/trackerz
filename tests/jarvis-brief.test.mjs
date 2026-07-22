@@ -1,4 +1,4 @@
-// Jarvis brief brain — day-close math, streaks, facts, deterministic voice.
+// Jarvis brief brain - day-close math, streaks, facts, deterministic voice.
 import assert from "node:assert/strict";
 import {
   jbDateKeyInTz, jbDayWindow, jbAddDays, jbWeekdayFromKey, jbDaysLeftInMonth,
@@ -10,7 +10,7 @@ import {
 const IST = "Asia/Kolkata";
 
 // --- timezone math -----------------------------------------------------------
-// 2026-07-05T18:35:00Z = 2026-07-06 00:05 IST — the close-out fires just past
+// 2026-07-05T18:35:00Z = 2026-07-06 00:05 IST - the close-out fires just past
 // IST midnight and must resolve to the NEW IST day.
 assert.equal(jbDateKeyInTz(new Date("2026-07-05T18:35:00Z"), IST), "2026-07-06");
 assert.equal(jbDateKeyInTz(new Date("2026-07-05T18:29:00Z"), IST), "2026-07-05");
@@ -115,7 +115,7 @@ assert.equal(skippedOnly.flags.workout, false);
 assert.equal(skippedOnly.flags.workout_ok, false);
 assert.equal(skippedOnly.flags.logged, true, "declining the gym still counts as answering the day");
 
-// A REAL workout with no duration and no sets still counts — the affirmative
+// A REAL workout with no duration and no sets still counts - the affirmative
 // salvage path emits exactly that shape, so gating on duration would silently
 // reset the gym streak on genuine training days.
 const bareWorkout = jbCloseDay({
@@ -143,7 +143,7 @@ assert.deepEqual(s1, { workout: 1, protein: 1, budget: 1, logging: 1 });
 const s2 = jbNextStreaks({ workout: 4, protein: 9, budget: 2, logging: 30 }, day.flags);
 assert.deepEqual(s2, { workout: 5, protein: 10, budget: 3, logging: 31 });
 // An empty day resets EVERY streak, budget included. It used to keep the budget
-// streak alive on the theory that "Rs 0 is under cap" — but a day with nothing
+// streak alive on the theory that "Rs 0 is under cap" - but a day with nothing
 // logged is not evidence of Rs 0 spent, it is evidence the user never opened the
 // app. Growing a budget streak from missing data is the same lie as reporting
 // sleep_h 0 when no sleep was ever measured.
@@ -200,7 +200,7 @@ assert.equal(noTargetFacts.money.hasBudget, false);
 
 // --- deterministic voices ----------------------------------------------------
 const morning = jbMorningFallback(facts);
-assert.ok(morning.includes("Good morning — Monday, Soybean day."));
+assert.ok(morning.includes("Good morning - Monday, Soybean day."));
 assert.ok(morning.includes("Workout A"));
 assert.ok(morning.includes("150g protein"));
 assert.ok(morning.includes("Netflix Rs 199 expected in 3d."));

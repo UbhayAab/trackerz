@@ -15,14 +15,14 @@ assert.deepEqual(cross.reasons, ["currency_mismatch"]);
 // Same currency still scores exactly as before.
 assert.ok(scorePair(inr, { ...usd, currency: "inr" }).score >= 0.9, "case-insensitive currency match");
 
-// An unknown currency is unknown — it neither blocks nor credits.
+// An unknown currency is unknown - it neither blocks nor credits.
 assert.equal(currencyConflict(inr, { ...usd, currency: null }), false);
 assert.ok(scorePair(inr, { ...usd, currency: null }).score >= 0.9);
 
 // ------------------------------------------------------- same-ingestion re-apply (d)
 const base = { amount: 20, direction: "expense", occurred_at: "2026-07-09T13:00:00Z" };
 assert.equal(sameIngestionReapply(base, { ...base, occurred_at: "2026-07-09T13:04:00Z" }), true);
-// One capture legitimately produces different line items — not duplicates.
+// One capture legitimately produces different line items - not duplicates.
 assert.equal(sameIngestionReapply(base, { ...base, amount: 60 }), false);
 assert.equal(sameIngestionReapply(base, { ...base, direction: "income" }), false);
 // Same amount days apart within one ingestion is not a re-application.

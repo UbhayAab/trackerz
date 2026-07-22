@@ -1,4 +1,4 @@
-// PIPELINE-STAGES GUARD — keeps the AI engine a NAMED, ORDERED layer instead of
+// PIPELINE-STAGES GUARD - keeps the AI engine a NAMED, ORDERED layer instead of
 // scattered logic. Asserts every stage function exists in the edge function, that
 // the critical order holds (ground → sanity → persist; reason → parse → fan-out),
 // and that each pure stage has its lib/src mirror (so it stays unit-testable).
@@ -68,7 +68,7 @@ const MIRRORS = [
   "src/agent/tool-schemas.js", "src/agent/tool-registry.js",
 ];
 for (const f of MIRRORS) {
-  assert.ok(existsSync(f), `pure mirror "${f}" is missing — a stage lost its testable source of truth`);
+  assert.ok(existsSync(f), `pure mirror "${f}" is missing - a stage lost its testable source of truth`);
 }
 
 console.log(`pipeline-stages tests passed: ${STAGE_FNS.length} stages present, order locked, ${MIRRORS.length} mirrors intact`);

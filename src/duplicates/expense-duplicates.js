@@ -18,8 +18,8 @@ export function clusterExpenseDuplicates(rows) {
 // One row that equals the sum of several others is the shape of a double-apply:
 // "just ate 20 rupees lays and 60 for 3 boiled eggs" landed once as a single
 // Rs 80 row and again as Rs 20 + Rs 60 (2026-07-09, ~Rs 240 booked for an Rs 80
-// purchase). Pairwise scoring can never see it — no two of those rows have the
-// same amount — so the whole incident was invisible to the scanner.
+// purchase). Pairwise scoring can never see it - no two of those rows have the
+// same amount - so the whole incident was invisible to the scanner.
 const DEFAULTS = {
   toleranceInr: 2,      // line items sum exactly; 2 absorbs paise rounding only
   windowHours: 4,       // matches the pair scanner's time bucket

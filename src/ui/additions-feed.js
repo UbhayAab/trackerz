@@ -1,6 +1,6 @@
 // The Home "additions" feed: a day-over-day list of everything that landed
 // (auto-committed), newest first, each row deletable with a single ✕. No approve
-// step — checking/capturing IS the commit; the feed is the trust signal + undo.
+// step - checking/capturing IS the commit; the feed is the trust signal + undo.
 // Shaping is pure (lib/additions.mjs); this module is the DOM + write side.
 
 import { buildAdditions, groupByDay } from "../../lib/additions.mjs";
@@ -29,7 +29,7 @@ export function renderAdditionsFeed(state) {
   if (!el) return;
   const items = Array.isArray(state.additions) ? state.additions : [];
   if (!items.length) {
-    el.innerHTML = `<p class="muted small">Nothing logged yet. Capture anything above — it lands here and you can delete any row with ✕.</p>`;
+    el.innerHTML = `<p class="muted small">Nothing logged yet. Capture anything above - it lands here and you can delete any row with ✕.</p>`;
     return;
   }
   el.innerHTML = groupByDay(items).map((g) => `
@@ -51,7 +51,7 @@ export function renderAdditionsFeed(state) {
 
 // Every row button writes to the DB, so a failure must put the row back AND say
 // why: a row that quietly un-strikes reads as "nothing happened" while the row is
-// still there. The write and the re-hydrate are separated on purpose — a hydrate
+// still there. The write and the re-hydrate are separated on purpose - a hydrate
 // failure after a successful write must NOT restore the row, or the feed would
 // claim the delete never landed.
 async function runRowAction(rowEl, label, write) {
@@ -59,13 +59,13 @@ async function runRowAction(rowEl, label, write) {
   try {
     await write();
   } catch (err) {
-    rowEl.classList.remove("is-deleting"); // write failed — the row is still in the DB
+    rowEl.classList.remove("is-deleting"); // write failed - the row is still in the DB
     showToast(`${label} failed: ${err?.message || err}`, { kind: "error", duration: 5000 });
     return;
   }
   // hydrateStateFromSupabase reports partial failures by RETURNING a status
   // rather than throwing (page boot must survive one dead read), so a catch
-  // alone would never fire — check the result.
+  // alone would never fire - check the result.
   let status;
   try {
     status = await hydrateStateFromSupabase();

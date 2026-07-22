@@ -1,5 +1,5 @@
 // Field-level evidence grounding. Before an AI write is auto-applied, confirm
-// the load-bearing fields actually appear in the evidence the model read — the
+// the load-bearing fields actually appear in the evidence the model read - the
 // user's text PLUS the OCR/vision text the model returns. If a field is not
 // grounded, the caller demotes the action to review instead of auto-applying.
 // This is the main defense against fabricated or prompt-injected writes from
@@ -36,7 +36,7 @@ export function isGrounded(toolName, args = {}, evidence = "") {
   const ev = String(evidence || "");
   // Note: for write tools, empty evidence yields false below (the number/word
   // helpers return false), which correctly forces review. Non-write tools fall
-  // through to the default `true` — they are gated elsewhere, not here.
+  // through to the default `true` - they are gated elsewhere, not here.
   switch (toolName) {
     case "create_expense_candidate":
     case "create_income_candidate":

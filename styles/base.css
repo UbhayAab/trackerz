@@ -34,7 +34,7 @@ p {
   margin-top: 0;
 }
 
-/* Tight, restrained type hierarchy — no oversized headings. */
+/* Tight, restrained type hierarchy - no oversized headings. */
 h1 {
   margin-bottom: 0;
   font-size: var(--fs-xl);

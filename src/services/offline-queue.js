@@ -125,7 +125,7 @@ export async function drainOfflineQueue(runCapture) {
       results.push({ id: row.id, ok: true, res });
     } catch (err) {
       // The capture DID land; only the local cleanup failed. Saying ok:false here
-      // would read as "not captured" — say exactly what happened instead.
+      // would read as "not captured" - say exactly what happened instead.
       results.push({ id: row.id, ok: true, res, cleanupError: err.message || String(err) });
     }
   }

@@ -10,24 +10,24 @@ import { buildBriefing } from "../src/analytics/briefing.js";
   });
   assert.equal(b.kind, "morning");
   assert.equal(b.forDate, "2026-06-30");
-  assert.ok(b.body.startsWith("Good morning — Monday, Soybean day."), b.body);
+  assert.ok(b.body.startsWith("Good morning - Monday, Soybean day."), b.body);
   assert.ok(b.body.includes("Planned: Workout A."));
   assert.ok(b.body.includes("162g protein, 2000 kcal"));
   assert.ok(b.body.includes("~Rs 1500"));
-  assert.equal(b.payload.headline, "Good morning — Monday, Soybean day.");
+  assert.equal(b.payload.headline, "Good morning - Monday, Soybean day.");
   assert.ok(b.payload.nudges.length >= 2);
 }
 
 // morning on a cardio day flags the forgiven-day label
 {
-  const b = buildBriefing("morning", { weekdayName: "Tuesday", workoutName: "Cardio — forgiven day", workoutKind: "cardio", proteinTarget: 162 });
+  const b = buildBriefing("morning", { weekdayName: "Tuesday", workoutName: "Cardio - forgiven day", workoutKind: "cardio", proteinTarget: 162 });
   assert.ok(b.body.includes("forgiven cardio day"));
 }
 
 // morning degrades gracefully with a sparse snapshot
 {
   const b = buildBriefing("morning", {});
-  assert.ok(b.body.startsWith("Good morning — today."), b.body);
+  assert.ok(b.body.startsWith("Good morning - today."), b.body);
 }
 
 // ---- evening: behind on everything -> a full nudge list ----

@@ -38,9 +38,9 @@ export function mountAccountPanel() {
 
   const render = (session) => {
     if (!session?.user) {
-      emailEl.textContent = "—";
-      uidEl.textContent = "—";
-      providersEl.textContent = "—";
+      emailEl.textContent = "-";
+      uidEl.textContent = "-";
+      providersEl.textContent = "-";
       statusEl.textContent = "signed out";
       return;
     }

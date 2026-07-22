@@ -15,7 +15,7 @@ const SELECT_COLUMNS = "id, amount, currency, merchant, description, occurred_at
 
 // A capture applied twice writes rows carrying the SAME ingestion_id, so the
 // old "skip pairs from one ingestion" rule made the 2026-07-09 triple-apply
-// (Rs 80, then Rs 20 + Rs 60, then Rs 20 + Rs 60 again — Rs 240 booked for an
+// (Rs 80, then Rs 20 + Rs 60, then Rs 20 + Rs 60 again - Rs 240 booked for an
 // Rs 80 purchase) structurally invisible to this scan. One ingestion CAN also
 // legitimately produce several distinct rows ("20 for lays AND 60 for eggs"),
 // so same-ingestion pairs are admitted only on a re-application signature:
@@ -56,7 +56,7 @@ export async function runCrossSourceDedupe({ since } = {}) {
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: false });
   // This scan silently returning {pairs:0} looks identical whether it found nothing
-  // or it errored — that already cost one duplicate-detection feature going dark
+  // or it errored - that already cost one duplicate-detection feature going dark
   // for 3+ weeks unnoticed (found 2026-07-04). Log every failure loudly so the next
   // one is visible in devtools instead of indistinguishable from "no duplicates".
   if (recentErr) { console.error("[dedupe-scan] fetch recent ledger_entries failed:", recentErr); return { pairs: 0, error: recentErr }; }
@@ -142,7 +142,7 @@ function addSubsetSumPairs({ recent, candidates, addPair }) {
 // KEPT and stamped with merged_into so the audit trail still shows what was
 // captured and when; hard-deleting it (what this used to do) destroyed the only
 // record that the double-write ever happened. Every spend aggregation must
-// therefore filter `.is("merged_into", null)` — a row that is merged but still
+// therefore filter `.is("merged_into", null)` - a row that is merged but still
 // summed is worse than a deleted one.
 export async function mergeDuplicatePair({ candidateId, keepId, dropId, table = "ledger_entries" }) {
   if (!MERGEABLE_TABLES.has(table)) throw new Error(`merge not supported for ${table}`);

@@ -14,7 +14,7 @@ for (const [n, lex] of Object.entries({ PLAN_CHANGE_CUES, BUDGET_CHANGE_CUES, QU
 }
 
 // ---------------------------------------------------------------------------
-// PLAN CHANGE — the flagship: "change my schedule", not "tick the schedule"
+// PLAN CHANGE - the flagship: "change my schedule", not "tick the schedule"
 // ---------------------------------------------------------------------------
 assert.equal(kind("I want to change my gym schedule today"), "plan_change");
 assert.equal(kind("here is a dump of my latest schedule, use this from now on"), "plan_change");
@@ -28,7 +28,7 @@ assert.equal(kind("from now on no rice at dinner"), "plan_change");
 assert.equal(kind("reschedule leg day to Friday"), "plan_change");
 
 // ---------------------------------------------------------------------------
-// BUDGET CHANGE — adjust a target, not a ₹0 expense
+// BUDGET CHANGE - adjust a target, not a ₹0 expense
 // ---------------------------------------------------------------------------
 assert.equal(kind("adjust my calorie budget to 1800"), "budget_change");
 assert.equal(kind("raise my protein goal to 180"), "budget_change");
@@ -40,7 +40,7 @@ assert.equal(kind("set my spend cap to 35k"), "budget_change");
 assert.equal(kind("change my plan and set my protein target to 180"), "budget_change");
 
 // ---------------------------------------------------------------------------
-// QUERY — a question, not an event
+// QUERY - a question, not an event
 // ---------------------------------------------------------------------------
 assert.equal(kind("how much did I spend this month"), "query");
 assert.equal(kind("what did I eat yesterday"), "query");
@@ -49,7 +49,7 @@ assert.equal(kind("can I afford a 5000 gadget"), "query");
 assert.equal(kind("show me my weekly summary"), "query");
 
 // ---------------------------------------------------------------------------
-// LOG — the default: a real event (must NOT be misread as a command)
+// LOG - the default: a real event (must NOT be misread as a command)
 // ---------------------------------------------------------------------------
 assert.equal(kind("spent 250 on lunch at a cafe"), "log");
 assert.equal(kind("had 3 rotis and dal for lunch"), "log");
@@ -70,7 +70,7 @@ assert.equal(isChangeRequest("ate dal and rice"), false);
 assert.equal(isChangeRequest("did legs today"), false);
 
 // ---------------------------------------------------------------------------
-// MIXED — a change message that also logs a real event (brain may still log it)
+// MIXED - a change message that also logs a real event (brain may still log it)
 // ---------------------------------------------------------------------------
 assert.equal(kind("change my plan to PPL; also I ate dal and rice today"), "plan_change");
 assert.equal(carriesLoggedEvent("change my plan to PPL; also I ate dal and rice today"), true);

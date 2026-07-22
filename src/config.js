@@ -11,7 +11,7 @@
 // people forking the repo to point at their own Supabase project.
 
 // Live project ref: yyoewdcijplkhxleejtm. A previous build shipped the ref
-// `qmlenovxatoyxxqlvzlo`, which no longer resolves (DNS NXDOMAIN) — pointing the
+// `qmlenovxatoyxxqlvzlo`, which no longer resolves (DNS NXDOMAIN) - pointing the
 // app there was why sign-in/capture silently did nothing. The anon key below is
 // the publishable key minted from this (yyoe) project; RLS protects every table.
 const PROD_URL = "https://yyoewdcijplkhxleejtm.supabase.co";

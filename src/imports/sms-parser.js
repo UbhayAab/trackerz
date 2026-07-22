@@ -1,4 +1,4 @@
-// Deterministic parser for Indian bank/UPI transaction SMS. Zero AI cost — used
+// Deterministic parser for Indian bank/UPI transaction SMS. Zero AI cost - used
 // as a fast lane so a pasted/shared bank SMS becomes a clean, grounded capture
 // string (or a ledger-ready object) before the agent ever runs.
 

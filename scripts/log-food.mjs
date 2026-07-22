@@ -1,12 +1,12 @@
-// Logs a meal the same way the capture pipeline does — raw_ingestion +
-// ai_run + ai_action + food_log — so it appears in the additions feed, is
+// Logs a meal the same way the capture pipeline does - raw_ingestion +
+// ai_run + ai_action + food_log - so it appears in the additions feed, is
 // undoable from the UI, and carries a real provenance trail instead of
 // materialising as an orphan row.
 //
 // Macros come from lib/food-nutrition.mjs where the item is recognized; anything
 // composed by hand is stated in the description so it can be corrected in a tap.
 //
-// Usage: node scripts/log-food.mjs            (dry run — prints what it would write)
+// Usage: node scripts/log-food.mjs            (dry run - prints what it would write)
 //        node scripts/log-food.mjs --apply
 import { config as loadEnv } from "dotenv";
 import pg from "pg";
@@ -14,7 +14,7 @@ import { estimateNutrition } from "../lib/food-nutrition.mjs";
 
 loadEnv({ path: ".env.local" });
 // Pooler fallback for when the direct db.* host is IPv6-only and fails to
-// resolve. Never inline the password here — set SUPABASE_DB_URL_POOLER in
+// resolve. Never inline the password here - set SUPABASE_DB_URL_POOLER in
 // .env.local (gitignored) alongside SUPABASE_DB_URL.
 const FALLBACK = process.env.SUPABASE_DB_URL_POOLER || "";
 const APPLY = process.argv.includes("--apply");
@@ -62,7 +62,7 @@ for (const { meal, macros } of rows) {
   console.log(`${meal.occurred_at}  ${meal.meal_slot.padEnd(9)} ${String(macros.calories_estimate).padStart(4)} kcal  P${macros.protein_g} C${macros.carbs_g} F${macros.fat_g}  [${macros.source}]  ${meal.description}`);
 }
 if (!APPLY) {
-  console.log("\ndry run — pass --apply to write");
+  console.log("\ndry run - pass --apply to write");
   process.exit(0);
 }
 

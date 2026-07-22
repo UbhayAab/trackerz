@@ -1,5 +1,5 @@
 // Best-effort parser for OCR-extracted restaurant bills.
-// No AI calls — we look for lines that end in a currency amount and treat the
+// No AI calls - we look for lines that end in a currency amount and treat the
 // rest as the item name. Subtotal / tax / total lines are recognised by
 // keyword and pulled out of the item list.
 

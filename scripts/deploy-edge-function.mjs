@@ -27,14 +27,14 @@ loadEnv({ path: ".env.local" });
 
 const slug = process.argv[2] || "agent";
 const VERIFY_JWT = { agent: true, jarvis: false };
-if (!(slug in VERIFY_JWT)) bail(`Unknown function slug "${slug}" — add it to VERIFY_JWT in this script.`);
+if (!(slug in VERIFY_JWT)) bail(`Unknown function slug "${slug}" - add it to VERIFY_JWT in this script.`);
 
 const ref = process.env.SUPABASE_PROJECT_REF;
 const pat = process.env.SUPABASE_PAT;
 const geminiKey = slug === "agent" ? process.env.GEMINI_API_KEY : null;
 
 if (!ref) bail("SUPABASE_PROJECT_REF missing from .env.local");
-if (!pat) bail("SUPABASE_PAT missing from .env.local — create one at https://supabase.com/dashboard/account/tokens");
+if (!pat) bail("SUPABASE_PAT missing from .env.local - create one at https://supabase.com/dashboard/account/tokens");
 
 const base = "https://api.supabase.com";
 const auth = { Authorization: `Bearer ${pat}` };
@@ -87,7 +87,7 @@ await deployFunction();
 if (geminiKey) {
   await setSecret("GEMINI_API_KEY", geminiKey);
 } else if (slug === "agent") {
-  console.warn("• GEMINI_API_KEY empty in .env.local — set it later or the function will return 500 on every call.");
+  console.warn("• GEMINI_API_KEY empty in .env.local - set it later or the function will return 500 on every call.");
 }
 
 function bail(msg) {

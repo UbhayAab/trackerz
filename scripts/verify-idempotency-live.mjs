@@ -73,7 +73,7 @@ try {
 
   const grand = first.total + second.total;
   console.log(`\ntotal booked across both submits: Rs ${grand}  (the 2026-07-09 incident booked Rs 240 for an Rs 80 purchase)`);
-  console.log(failures ? "RESULT: FAIL" : "RESULT: PASS — the re-send was a no-op");
+  console.log(failures ? "RESULT: FAIL" : "RESULT: PASS - the re-send was a no-op");
 } finally {
   for (const t of ["ledger_entries", "food_logs", "workout_logs"]) {
     await client.query(`delete from ${t} where ingestion_id = any($1::uuid[])`, [ingestions]);

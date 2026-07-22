@@ -7,7 +7,7 @@ import pg from "pg";
 
 loadEnv({ path: ".env.local" });
 // Pooler fallback for when the direct db.* host is IPv6-only and fails to
-// resolve. Never inline the password here — set SUPABASE_DB_URL_POOLER in
+// resolve. Never inline the password here - set SUPABASE_DB_URL_POOLER in
 // .env.local (gitignored) alongside SUPABASE_DB_URL.
 const FALLBACK = process.env.SUPABASE_DB_URL_POOLER || "";
 const action = process.argv[2] || "status";

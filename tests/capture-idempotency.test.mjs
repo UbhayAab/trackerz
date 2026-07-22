@@ -1,13 +1,13 @@
-// CAPTURE IDEMPOTENCY — the guard against the 2026-07-09 triple-write.
+// CAPTURE IDEMPOTENCY - the guard against the 2026-07-09 triple-write.
 //
 // "Just ate 20 rupees lays and 60 for 3 boiled eggs and some riata" was written
 // to ledger_entries three times (80, then 20+60, then 20+60) after a transport
 // error plus a user re-submit: ~Rs 240 for an Rs 80 purchase.
 //
 // Two halves are tested here:
-//  1. BEHAVIOUR of the capture fingerprint — extracted from the edge function
+//  1. BEHAVIOUR of the capture fingerprint - extracted from the edge function
 //     (the writer) and executed, so a drift in the hash inputs fails the build.
-//  2. STRUCTURE of the guard — that it runs before the pipeline, keys off a
+//  2. STRUCTURE of the guard - that it runs before the pipeline, keys off a
 //     COMPLETED run, is not a unique constraint, and that the client verifies
 //     before it claims the agent was unavailable.
 import assert from "node:assert/strict";
@@ -78,7 +78,7 @@ assert.equal(normaliseCaptureText(null), "");
 const guardAt = edge.indexOf("findPriorCompletedRun(supabase");
 const pipelineAt = edge.indexOf("await runPipeline(");
 assert.ok(guardAt !== -1, "the edge function does not look up a prior run");
-assert.ok(pipelineAt !== -1 && guardAt < pipelineAt, "the idempotency guard must run BEFORE the pipeline — the pipeline is the writer");
+assert.ok(pipelineAt !== -1 && guardAt < pipelineAt, "the idempotency guard must run BEFORE the pipeline - the pipeline is the writer");
 assert.match(edge, /\.eq\("status", "completed"\)/, "the guard must key off a COMPLETED run, not any run");
 assert.match(edge, /ing\.raw_text \?\? payload\.text/, "the fingerprint must be derived server-side, not taken from the request body");
 assert.match(edge, /duplicate: true/, "a replayed run must be labelled as a duplicate, not passed off as a fresh apply");
