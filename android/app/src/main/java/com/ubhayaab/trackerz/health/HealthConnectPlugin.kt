@@ -157,8 +157,12 @@ class HealthConnectPlugin : Plugin() {
      * tapped Deny" are different answers and the UI must tell them apart. outcome
      * is one of: granted | partial | denied | unavailable.
      */
+    // Named requestHealthPermissions, not requestPermissions: the Capacitor
+    // Plugin base class already declares requestPermissions()/checkPermissions()
+    // (its own runtime-permission flow), and a same-name method here collides
+    // with them at compile time. The JS bridge calls these names explicitly.
     @PluginMethod
-    fun requestPermissions(call: PluginCall) {
+    fun requestHealthPermissions(call: PluginCall) {
         val state = availabilityState(context)
         if (state != AVAILABLE) {
             call.resolve(permissionResult(state, "unavailable", emptySet(), READ_PERMISSIONS))
@@ -179,7 +183,7 @@ class HealthConnectPlugin : Plugin() {
                 activity.runOnUiThread {
                     startActivityForResult(call, intent, "onPermissionsResult")
                 }
-            } catch (err: Throwable) {
+            } catch (err: Exception) {
                 call.reject(
                     "Could not open the Health Connect permission screen: ${err.message ?: err.toString()}",
                     ERR_UNAVAILABLE,
@@ -206,7 +210,7 @@ class HealthConnectPlugin : Plugin() {
                     else -> "denied"
                 }
                 call.resolve(permissionResult(AVAILABLE, outcome, granted, missing))
-            } catch (err: Throwable) {
+            } catch (err: Exception) {
                 call.reject(
                     "Could not read back which health permissions were granted: ${err.message ?: err.toString()}",
                     ERR_UNAVAILABLE,
@@ -216,9 +220,9 @@ class HealthConnectPlugin : Plugin() {
         }
     }
 
-    /** checkPermissions() - same shape as requestPermissions, without showing UI. */
+    /** checkHealthPermissions() - same shape as requestHealthPermissions, no UI. */
     @PluginMethod
-    fun checkPermissions(call: PluginCall) {
+    fun checkHealthPermissions(call: PluginCall) {
         val state = availabilityState(context)
         if (state != AVAILABLE) {
             call.resolve(permissionResult(state, "unavailable", emptySet(), READ_PERMISSIONS))
@@ -235,7 +239,7 @@ class HealthConnectPlugin : Plugin() {
                     else -> "denied"
                 }
                 call.resolve(permissionResult(AVAILABLE, outcome, granted, missing))
-            } catch (err: Throwable) {
+            } catch (err: Exception) {
                 call.reject(
                     "Could not check health permissions: ${err.message ?: err.toString()}",
                     ERR_UNAVAILABLE,
@@ -505,7 +509,7 @@ class HealthConnectPlugin : Plugin() {
                     ERR_PERMISSION_DENIED,
                     err
                 )
-            } catch (err: Throwable) {
+            } catch (err: Exception) {
                 call.reject(
                     "Health Connect read failed: ${err.message ?: err.toString()}",
                     ERR_READ_FAILED,
