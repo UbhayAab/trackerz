@@ -83,7 +83,9 @@ export async function requestPermissions() {
   const p = plugin();
   if (!p) return browserFallback({ outcome: "unavailable" });
   try {
-    const res = await p.requestPermissions();
+    // Named requestHealthPermissions on the native side to avoid colliding with
+    // Capacitor's built-in Plugin.requestPermissions().
+    const res = await p.requestHealthPermissions();
     return { supported: true, ...res };
   } catch (err) {
     return { supported: true, outcome: "unavailable", message: describeError(err), error: true };
@@ -95,7 +97,7 @@ export async function checkPermissions() {
   const p = plugin();
   if (!p) return browserFallback({ outcome: "unavailable" });
   try {
-    const res = await p.checkPermissions();
+    const res = await p.checkHealthPermissions();
     return { supported: true, ...res };
   } catch (err) {
     return { supported: true, outcome: "unavailable", message: describeError(err), error: true };
