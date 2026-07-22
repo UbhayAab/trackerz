@@ -45,18 +45,104 @@
 #dietPlan .diet-prep .diet-item { background: rgba(245, 178, 38, 0.08); border-color: rgba(245, 178, 38, 0.25); }
 #dietPlan .diet-prep .diet-item input[type="checkbox"] { accent-color: #c98a00; }
 
-/* Date stepper — move the hub to past days for backdated logs. */
+/* Date stepper + native calendar - move the hub to past days for backdated logs.
+   44px+ tap targets; wraps on narrow phones instead of overflowing the page. */
 #dietPlan .diet-datebar {
-  display: flex; align-items: center; gap: 8px; margin: 0 0 10px;
+  display: flex; align-items: center; gap: 8px; margin: 0 0 10px; flex-wrap: wrap;
 }
 #dietPlan .diet-step, #dietPlan .diet-today {
-  min-height: 34px; padding: 4px 12px; border-radius: 10px; cursor: pointer;
+  min-height: 44px; min-width: 44px; padding: 4px 12px; border-radius: 10px; cursor: pointer;
   border: 1px solid rgba(127, 127, 127, 0.22); background: rgba(127, 127, 127, 0.05);
   font-size: 0.85rem; line-height: 1;
 }
-#dietPlan .diet-step[disabled] { opacity: 0.35; cursor: default; }
-#dietPlan .diet-date { font-weight: 600; font-size: 0.9rem; min-width: 92px; text-align: center; }
+#dietPlan .diet-step[disabled], #dietPlan .diet-today[disabled] { opacity: 0.35; cursor: default; }
+#dietPlan .diet-date { font-weight: 600; font-size: 0.9rem; min-width: 96px; text-align: center; }
 #dietPlan .diet-today { margin-left: auto; }
+/* The "calendar thing": a native date picker. Styled to match the pills; its own
+   `max` blocks future days, goToDate() clamps as a second guard. */
+#dietPlan .diet-cal { display: inline-flex; }
+#dietPlan .diet-cal input[type="date"] {
+  min-height: 44px; padding: 4px 10px; border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.22); background: rgba(127, 127, 127, 0.05);
+  font-size: 0.85rem; color: inherit; font: inherit;
+}
+#dietPlan .sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* The swipeable day strip - last 14 days, horizontally scrollable on a phone.
+   Today sits at the right edge; you swipe LEFT into the past. The dot under each
+   day says whether anything was logged: green = logged, hollow = empty, "?" =
+   unknown (we couldn't read that day - deliberately NOT the same as empty). */
+#dietPlan .diet-stripwrap { margin: 0 0 12px; }
+#dietPlan .diet-strip {
+  display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 6px;
+  scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+#dietPlan .diet-strip::-webkit-scrollbar { height: 4px; }
+#dietPlan .diet-strip::-webkit-scrollbar-thumb { background: rgba(127,127,127,0.3); border-radius: 999px; }
+#dietPlan .diet-chip {
+  flex: 0 0 auto; scroll-snap-align: end;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 46px; min-height: 58px; padding: 6px 4px; cursor: pointer;
+  border-radius: 12px; border: 1px solid rgba(127, 127, 127, 0.18);
+  background: rgba(127, 127, 127, 0.04); color: inherit; line-height: 1;
+}
+#dietPlan .diet-chip .chip-dow { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.03em; opacity: 0.6; }
+#dietPlan .diet-chip .chip-dom { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+#dietPlan .diet-chip .chip-dot {
+  width: 8px; height: 8px; border-radius: 999px; margin-top: 2px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 700; line-height: 1;
+}
+#dietPlan .chip-dot.dot-logged { background: #138a5b; }
+#dietPlan .chip-dot.dot-empty { background: transparent; border: 1px solid rgba(127, 127, 127, 0.5); }
+#dietPlan .chip-dot.dot-unknown { background: transparent; color: rgba(127, 127, 127, 0.8); width: auto; height: auto; }
+#dietPlan .diet-chip.is-today { border-color: rgba(19, 138, 91, 0.4); }
+#dietPlan .diet-chip.is-selected {
+  border-color: #138a5b; background: rgba(19, 138, 91, 0.12); font-weight: 600;
+}
+#dietPlan .diet-chip.is-selected .chip-dow { opacity: 0.85; }
+
+/* Small status/error notes under macros, strip, or the log list. An error note is
+   coloured so a failed read is visibly different from an ordinary hint. */
+#dietPlan .diet-note { font-size: 0.76rem; opacity: 0.7; margin: 6px 0 0; line-height: 1.35; }
+#dietPlan .diet-note.is-error { color: #d4533e; opacity: 0.95; }
+
+/* The "what was actually logged this day" list. */
+#dietPlan .diet-logged .diet-empty {
+  font-size: 0.85rem; opacity: 0.7; padding: 10px 12px; margin: 4px 0 0;
+  border-radius: 10px; border: 1px dashed rgba(127, 127, 127, 0.3);
+  background: rgba(127, 127, 127, 0.03);
+}
+#dietPlan .logrow {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+  padding: 8px 10px; min-height: 44px; margin-bottom: 6px;
+  border-radius: 10px; border: 1px solid rgba(127, 127, 127, 0.14);
+  background: rgba(127, 127, 127, 0.04);
+}
+#dietPlan .logtime { font-size: 0.74rem; opacity: 0.6; font-variant-numeric: tabular-nums; min-width: 38px; }
+#dietPlan .logbody { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+#dietPlan .logname { font-size: 0.9rem; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+#dietPlan .logslot { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.03em; opacity: 0.55; }
+#dietPlan .logdetail { font-size: 0.76rem; opacity: 0.62; }
+#dietPlan .logmacros { font-size: 0.78rem; font-variant-numeric: tabular-nums; opacity: 0.8; white-space: nowrap; text-align: right; }
+/* Any absent value renders through .is-missing - never a fabricated 0. */
+#dietPlan .is-missing { font-style: italic; opacity: 0.6; font-weight: 400; }
+
+/* Failed-load block for the day: unmistakably an error, with a retry. */
+#dietPlan .diet-loaderr {
+  padding: 12px; border-radius: 12px; margin: 4px 0 0;
+  border: 1px solid rgba(212, 83, 62, 0.45); background: rgba(212, 83, 62, 0.08);
+}
+#dietPlan .loaderr-head { font-weight: 600; font-size: 0.88rem; margin: 0; color: #d4533e; }
+#dietPlan .loaderr-msg { font-size: 0.78rem; opacity: 0.85; margin: 4px 0 0; overflow-wrap: anywhere; }
+#dietPlan .diet-retry {
+  margin-top: 10px; min-height: 44px; padding: 6px 16px; border-radius: 10px; cursor: pointer;
+  border: 1px solid rgba(212, 83, 62, 0.5); background: transparent; color: inherit; font-size: 0.82rem;
+}
 
 /* Auto / suggested badges on items reconciled from captured logs. */
 #dietPlan .diet-name .diet-auto, #dietPlan .diet-name .diet-suggest {
@@ -116,7 +202,7 @@
 .additions-feed .add-del { border: 0; background: transparent; font-size: 1rem; line-height: 1; min-width: 36px; min-height: 36px; cursor: pointer; opacity: 0.55; }
 .additions-feed .add-del:active { opacity: 1; }
 .additions-feed .add-row.is-deleting { border-color: rgba(212,83,62,0.5); background: rgba(212,83,62,0.1); text-decoration: line-through; opacity: 0.6; }
-/* Needs-review captures (agent unavailable / capped) — amber so they stand out
+/* Needs-review captures (agent unavailable / capped) - amber so they stand out
    and are never missed. Target changes get a blue tint; the Undo button is text. */
 .additions-feed .add-review { border-color: rgba(214,158,46,0.55); background: rgba(214,158,46,0.12); }
 .additions-feed .add-row.is-target { border-color: rgba(56,118,212,0.4); background: rgba(56,118,212,0.08); }
@@ -125,7 +211,7 @@
 .additions-feed .add-undo { border: 1px solid rgba(56,118,212,0.5); background: transparent; color: inherit; font-size: 0.78rem; padding: 4px 10px; border-radius: 8px; min-height: 32px; cursor: pointer; }
 
 /* Workout exercises as readable rows: name left, sets×reps / duration as an
-   accent chip on the right — instead of one run-on " · " string. */
+   accent chip on the right - instead of one run-on " · " string. */
 #dietPlan .workout-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
 #dietPlan .workout-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

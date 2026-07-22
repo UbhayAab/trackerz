@@ -3,7 +3,7 @@
 // - Upserts the private+public JWK pair into public.app_secrets as
 //   JARVIS_VAPID_JWK (the jarvis edge fn reads it via resolveSecret; the private
 //   key is never printed).
-// - Prints the base64url RAW public key — paste that into VAPID_PUBLIC_KEY in
+// - Prints the base64url RAW public key - paste that into VAPID_PUBLIC_KEY in
 //   src/services/push.js (it is public by design; browsers send it in the clear).
 //
 // Refusing to overwrite an existing key by default (rotating VAPID invalidates
@@ -29,7 +29,7 @@ await client.connect();
 
 const existing = await client.query("select 1 from public.app_secrets where name = 'JARVIS_VAPID_JWK'");
 if (existing.rowCount > 0 && !force) {
-  console.log("JARVIS_VAPID_JWK already set — keeping it (rotating would orphan every push subscription).");
+  console.log("JARVIS_VAPID_JWK already set - keeping it (rotating would orphan every push subscription).");
   console.log("Pass --force to rotate anyway.");
   await client.end();
   process.exit(0);

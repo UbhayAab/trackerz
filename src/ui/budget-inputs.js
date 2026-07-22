@@ -1,4 +1,4 @@
-// Budget / goal editor — bound to the single keyed source (the `budgets` table,
+// Budget / goal editor - bound to the single keyed source (the `budgets` table,
 // one row per kind). Inputs declare their goal with `data-budget-kind`. On edit
 // it upserts that kind and RE-HYDRATES the whole app, so the new value shows up
 // everywhere it's read (Home glance, Money page, the diet hub targets, insights).
@@ -21,7 +21,7 @@ function canSync() {
 export function renderBudgetInputs(state) {
   const budgets = state?.budgets || [];
   // Diet inputs show the EFFECTIVE target (set goal, else the scaffold-derived
-  // value) so the input always matches the gauges/cards — never an input that
+  // value) so the input always matches the gauges/cards - never an input that
   // disagrees with the target shown elsewhere.
   const dt = resolveDietTargets(budgets, planForDate(new Date()).macroTargets);
   document.querySelectorAll("input[data-budget-kind]").forEach((input) => {
@@ -32,7 +32,7 @@ export function renderBudgetInputs(state) {
     else if (kind === "daily_protein") v = dt.protein_g;
     else if (kind === "weekly_calories") v = goalValue(budgets, kind) ?? Math.round(dt.calories * 7);
     else if (isUnsetMoneyCap(budgets, kind)) {
-      // An unsaved money cap is in effect NOWHERE — the brief, the trajectory
+      // An unsaved money cap is in effect NOWHERE - the brief, the trajectory
       // table and the insight rules all read the budgets row, not the seed. So
       // show the seed as a placeholder (visibly unset) instead of a value that
       // claims a cap the app isn't enforcing.
@@ -72,18 +72,18 @@ async function saveBudget(input, status) {
   // Bailing silently left the status reading "Saving…" forever on a blank/zero
   // input, so nothing was saved but the UI said otherwise.
   if (!Number.isFinite(amount) || amount <= 0) {
-    // Emptying the box does NOT remove a saved cap — the budgets row is still
+    // Emptying the box does NOT remove a saved cap - the budgets row is still
     // there. Saying "cleared, no cap is in effect" would be its own false
     // assertion, which is the bug class this whole pass is about.
     if (status) status.textContent = input.value.trim() === ""
-      ? `${def.label} unchanged — clearing the box doesn't remove a saved cap. Enter a number to change it.`
-      : `${def.label} not saved — enter a number above 0.`;
+      ? `${def.label} unchanged - clearing the box doesn't remove a saved cap. Enter a number to change it.`
+      : `${def.label} not saved - enter a number above 0.`;
     return;
   }
   if (!canSync()) { if (status) status.textContent = "Sign in to save budgets."; return; }
   try {
     await upsertBudget({ kind: def.kind, period: def.period, amount });
-    if (status) status.textContent = `${def.label} saved — updated everywhere.`;
+    if (status) status.textContent = `${def.label} saved - updated everywhere.`;
     // Re-hydrate so every surface that reads this budget/goal refreshes.
     await hydrateStateFromSupabase().catch(() => {});
   } catch (err) {

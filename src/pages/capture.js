@@ -35,7 +35,7 @@ bootWithAuth(async () => {
   renderDietPlan();
   bindOnlineDrain(runCapture);
   await hydrateStateFromSupabase();
-  // Proactive briefing: the jarvis edge fn writes it server-side on schedule —
+  // Proactive briefing: the jarvis edge fn writes it server-side on schedule -
   // show the freshest row (client-generating only as offline fallback), and
   // keep the strip live so a brief landing mid-session appears immediately.
   try {

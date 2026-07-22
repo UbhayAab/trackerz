@@ -1,3 +1,133 @@
+/* ---- Period selector (Money page) ----
+   Phone-first: three rows that each stay inside the viewport, every control at
+   least 44px tall so it is tappable, and nothing that can widen the page. */
+.period-bar {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 14px 0;
+  padding: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.period-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.period-tab {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.period-tab.is-active {
+  background: var(--money-soft);
+  border-color: var(--money);
+  color: var(--money);
+}
+
+.period-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.period-step {
+  flex: 0 0 auto;
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.period-step[disabled] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.period-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-weight: var(--weight-semibold);
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.period-jump {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.period-jump-label {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--weight-semibold);
+}
+
+.period-date {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.period-today {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--money);
+  border-radius: 8px;
+  background: var(--money-soft);
+  color: var(--money);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.period-today[hidden] { display: none; }
+
+/* Coverage caveat: "we didn't fetch this far back" is NOT an empty period, and
+   must not be mistaken for one - it gets its own warned strip, visually apart
+   from both the plain tiles and the red read-failure banner. */
+.period-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--sun) 40%, var(--line));
+  background: color-mix(in srgb, var(--sun) 8%, var(--panel));
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+.period-note[hidden] { display: none; }
+
 .inbox-strip {
   margin: 14px 0;
   background: #fff7df;

@@ -7,7 +7,7 @@
 //   3. Deploys the `agent` edge function (best-effort; prints a fallback if the
 //      API rejects the bundle).
 //
-// You must supply ONE secret you own — a Supabase personal access token with
+// You must supply ONE secret you own - a Supabase personal access token with
 // project access (https://supabase.com/dashboard/account/tokens):
 //
 //   PowerShell:
@@ -15,7 +15,7 @@
 //   bash:
 //     SUPABASE_ACCESS_TOKEN=sbp_... DEEPSEEK_API_KEY=sk-... node scripts/setup-backend.mjs
 //
-// DEEPSEEK_API_KEY is OPTIONAL — without it the agent automatically falls back
+// DEEPSEEK_API_KEY is OPTIONAL - without it the agent automatically falls back
 // to Gemini for reasoning. GEMINI_API_KEY is usually already set on the project.
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -119,7 +119,7 @@ async function deployFunction() {
       if (res.ok) { console.log("  ✓ function deployed via Management API"); return true; }
     } catch { /* try next */ }
   }
-  console.log("  · Management API would not accept the bundle (common — it wants an eszip).");
+  console.log("  · Management API would not accept the bundle (common - it wants an eszip).");
   console.log("    FALLBACK (30s): open Studio → Edge Functions → agent → paste");
   console.log("    supabase/functions/agent/index.ts → Deploy. OR: supabase functions deploy agent");
   return false;

@@ -1,5 +1,5 @@
 // Browser-side bank statement importer.
-// Uses SheetJS (xlsx) via CDN — free and works in-browser.
+// Uses SheetJS (xlsx) via CDN - free and works in-browser.
 // Steps: parse → detect columns → preview → user confirm → write statement_imports
 // + statement_rows → promote those rows into ledger_entries.
 //
@@ -100,7 +100,7 @@ export async function commitImport(parsed) {
   let stored = 0;
   for (let i = 0; i < inserts.length; i += BATCH) {
     const slice = inserts.slice(i, i + BATCH);
-    // Conflict target is (user_id, content_key) — content only. The old key
+    // Conflict target is (user_id, content_key) - content only. The old key
     // included import_id, which is freshly minted on every upload, so it could
     // never collide and every re-import duplicated the whole file.
     const { data, error: rowErr } = await supabase
@@ -124,7 +124,7 @@ export async function commitImport(parsed) {
 /**
  * Turn confirmed statement_rows into ledger_entries.
  *
- * Every row lands in exactly one bucket and the caller is told about all three —
+ * Every row lands in exactly one bucket and the caller is told about all three -
  * a partial success must never look like a clean one.
  *
  * @returns {Promise<{considered: number, promoted: number, alreadyPresent: number,
@@ -185,7 +185,7 @@ export async function promoteStatementRows({ importId = null, limit = 2000 } = {
     try {
       await markStatementRowPromoted(item.statementRowId, entryId);
     } catch (err) {
-      // The money is in the ledger; only the back-link failed. Say so — the next
+      // The money is in the ledger; only the back-link failed. Say so - the next
       // run re-reads this row, recognises the entry it already has by content,
       // and skips it rather than paying for it twice.
       report.warnings.push(`Ledger entry ${entryId} was written but its statement row could not be marked promoted: ${messageOf(err)}`);
@@ -220,7 +220,7 @@ export async function importAndPromote(parsed) {
   } catch (err) {
     // The rows are safely in statement_rows; only the ledger step failed. Name
     // which half succeeded so the user does not re-upload the file to "fix" it.
-    const wrapped = new Error(`${stored.rowsStored} row(s) stored but none reached your ledger — ${messageOf(err)}`);
+    const wrapped = new Error(`${stored.rowsStored} row(s) stored but none reached your ledger - ${messageOf(err)}`);
     wrapped.cause = err;
     throw wrapped;
   }

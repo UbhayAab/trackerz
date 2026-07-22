@@ -8,7 +8,7 @@
 --    the only way to stop the evening nudge was to stop the morning brief too.
 -- 2. sendEmail discarded Resend's response body, so the message id was never
 --    stored and a bounce was invisible. "sent: true" only ever meant "the API
---    accepted it", which is not the same as "it arrived" — and there was no
+--    accepted it", which is not the same as "it arrived" - and there was no
 --    record to check afterwards.
 --
 -- Idempotent.

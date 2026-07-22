@@ -1,7 +1,7 @@
 // Canonical Indian home-food portion table.
 // Each entry encodes the "regular" household portion the user is likely to
 // log (e.g. "1 katori dal", "1 phulka roti") and the macros for that portion.
-// Macros are rough averages — meant for instant defaults when the user types
+// Macros are rough averages - meant for instant defaults when the user types
 // a vague meal name, not for clinical accuracy.
 
 export const HOME_FOOD_PORTIONS = [

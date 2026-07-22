@@ -1,8 +1,8 @@
 // Single source of truth for budgets + goals.
 //
 // Every budget/goal is a `kind`-keyed row in the `budgets` table. The editor
-// writes by kind (upsert), and EVERY surface — Home glance, Money page, the diet
-// hub's calorie/protein targets, the insight engine, the habit score — reads its
+// writes by kind (upsert), and EVERY surface - Home glance, Money page, the diet
+// hub's calorie/protein targets, the insight engine, the habit score - reads its
 // value from here. Edit a budget once and it updates everywhere; there is no
 // second hardcoded copy anywhere.
 //

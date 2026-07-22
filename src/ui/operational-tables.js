@@ -64,16 +64,27 @@ const macroColumns = [
 // `options.errors` maps a table key (review/import/ledger/budget/macro) to the
 // message from the read that failed, and `options.loading` says the data hasn't
 // been read yet. Without those, a failed or pending read is indistinguishable
-// from an empty account — which is how "couldn't read your ledger" ended up
+// from an empty account - which is how "couldn't read your ledger" ended up
 // rendering as "no expenses yet".
+//
+// `options.rows` / `options.emptyMessages` let a page substitute a narrowed row
+// set for a table and word its own empty state - the Money page shows only the
+// selected period, where "no rows" means "nothing spent this day", not "no
+// expenses ever". The wording has to travel with the rows, otherwise a filtered
+// view borrows the global copy and makes a claim about the wrong window.
 export function renderOperationalTables(state, options = {}) {
   const errors = options.errors || {};
+  const rows = options.rows || {};
+  const empties = options.emptyMessages || {};
   const loading = Boolean(options.loading);
-  setTable("#reviewTable", reviewColumns, state.reviewRows, { table: "review", emptyMessage: "Nothing yet today. Captures auto-commit here as additions — delete any that are wrong.", error: errors.review, loading });
-  setTable("#importTable", importColumns, state.importRows, { table: "import", emptyMessage: "No bank files yet. Upload CSV, Excel, PDF, or screenshots from Capture.", error: errors.import, loading });
-  setTable("#ledgerTable", ledgerColumns, state.ledgerRows, { emptyMessage: "No expenses yet. Add a payment, statement, or screenshot dump.", error: errors.ledger, loading });
-  setTable("#budgetTable", budgetColumns, state.budgetRows, { emptyMessage: "No budget burn yet. Add spends or load demo data.", error: errors.budget, loading });
-  setTable("#macroTable", macroColumns, state.macroRows, { emptyMessage: "No meals yet. Add food text, photo, or EOD voice note.", error: errors.macro, loading });
+  const pick = (key, fallback) => (rows[key] !== undefined ? rows[key] : fallback);
+  const empty = (key, fallback) => empties[key] || fallback;
+
+  setTable("#reviewTable", reviewColumns, pick("review", state.reviewRows), { table: "review", emptyMessage: empty("review", "Nothing yet today. Captures auto-commit here as additions - delete any that are wrong."), error: errors.review, loading });
+  setTable("#importTable", importColumns, pick("import", state.importRows), { table: "import", emptyMessage: empty("import", "No bank files yet. Upload CSV, Excel, PDF, or screenshots from Capture."), error: errors.import, loading });
+  setTable("#ledgerTable", ledgerColumns, pick("ledger", state.ledgerRows), { emptyMessage: empty("ledger", "No expenses yet. Add a payment, statement, or screenshot dump."), error: errors.ledger, loading });
+  setTable("#budgetTable", budgetColumns, pick("budget", state.budgetRows), { emptyMessage: empty("budget", "No budget burn yet. Add spends or load demo data."), error: errors.budget, loading });
+  setTable("#macroTable", macroColumns, pick("macro", state.macroRows), { emptyMessage: empty("macro", "No meals yet. Add food text, photo, or EOD voice note."), error: errors.macro, loading });
 }
 
 export function bindOperationalTables() {
@@ -159,15 +170,15 @@ function setTable(selector, columns, rows, options = {}) {
   if (error) {
     // A read failure must never read as "nothing logged yet".
     element.innerHTML =
-      `<div class="import-error"><span class="toast-dot"></span>Couldn't load this table — ${escapeHtml(error)}</div>` +
-      renderTable(columns, [], { ...tableOptions, emptyMessage: "Not loaded — see the error above." });
+      `<div class="import-error"><span class="toast-dot"></span>Couldn't load this table - ${escapeHtml(error)}</div>` +
+      renderTable(columns, [], { ...tableOptions, emptyMessage: "Not loaded - see the error above." });
     return;
   }
   if (loading && !list.length) tableOptions.emptyMessage = "Loading…";
   element.innerHTML = renderTable(columns, list, tableOptions);
 
   // table-renderer has no notion of a disabled action, so mark them after render
-  // — an action we can't actually perform must not look pressable.
+  // - an action we can't actually perform must not look pressable.
   for (const column of columns) {
     for (const action of column.actions || []) {
       if (!action.disabled) continue;

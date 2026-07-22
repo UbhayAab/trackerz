@@ -7,7 +7,7 @@ import { $ } from "../utils/dom.js";
 // the ones that did run dark. We accumulate what the job actually reports.
 let reportedStages = [];
 
-// Same escaping as ui/toast.js — capture text, file names and transcripts flow
+// Same escaping as ui/toast.js - capture text, file names and transcripts flow
 // into the parse log verbatim, and a capture containing markup would execute.
 function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
@@ -35,7 +35,7 @@ export function renderAgentStatus(state) {
   const progress = !job ? 0 : job.key === "done" ? 100 : Math.min(92, stages.length * 14);
 
   // Most jobs carry no ETA. Show one only when the runner actually supplies a
-  // number — concatenating an absent one produced the "~undefineds" pill.
+  // number - concatenating an absent one produced the "~undefineds" pill.
   const eta = Number.isFinite(job?.eta) ? `${job.eta}s` : null;
 
   const consoleEl = document.querySelector(".agent-console");

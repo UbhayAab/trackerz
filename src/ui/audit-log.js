@@ -1,5 +1,5 @@
 // Raw-query audit log: shows every capture the user ever typed/spoke/snapped, the
-// AI run that processed it, and the tool calls it produced — date-stamped so the
+// AI run that processed it, and the tool calls it produced - date-stamped so the
 // user can audit "how did the app behave this week". The DATA already exists in
 // raw_ingestions + ai_runs + ai_actions; this module only joins + renders it.
 //
@@ -45,7 +45,7 @@ export function toolDomain(toolName, args = {}) {
   }
 }
 
-// Coarse ACTION type (by tool) — powers the audit "action" filter.
+// Coarse ACTION type (by tool) - powers the audit "action" filter.
 export function toolActionType(toolName) {
   switch (toolName) {
     case "create_expense_candidate": return "expense";
@@ -76,7 +76,7 @@ export const ACTION_FILTERS = [
 
 function clip(s, n = 60) { return String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n); }
 
-// One-line summary of the AI OUTPUT — the arguments the model decided on. This is
+// One-line summary of the AI OUTPUT - the arguments the model decided on. This is
 // the middle of the input -> AI output -> action chain the audit surfaces.
 export function summarizeToolArgs(tool, args = {}) {
   const a = args || {};
@@ -209,7 +209,7 @@ export function buildAuditEntries({ ingestions = [], runs = [], actions = [] } =
   });
 }
 
-// Aggregate stats across all visible entries — drives the header strip.
+// Aggregate stats across all visible entries - drives the header strip.
 export function auditTotals(entries = []) {
   const byDomain = {};
   let toolCalls = 0, applied = 0, rejected = 0, review = 0, costUsd = 0;
@@ -224,11 +224,11 @@ export function auditTotals(entries = []) {
   return { queries: entries.length, toolCalls, applied, rejected, review, costUsd, byDomain };
 }
 
-// A one-line plain-text summary of what the AI did with a capture — used as the
+// A one-line plain-text summary of what the AI did with a capture - used as the
 // entry subtitle and asserted directly in tests.
 export function summarizeIngestion(entry) {
   if (!entry) return "";
-  if (entry.outcome === "queued") return "queued — agent offline, nothing processed yet";
+  if (entry.outcome === "queued") return "queued - agent offline, nothing processed yet";
   if (entry.outcome === "errored" && !entry.toolCount) {
     return `errored${entry.model ? ` · ${entry.model}` : ""}`;
   }
@@ -317,13 +317,13 @@ export function auditEntryHtml(entry) {
     + `<span class="audit-badge audit-${esc(entry.outcome)}">${esc(OUTCOME_LABEL[entry.outcome] || entry.outcome)}</span>`
     + `<span class="audit-source">${esc(entry.sourceType)}</span>`
     + `</header>`
-    + `<p class="audit-raw"><span class="audit-io-tag">input</span> ${esc(entry.rawText) || "<em>(no text — media capture)</em>"}</p>`
+    + `<p class="audit-raw"><span class="audit-io-tag">input</span> ${esc(entry.rawText) || "<em>(no text - media capture)</em>"}</p>`
     + (actionsHtml ? `<ul class="audit-actions">${actionsHtml}</ul>` : `<p class="audit-summary muted small">${esc(summarizeIngestion(entry))}</p>`)
     + `</article>`;
 }
 
 export function auditTotalsHtml(totals) {
-  const dom = Object.entries(totals.byDomain).map(([d, n]) => `${d} ${n}`).join(" · ") || "—";
+  const dom = Object.entries(totals.byDomain).map(([d, n]) => `${d} ${n}`).join(" · ") || "-";
   return `<div class="audit-totals">`
     + `<span><strong>${totals.queries}</strong> queries</span>`
     + `<span><strong>${totals.toolCalls}</strong> tool calls</span>`

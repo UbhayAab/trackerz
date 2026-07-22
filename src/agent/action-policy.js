@@ -22,7 +22,7 @@ export function decideActionPolicy(action) {
 
   // No approve gate: commit every non-blocked action straight away. `reasons`
   // (low_confidence / missing_evidence / high_risk) are kept so the UI can flag a
-  // low-evidence addition in the feed — the user deletes anything wrong instead
+  // low-evidence addition in the feed - the user deletes anything wrong instead
   // of approving everything up front.
   return { mode: "auto_apply", reasons };
 }

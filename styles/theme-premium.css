@@ -1,12 +1,12 @@
 /* ============================================================================
-   Premium design system — the AUTHORITATIVE visual layer (imported last, before
+   Premium design system - the AUTHORITATIVE visual layer (imported last, before
    responsive). Principle: premium = restraint. The chrome is neutral (ink + warm
-   greys); the accent colour is EARNED — it appears only on the single primary
+   greys); the accent colour is EARNED - it appears only on the single primary
    action and on data that means money/progress. No green wash over everything.
    Purely visual: no markup/behaviour changes.
    ========================================================================== */
 
-/* Flat, calm backdrop — no coloured radial washes. */
+/* Flat, calm backdrop - no coloured radial washes. */
 body {
   background: var(--paper);
   -webkit-font-smoothing: antialiased;
@@ -48,7 +48,7 @@ main > section + section { margin-top: var(--sp-3); }
 .command-grid { display: grid; gap: var(--sp-3); }
 .dashboard-grid { gap: var(--sp-3); }
 
-/* Header rows — neutral eyebrow, crisp title, no coloured tick. */
+/* Header rows - neutral eyebrow, crisp title, no coloured tick. */
 .panel-title-row { align-items: flex-start; gap: var(--sp-3); }
 .panel-title-row .eyebrow { color: var(--muted); }
 .panel-title-row h2 { letter-spacing: -0.01em; }
@@ -69,7 +69,7 @@ main > section + section { margin-top: var(--sp-3); }
   letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
 }
-/* The coloured top-rule is a thin, single semantic cue — not a slab. */
+/* The coloured top-rule is a thin, single semantic cue - not a slab. */
 .accent-money { border-top: 2px solid var(--accent); }
 .accent-food { border-top: 2px solid var(--food); }
 .accent-wellness { border-top: 2px solid var(--wellness); }
@@ -163,7 +163,7 @@ main > section + section { margin-top: var(--sp-3); }
 .data-table-wrap {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  /* Wide tables must SCROLL, not clip — `overflow:hidden` here was cutting off
+  /* Wide tables must SCROLL, not clip - `overflow:hidden` here was cutting off
      the right-hand columns. Horizontal auto-scroll with rounded corners kept. */
   overflow-x: auto;
   overflow-y: hidden;
@@ -200,7 +200,7 @@ main > section + section { margin-top: var(--sp-3); }
 .version-stamp { font-size: 0.62rem; color: var(--muted-soft); }
 
 /* ============================================================================
-   Button states — explicit press + disabled (default/hover above; here:
+   Button states - explicit press + disabled (default/hover above; here:
    active/disabled). A pressed button sinks 1px and drops its shadow.
    ========================================================================== */
 .primary-button:active,
@@ -226,7 +226,7 @@ main > section + section { margin-top: var(--sp-3); }
 .ghost-button:hover { background: var(--chip); }
 
 /* ============================================================================
-   Statement importer — premium dropzone + result card. Four states on the
+   Statement importer - premium dropzone + result card. Four states on the
    wrapper: idle / dragover / parsing / parsed (+ inline error).
    ========================================================================== */
 .importer { display: grid; gap: var(--sp-4); }
@@ -320,7 +320,7 @@ main > section + section { margin-top: var(--sp-3); }
 .import-footer[hidden] { display: none; }
 
 /* ============================================================================
-   Toast — slide-up confirmation chips (success / error). Lives above the nav.
+   Toast - slide-up confirmation chips (success / error). Lives above the nav.
    ========================================================================== */
 .toast-host {
   position: fixed; left: 0; right: 0;
@@ -348,7 +348,7 @@ main > section + section { margin-top: var(--sp-3); }
 }
 
 /* ============================================================================
-   Dark mode — component fixes where light values were baked in, or where a
+   Dark mode - component fixes where light values were baked in, or where a
    token (e.g. --charcoal) intentionally flips to a light surface. Surfaces
    driven purely by tokens already adapt; these are the exceptions.
    ========================================================================== */
@@ -381,7 +381,7 @@ main > section + section { margin-top: var(--sp-3); }
 :root[data-theme="dark"] .table-action { background: var(--panel-2); }
 
 /* ============================================================================
-   Layout safety — kill the horizontal overflow that shifts the page off-centre
+   Layout safety - kill the horizontal overflow that shifts the page off-centre
    and makes it look "zoomed in". Nothing should be able to exceed the viewport
    width; long unbroken strings (emails, UIDs, URLs) wrap instead of stretching.
    ========================================================================== */

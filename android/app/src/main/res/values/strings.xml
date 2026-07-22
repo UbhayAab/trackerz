@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Trackerz</string>
+    <string name="title_activity_main">Trackerz</string>
+    <string name="package_name">com.ubhayaab.trackerz</string>
+    <string name="custom_url_scheme">com.ubhayaab.trackerz</string>
+</resources>

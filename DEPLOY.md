@@ -1,6 +1,6 @@
 # Deploy the agent edge function (one-time, ~30 seconds)
 
-The DB, schema, RLS, buckets, Gemini key — all already set up. The only thing
+The DB, schema, RLS, buckets, Gemini key - all already set up. The only thing
 that can't be automated without a Personal Access Token is the actual edge
 function code upload. Here's the literal click path.
 
@@ -10,14 +10,14 @@ function code upload. Here's the literal click path.
 
 Everything below (migrations + keys + function deploy) is automated by
 `scripts/setup-backend.mjs`. You only need a **Supabase personal access token**
-(`sbp_…`, 15-sec create at <https://supabase.com/dashboard/account/tokens> — the
+(`sbp_…`, 15-sec create at <https://supabase.com/dashboard/account/tokens> - the
 `sb_secret_…` service key does NOT work for this). Run on a machine with internet:
 
 ```powershell
 cd C:\Users\Abhay Vasta\Desktop\Gpt\trackerz
 $env:SUPABASE_ACCESS_TOKEN="sbp_..."           # personal access token
 $env:GEMINI_API_KEY="AIza..."                  # image/voice extraction
-# Brain (optional — falls back to Gemini if unset). For NVIDIA-hosted DeepSeek:
+# Brain (optional - falls back to Gemini if unset). For NVIDIA-hosted DeepSeek:
 $env:NVIDIA_API_KEY="nvapi-..."
 $env:DEEPSEEK_BASE_URL="https://integrate.api.nvidia.com/v1/chat/completions"
 $env:DEEPSEEK_MODEL="deepseek-ai/deepseek-v3.1"
@@ -29,7 +29,7 @@ It applies the schema + migrations, stores the keys in `app_secrets`, and
 best-effort deploys the `agent` function. If the function-deploy step prints a
 FALLBACK, do the single Studio paste described below. The manual path follows.
 
-## ⚡ UPDATE — do these 3 things to turn on the DeepSeek brain + new features
+## ⚡ UPDATE - do these 3 things to turn on the DeepSeek brain + new features
 
 This build switched the pipeline to **Gemini for image/voice extraction → DeepSeek
 for the reasoning/tool-calls (the "brain")**, added a `workout_logs` table, and
@@ -112,7 +112,7 @@ Magic-link sign-in already works. To enable Google / GitHub buttons:
 
 `resolveSecret(name)` in `supabase/functions/agent/index.ts`:
 
-1. `Deno.env.get(name)` — function secret set via Studio or `supabase secrets set`
+1. `Deno.env.get(name)` - function secret set via Studio or `supabase secrets set`
 2. If empty → `select value from app_secrets where name = $1` using
    `SUPABASE_SERVICE_ROLE_KEY` (auto-injected by the Supabase runtime)
 3. Cached for the lifetime of the function instance

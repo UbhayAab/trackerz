@@ -23,7 +23,7 @@ function fmtAmount(amount, currency = "INR") {
 }
 
 function shortDate(iso) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
 }
@@ -77,7 +77,7 @@ export async function hydrateStateFromSupabase() {
     // first, so the first match for a date/permanent wins.
     // Each date collects an ARRAY of rows so a one-shot delta ("add a salad bowl")
     // can fold onto an earlier full plan (or the standing scaffold). Permanent
-    // deltas are ignored — permanent changes must be full replacements.
+    // deltas are ignored - permanent changes must be full replacements.
     let permanentDiet = null;
     let permanentGym = null;
     const datedDiet = new Map();
@@ -121,7 +121,7 @@ export async function hydrateStateFromSupabase() {
     const ledgerRows = ledger.map((row) => ({
       id: row.id,
       date: shortDate(row.occurred_at),
-      merchant: row.merchant || "—",
+      merchant: row.merchant || "-",
       category: row.is_discretionary ? "Discretionary" : "Essential",
       amount: fmtAmount(row.amount, row.currency),
       evidence: row.direction,
@@ -131,8 +131,8 @@ export async function hydrateStateFromSupabase() {
     const macroRows = foods.map((row) => ({
       id: row.id,
       meal: row.meal_slot || row.meal_name || "Meal",
-      calories: String(row.calories_estimate ?? "—"),
-      protein: row.protein_g != null ? `${row.protein_g}g` : "—",
+      calories: String(row.calories_estimate ?? "-"),
+      protein: row.protein_g != null ? `${row.protein_g}g` : "-",
       confidence: row.confidence > 0.8 ? "high" : row.confidence > 0.5 ? "medium" : "review",
       note: row.description?.slice(0, 90) || "",
     }));
@@ -151,16 +151,16 @@ export async function hydrateStateFromSupabase() {
       file: row.source_name || row.detected_bank || "Import",
       rows: String(row.row_count ?? 0),
       mapped: row.status === "mapped" ? "done" : "pending",
-      duplicate: "—",
+      duplicate: "-",
       status: row.status,
     }));
 
     // Trajectory columns (spent/pace/forecast/next) are a MONEY concept -- a
     // diet/gym goal (calories, protein, workouts) isn't a spend figure, so
-    // only compute them for money-domain kinds; other kinds show "—".
+    // only compute them for money-domain kinds; other kinds show "-".
     const budgetRows = budgets.map((row) => {
       const isMoneyGoal = goalDef(row.kind)?.domain === "money";
-      let spent = "—", pace = "—", forecast = "—", next = "—";
+      let spent = "-", pace = "-", forecast = "-", next = "-";
       if (isMoneyGoal) {
         const win = periodWindow(row.period);
         const spentSoFar = ledger
@@ -220,10 +220,10 @@ export async function hydrateStateFromSupabase() {
       state.metrics.caloriesTarget = dietTargets.calories;
       state.metrics.caloriesLeft = Math.max(0, Math.round(dietTargets.calories - caloriesToday));
       state.metrics.mealsToday = foods.filter((r) => isSameLocalDay(r.occurred_at)).length;
-      // Partial failure is still failure — say which parts, so an empty panel
+      // Partial failure is still failure - say which parts, so an empty panel
       // is never mistaken for an empty day.
       state.syncError = failed.length
-        ? `Couldn't load ${failed.length === 1 ? "one section" : `${failed.length} sections`} — ${failed[0]}`
+        ? `Couldn't load ${failed.length === 1 ? "one section" : `${failed.length} sections`} - ${failed[0]}`
         : null;
       state.syncFailedReads = failed;
     });
@@ -234,8 +234,8 @@ export async function hydrateStateFromSupabase() {
     return { ok: false, failed: [err?.message || "Sync failed"] };
   }
   // Returned rather than thrown: page boot awaits this and must keep going
-  // (the briefing strip still renders on a partial sync). Callers that care —
-  // e.g. the additions feed confirming a delete actually stuck — check `ok`.
+  // (the briefing strip still renders on a partial sync). Callers that care -
+  // e.g. the additions feed confirming a delete actually stuck - check `ok`.
   return { ok: failed.length === 0, failed };
 }
 

@@ -1,5 +1,5 @@
 // Composes a weekly review payload suitable for storing in `weekly_reviews.summary`.
-// Pure — no IO. Inputs match the supabase row shapes.
+// Pure - no IO. Inputs match the supabase row shapes.
 
 import { computeHabitScore } from "./habit-score.js";
 import { computeSleepDebt } from "./sleep-debt.js";

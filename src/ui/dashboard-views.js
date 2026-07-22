@@ -5,7 +5,7 @@ import { aggregatePeriods, dailySeries } from "../analytics/period-aggregator.js
 import { composeInsights } from "../analytics/insights-feed.js";
 
 function fmt(n, { currency = false } = {}) {
-  if (n === null || n === undefined) return "—";
+  if (n === null || n === undefined) return "-";
   if (currency) return `₹${Math.round(n).toLocaleString("en-IN")}`;
   return Math.round(n).toLocaleString("en-IN");
 }
@@ -63,7 +63,7 @@ export function renderDashboards({ ledger = [], foodLogs = [], wellnessLogs = []
       <h3>Insights</h3>
       ${insights.length
         ? `<ul>${insights.map((i) => `<li class="severity-${i.severity}"><span class="kind">${i.kind}</span>${i.text}</li>`).join("")}</ul>`
-        : `<p class="muted small">No insights yet — drop a few captures and they will appear here.</p>`}
+        : `<p class="muted small">No insights yet - drop a few captures and they will appear here.</p>`}
     </div>
     <div class="sparkline-wrap">
       <h3>30-day spend</h3>

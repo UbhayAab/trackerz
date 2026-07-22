@@ -70,7 +70,7 @@ assert.ok(rendered.startsWith("<!doctype html>"), "must be a full document");
 assert.ok(/max-width:560px/.test(rendered), "must be width-constrained for mobile");
 assert.ok(/ubhayaab\.github\.io\/trackerz/.test(rendered), "must link back to the app");
 assert.ok(/pages\/settings\.html/.test(rendered), "must offer a way to turn these off");
-assert.ok(!/<style/.test(rendered), "inline styles only — <style> blocks get stripped");
+assert.ok(!/<style/.test(rendered), "inline styles only - <style> blocks get stripped");
 
 // ---- text alternative --------------------------------------------------------
 const text = etRenderText({ body: "Good morning.", stats, bullets: ["drink water"] });
@@ -81,18 +81,18 @@ assert.ok(!/Slept/.test(text), "text alternative must omit sleep too");
 assert.ok(!/<[a-z]/i.test(text), "text alternative must contain no markup");
 
 // ---- subjects ----------------------------------------------------------------
-assert.equal(etSubjectFor("morning", factsNoSleep), "Morning brief — 1335 kcal yesterday");
+assert.equal(etSubjectFor("morning", factsNoSleep), "Morning brief - 1335 kcal yesterday");
 assert.equal(
   etSubjectFor("morning", { yesterday: { logged_anything: false, calories: 0 } }, "Thu 23 Jul"),
-  "Morning brief — Thu 23 Jul",
+  "Morning brief - Thu 23 Jul",
   "a day with nothing logged must not claim 0 kcal in the subject",
 );
-assert.equal(etSubjectFor("evening", null), "Evening check-in — still time");
+assert.equal(etSubjectFor("evening", null), "Evening check-in - still time");
 assert.equal(etSubjectFor("weekly", null), "Your week in review");
 
 // ---- one-call builder --------------------------------------------------------
 const msg = etBuildMessage({ kind: "morning", body: "Good morning.", facts: factsNoSleep });
-assert.equal(msg.subject, "Morning brief — 1335 kcal yesterday");
+assert.equal(msg.subject, "Morning brief - 1335 kcal yesterday");
 assert.ok(msg.html.includes("Morning brief"));
 assert.ok(msg.text.length > 20);
 assert.ok(!/Slept/.test(msg.html) && !/Slept/.test(msg.text));

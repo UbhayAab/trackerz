@@ -1,8 +1,8 @@
-// MIRROR-PARITY GUARD — the anti-drift backbone of the AI engine.
+// MIRROR-PARITY GUARD - the anti-drift backbone of the AI engine.
 //
 // The Deno edge function (supabase/functions/agent/index.ts) cannot import repo
 // lib/, so it HAND-COPIES every deterministic guard (lexicons, regexes, intent
-// logic). Those copies silently drift — that is exactly what produced a duplicate
+// logic). Those copies silently drift - that is exactly what produced a duplicate
 // eat-vs-buy implementation and a 14-term gap in looksLikeGym. This test fails the
 // build the moment a lib source-of-truth and its inline edge twin diverge.
 //

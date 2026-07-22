@@ -33,7 +33,7 @@ for (const text of DENIED_GYM) {
 }
 
 // "rest day" / "day off" announce a non-workout without naming the gym, so they
-// are not a *denied gym mention* — but they do declare no workout.
+// are not a *denied gym mention* - but they do declare no workout.
 for (const text of ["rest day today", "taking rest today", "day off from training"]) {
   assert.equal(declaresNoWorkout(text, mentionsGym), true, `declaresNoWorkout: ${text}`);
 }
@@ -52,7 +52,7 @@ const AFFIRMATIVE_GYM = [
 // Known limitation, asserted so it stays deliberate: when the affirmative clause
 // elides the subject ("no gym yesterday but went today") there is no gym cue left
 // in it, so the capture reads as denied. That errs toward NOT inventing a
-// workout, which is the failure mode this guard exists to prevent — the user can
+// workout, which is the failure mode this guard exists to prevent - the user can
 // still tap the Gym ✓ button.
 assert.equal(isEventDenied("no gym yesterday but went today", mentionsGym), true);
 

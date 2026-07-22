@@ -1,6 +1,6 @@
 // Guards the "dead HTML shell when esm.sh is down" fix: the supabase-js library
 // must be vendored, same-origin, complete, and fully precached by the service
-// worker — and supabase-client.js must never go back to a static CDN import.
+// worker - and supabase-client.js must never go back to a static CDN import.
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -38,7 +38,7 @@ for (const file of vendorFiles) {
     if (!/^(\.{1,2}\/|\/|https?:)/.test(spec)) continue;
     assert.ok(
       spec.startsWith("./") || spec.startsWith("../"),
-      `${file} imports non-relative "${spec}" — that defeats vendoring`
+      `${file} imports non-relative "${spec}" - that defeats vendoring`
     );
     const target = posix.normalize(posix.join(posix.dirname(file), spec));
     assert.ok(existsSync(target), `${file} imports missing chunk ${target}`);
@@ -53,14 +53,14 @@ const precached = [...vendorBlock[1].matchAll(/"\.\/([^"]+)"/g)].map((m) => m[1]
 assert.deepEqual(
   precached,
   vendorFiles,
-  "sw.js VENDOR list is out of sync with vendor/ — offline load would fail on the missing chunk"
+  "sw.js VENDOR list is out of sync with vendor/ - offline load would fail on the missing chunk"
 );
 
 // --- the client loads it dynamically, from the vendored path ----------------
 const clientSrc = readFileSync("src/services/supabase-client.js", "utf8");
 assert.ok(
   !/^\s*import\s[^\n]*esm\.sh/m.test(clientSrc),
-  "supabase-client.js still has a static esm.sh import — one CDN hiccup blanks every page"
+  "supabase-client.js still has a static esm.sh import - one CDN hiccup blanks every page"
 );
 const vendoredConst = clientSrc.match(/const VENDORED = "([^"]+)"/);
 assert.ok(vendoredConst, "supabase-client.js does not declare VENDORED");

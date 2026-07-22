@@ -1,5 +1,5 @@
 // Generates short, opinionated one-liners from the period aggregator output.
-// No AI calls — pure rules. The agent can ADD richer insights later, but the
+// No AI calls - pure rules. The agent can ADD richer insights later, but the
 // app should never feel empty.
 
 import { computeBudgetAlerts } from "../domain/money/budget-alerts.js";
@@ -29,14 +29,14 @@ export function composeInsights({ aggregates, budgets = [], subscriptions = [], 
     else if (deltas?.wow_spend < -0.15) out.push({ kind: "money", severity: "good", text: `Week-over-week spend down ${pct(-deltas.wow_spend)}.` });
   }
 
-  // Month — skip the meaningless zero-vs-zero case for brand-new users.
+  // Month - skip the meaningless zero-vs-zero case for brand-new users.
   if (month && pm && deltas?.mom_spend !== undefined && (month.spend > 0 || pm.spend > 0)) {
     out.push({ kind: "money", severity: deltas.mom_spend > 0.1 ? "warning" : "info", text: `MoM spend ${deltas.mom_spend >= 0 ? "up" : "down"} ${pct(Math.abs(deltas.mom_spend))} (${fmtRupees(month.spend)} vs ${fmtRupees(pm.spend)}).` });
   }
 
   // Diet
   if (t.protein < 90 && t.mealCount >= 2) {
-    out.push({ kind: "diet", severity: "warning", text: `Protein at ${t.protein}g — gap to 162g target.` });
+    out.push({ kind: "diet", severity: "warning", text: `Protein at ${t.protein}g - gap to 162g target.` });
   }
   if (deltas?.dod_calories > 0.25 && yesterday?.calories > 0) {
     out.push({ kind: "diet", severity: "info", text: `Calorie pace higher than yesterday.` });

@@ -1,6 +1,6 @@
 // Compute a single day's eating window from food_logs.
 // `lateNightSnack` flags any meal after 22:30 local time (using the row's
-// own local clock — we parse the ISO string and pull the local hour/minute
+// own local clock - we parse the ISO string and pull the local hour/minute
 // from a Date object).
 
 const LATE_HOUR = 22;

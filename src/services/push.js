@@ -1,6 +1,6 @@
 // Web Push subscription mechanics (browser side). The server half lives in the
 // jarvis edge function, which signs pushes with the VAPID private key stored in
-// app_secrets (JARVIS_VAPID_JWK). This public key is the matching half — it is
+// app_secrets (JARVIS_VAPID_JWK). This public key is the matching half - it is
 // safe in client code by design and is printed by scripts/generate-vapid-keys.mjs.
 
 import { savePushSubscription, removePushSubscription } from "./jarvis.js";
@@ -22,7 +22,7 @@ export function pushSupported() {
 }
 
 // navigator.serviceWorker.ready is a promise that NEVER settles on a page that
-// never registered a worker — it does not reject, it just hangs, which is how
+// never registered a worker - it does not reject, it just hangs, which is how
 // the settings page ended up permanently "checking" and no subscription was
 // ever created. Register on demand and cap the wait so callers always get an
 // answer they can show the user.
@@ -43,7 +43,7 @@ async function readyRegistration(timeoutMs = 8000) {
 
 // "granted" | "denied" | "default" | "unsupported", plus whether this browser
 // currently holds a live subscription. `ready` is false when we could not reach
-// the service worker at all — in that case `subscribed` is unknown, not false,
+// the service worker at all - in that case `subscribed` is unknown, not false,
 // and the UI must not claim notifications are simply "off".
 export async function getPushState() {
   if (!pushSupported()) return { permission: "unsupported", subscribed: false, ready: false };
@@ -58,7 +58,7 @@ export async function getPushState() {
 }
 
 // Ask permission, subscribe this browser, and persist the endpoint so the
-// jarvis edge fn can reach it. Returns { ok, reason?, error? } — every failure
+// jarvis edge fn can reach it. Returns { ok, reason?, error? } - every failure
 // mode is named so the caller can put it on screen.
 export async function enablePush() {
   if (!pushSupported()) {
@@ -88,7 +88,7 @@ export async function enablePush() {
   try {
     await savePushSubscription({ endpoint: json.endpoint, keys: json.keys, ua: navigator.userAgent.slice(0, 200) });
   } catch (err) {
-    // The browser is subscribed but the server can't reach it — that is a
+    // The browser is subscribed but the server can't reach it - that is a
     // failure, not a partial success. Say so instead of reporting "enabled".
     return { ok: false, reason: "save_failed", error: err?.message || String(err) };
   }
@@ -114,7 +114,7 @@ export async function disablePush() {
 }
 
 // Local-only check: proves permission + service worker + notification display
-// work on this device. It does NOT prove the server can deliver — that needs a
+// work on this device. It does NOT prove the server can deliver - that needs a
 // real push from the jarvis function.
 export async function showLocalTestNotification() {
   if (!pushSupported()) return { ok: false, reason: "unsupported" };
@@ -122,11 +122,11 @@ export async function showLocalTestNotification() {
   const reg = await readyRegistration();
   if (!reg) return { ok: false, reason: "no_service_worker" };
   try {
-    // Resolve assets off the registration scope, not the calling page — this is
+    // Resolve assets off the registration scope, not the calling page - this is
     // callable from /pages/* and from the root.
     const icon = new URL("icons/icon-192.svg", reg.scope).href;
     await reg.showNotification("Trackerz", {
-      body: "Local test — this device can show notifications.",
+      body: "Local test - this device can show notifications.",
       icon,
       badge: icon,
       tag: "jarvis-test",

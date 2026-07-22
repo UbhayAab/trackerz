@@ -1,9 +1,9 @@
 // Realistic cross-source duplicate matrix for the cases in §6 of the plan.
 //
 // All inputs are normalised ledger-row-like objects. Decisions:
-//   merge      — strong duplicate, one canonical should win.
-//   link       — likely the same event but keep both visible until user acts.
-//   ignore     — definitely not duplicates.
+//   merge      - strong duplicate, one canonical should win.
+//   link       - likely the same event but keep both visible until user acts.
+//   ignore     - definitely not duplicates.
 //
 // The function returns the strongest verdict for the pair.
 

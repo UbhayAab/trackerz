@@ -106,7 +106,7 @@ body,
 .account-avatar:active { transform: translateY(1px); }
 
 /* ============================================================================
-   Reduced motion — strip entrances and per-frame transforms. Keep instant
+   Reduced motion - strip entrances and per-frame transforms. Keep instant
    opacity only. Non-negotiable.
    ========================================================================== */
 @media (prefers-reduced-motion: reduce) {

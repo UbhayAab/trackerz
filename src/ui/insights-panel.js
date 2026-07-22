@@ -30,7 +30,7 @@ export function renderInsights(state) {
 
   list.innerHTML = parts.length
     ? parts.join("")
-    : `<li class="insight insight-empty">No insights yet — add your first capture and the AI summary appears here.</li>`;
+    : `<li class="insight insight-empty">No insights yet - add your first capture and the AI summary appears here.</li>`;
 }
 
 export function bindInsights() {

@@ -34,7 +34,7 @@ for (const path of pages) {
   try {
     const res = await page.goto(base + path, { waitUntil: "networkidle", timeout: 20000 });
     if (!res || !res.ok()) {
-      console.error(`× ${path} — HTTP ${res?.status() ?? "?"}`);
+      console.error(`× ${path} - HTTP ${res?.status() ?? "?"}`);
       failed++;
     } else if (errors.length || bad.length) {
       console.error(`× ${path}`);
@@ -45,7 +45,7 @@ for (const path of pages) {
       console.log(`✓ ${path}`);
     }
   } catch (e) {
-    console.error(`× ${path} — ${e.message}`);
+    console.error(`× ${path} - ${e.message}`);
     failed++;
   } finally {
     await ctx.close();

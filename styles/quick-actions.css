@@ -1,5 +1,5 @@
 /* One-tap row: sleep / water / gym.
-   Sized for a thumb on a phone — every control is >= 44px tall, which the audit
+   Sized for a thumb on a phone - every control is >= 44px tall, which the audit
    flagged the 30px gym controls for failing. Rows scroll horizontally rather
    than wrapping into a tall stack or forcing the page to scroll sideways. */
 
@@ -170,3 +170,40 @@
   font: inherit;
   font-size: 0.8rem;
 }
+
+/* ---- spend suggestion (pattern learning) ---- */
+/* The offer that appears when a capture named a known recurring meal but no
+   price. It is deliberately calm and dismissible: assuming money the user never
+   stated is the bug this replaces, so this only ever proposes. */
+.spend-suggestion {
+  margin: 10px 0 0;
+}
+.spend-suggest-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--accent, #138a5b);
+  background: color-mix(in srgb, var(--accent, #138a5b) 8%, transparent);
+}
+.spend-suggest-body { flex: 1 1 180px; min-width: 0; }
+.spend-suggest-lead { margin: 0; font-size: 0.98rem; color: var(--ink, #17211c); }
+.spend-suggest-evidence { margin: 3px 0 0; font-size: 0.8rem; color: var(--muted, #7c8a82); }
+.spend-suggest-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.spend-suggest-add, .spend-suggest-dismiss {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.spend-suggest-dismiss {
+  background: transparent;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.32));
+  color: var(--muted, #7c8a82);
+}
+.spend-suggest-add[disabled] { opacity: 0.6; cursor: default; }

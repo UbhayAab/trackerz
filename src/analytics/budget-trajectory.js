@@ -17,7 +17,7 @@ export function getBudgetPace({ spentSoFar, budget, dayOfMonth, daysInMonth = 30
 // engine used to each roll their own week: the page started weeks on ISO Monday
 // while the alert engine started them on Sunday, so on a Sunday the same budget
 // showed two different "spent so far" figures on two different screens. ISO
-// Monday wins (it is what the rest of the app — plans, streaks — already uses).
+// Monday wins (it is what the rest of the app - plans, streaks - already uses).
 
 // JS 0=Sun … 6=Sat -> ISO 1=Mon … 7=Sun.
 function isoWeekday(date) {
@@ -35,7 +35,7 @@ function daysInMonthOf(date) {
 }
 
 // `dayOfMonth` / `daysInMonth` are the generic "day into period / days in
-// period" pair getBudgetPace consumes — the names are historical.
+// period" pair getBudgetPace consumes - the names are historical.
 export function periodWindow(period, now = new Date()) {
   if (period === "daily") {
     const start = startOfDay(now);

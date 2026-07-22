@@ -3,6 +3,7 @@ import { previewCaptureRoute } from "../services/capture-router.js";
 import { updateState } from "../state/app-state.js";
 import { runCapture } from "../services/agent-runner.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { renderSpendSuggestion, clearSpendSuggestion } from "./spend-suggestion.js";
 import { startLiveTranscription, stopLiveTranscription, isLiveTranscriptionSupported } from "../services/speech.js";
 import { enqueueCapture } from "../services/offline-queue.js";
 import { showToast } from "./toast.js";
@@ -106,7 +107,7 @@ async function handleSubmit() {
 
   if (!navigator.onLine) {
     await enqueueCapture({ text: [text, liveTranscript].filter(Boolean).join("\n"), files: allFiles, captureType });
-    updateOptimistic(optimisticId, { status: "queued", detail: "Offline — saved locally, will sync when online." });
+    updateOptimistic(optimisticId, { status: "queued", detail: "Offline - saved locally, will sync when online." });
     updateState((state) => {
       state.activeJob = null;
       state.parseLog.unshift("Offline: capture stored in IndexedDB queue.");
@@ -116,8 +117,9 @@ async function handleSubmit() {
     return;
   }
 
+  clearSpendSuggestion();
   try {
-    await runCapture(
+    const result = await runCapture(
       { text, files: allFiles, captureType, transcript: liveTranscript },
       {
         onStage(s, idx) {
@@ -130,9 +132,15 @@ async function handleSubmit() {
       },
     );
     await hydrateStateFromSupabase();
+    // Offer a remembered price when the capture named a known meal but no amount.
+    // renderSpendSuggestion no-ops on null, so a capture with nothing to suggest
+    // (the common case) shows nothing.
+    if (result?.spendSuggestion) {
+      renderSpendSuggestion(result.spendSuggestion, { ingestionId: result.suggestionIngestionId });
+    }
     updateOptimistic(optimisticId, { status: "done", detail: "Saved. Review the action queue." });
     const had = allFiles.length > 0;
-    showToast(had ? `Processed ${allFiles.length} file(s) — check the feed` : "Capture saved");
+    showToast(had ? `Processed ${allFiles.length} file(s) - check the feed` : "Capture saved");
     updateState((state) => {
       state.activeJob = null;
       state.parseLog.unshift("Tables updated. Review queue and metrics refreshed.");
@@ -140,7 +148,7 @@ async function handleSubmit() {
   } catch (err) {
     const msg = err?.message || String(err);
     updateOptimistic(optimisticId, { status: "error", detail: msg });
-    showToast(`Capture failed — ${msg}`, { kind: "error", duration: 6000 });
+    showToast(`Capture failed - ${msg}`, { kind: "error", duration: 6000 });
     updateState((state) => {
       state.activeJob = null;
       state.parseLog.unshift(`Capture failed: ${msg}`);
@@ -159,7 +167,7 @@ function resetForm() {
   renderRoutePreview();
 }
 
-// Same escaping as ui/toast.js — the optimistic row is built with innerHTML and
+// Same escaping as ui/toast.js - the optimistic row is built with innerHTML and
 // the summary is whatever the user typed, pasted or dictated.
 function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);

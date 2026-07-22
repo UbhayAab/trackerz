@@ -3,7 +3,7 @@
 //
 //   Each prescribed exercise shows: muscle · name · prescribed sets×reps, the
 //   weight PREFILLED from your last session, and big − / + steppers. You don't
-//   type — you nudge the weight if needed and tap ✓. That instantly logs the
+//   type - you nudge the weight if needed and tap ✓. That instantly logs the
 //   exercise (prescribed sets × reps at the shown weight) as a workout_logs row;
 //   un-tapping deletes it. Bodyweight + composition save on blur. No batch
 //   "Log session" button, no per-set forms.
@@ -18,7 +18,7 @@ import { goalDisplayValue } from "../domain/goals.js";
 const WORKOUT_HOST = "#workoutLog";
 const BODY_HOST = "#bodyComposition";
 const STATE_PREFIX = "trackerz.gym.v1.";
-const STEP = 2.5; // kg per tap — the usual plate jump
+const STEP = 2.5; // kg per tap - the usual plate jump
 
 let _state = { workoutLogs: [], bodyMetrics: [], budgets: [] };
 
@@ -74,7 +74,7 @@ function metricTrend(b, t) { const r = (b || []).filter((x) => x.metric_type ===
 // A badge when an exercise was ticked from a CAPTURED workout (not a manual tap).
 function sourceBadge(source) {
   if (source === "auto") return `<span class="wl-auto" title="auto-checked from a captured workout">auto</span>`;
-  if (source === "suggested") return `<span class="wl-suggest" title="possible match from a captured workout — tap to confirm">?</span>`;
+  if (source === "suggested") return `<span class="wl-suggest" title="possible match from a captured workout - tap to confirm">?</span>`;
   return "";
 }
 
@@ -85,7 +85,7 @@ function exerciseCard(ex, st, workoutLogs) {
   const last = lastSetFor(workoutLogs, ex.name);
   const isTimed = ex.repsUnit === "sec";
   const weight = st.weight != null ? st.weight : (last ? num(last.weight_kg) : 0);
-  const lastLabel = last ? `last ${last.weight_kg ?? "—"}kg×${last.reps ?? "—"}` : "first time";
+  const lastLabel = last ? `last ${last.weight_kg ?? "-"}kg×${last.reps ?? "-"}` : "first time";
   const stepper = isTimed ? "" : `
     <div class="wl-weight-ctl">
       <button type="button" class="wl-step" data-step="-1" data-ex="${ex.key}" aria-label="less weight">−</button>
@@ -125,7 +125,7 @@ function recentSessions(workoutLogs) {
     byDay.set(k, g);
   }
   const rows = [...byDay.values()].slice(0, 7).map((g) =>
-    `<li><span>${esc(shortDate(g.date))}</span><strong>${g.lifts.size} lifts</strong><span class="muted small">${g.vol ? `${g.vol.toLocaleString("en-IN")} kg vol` : "—"}${g.bw ? ` · ${g.bw}kg` : ""}</span></li>`).join("");
+    `<li><span>${esc(shortDate(g.date))}</span><strong>${g.lifts.size} lifts</strong><span class="muted small">${g.vol ? `${g.vol.toLocaleString("en-IN")} kg vol` : "-"}${g.bw ? ` · ${g.bw}kg` : ""}</span></li>`).join("");
   return rows ? `<ul class="wl-sessions">${rows}</ul>` : `<p class="muted small">Your sessions show up here once you tap ✓ on a lift.</p>`;
 }
 
@@ -175,7 +175,7 @@ export function renderWorkoutPanel(appState) {
     const bf = latestMetric(_state.bodyMetrics, "body_fat_pct");
     const waist = latestMetric(_state.bodyMetrics, "waist_cm");
     const tile = (label, m, unit, trend) => {
-      const v = m ? `${round(num(m.value))}${unit}` : "—";
+      const v = m ? `${round(num(m.value))}${unit}` : "-";
       const arrow = trend == null || trend === 0 ? "" : (trend < 0 ? "▼" : "▲");
       const cls = trend == null || trend === 0 ? "" : (trend < 0 ? "good" : "bad");
       return `<div class="body-tile"><span>${label}</span><strong>${v}</strong>${arrow ? `<span class="body-trend ${cls}">${arrow} ${Math.abs(trend)}${unit}</span>` : `<span class="muted small">${m ? shortDate(m.occurred_at) : "tap to add"}</span>`}</div>`;
@@ -233,7 +233,7 @@ async function unlogExercise(exKey) {
   day[exKey] = { done: false, source: "manual", weight: prev?.weight };
   saveDay(key, day);
   renderWorkoutPanel();
-  // Only remove a row this panel logged manually — never delete the user's captured
+  // Only remove a row this panel logged manually - never delete the user's captured
   // workout just because they un-ticked an auto-suggestion.
   if (prev?.recordId && canSync()) {
     try { await deleteRow("workout_logs", prev.recordId); await hydrateStateFromSupabase().catch(() => {}); } catch { /* best effort */ }

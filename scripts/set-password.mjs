@@ -1,6 +1,6 @@
 // Sets the account password via the Supabase Auth admin API.
 //
-// Passwords are stored as bcrypt hashes — an existing one cannot be read back,
+// Passwords are stored as bcrypt hashes - an existing one cannot be read back,
 // only replaced. Existing sessions are NOT invalidated, so doing this cannot
 // lock you out of a device you are already signed in on.
 //
@@ -73,5 +73,5 @@ const verified = check.ok;
 
 console.log(`account:  ${email}`);
 console.log(`password: ${password}`);
-console.log(`sign-in verified: ${verified ? "yes" : `NO — ${(await check.text()).slice(0, 200)}`}`);
+console.log(`sign-in verified: ${verified ? "yes" : `NO - ${(await check.text()).slice(0, 200)}`}`);
 process.exitCode = verified ? 0 : 1;

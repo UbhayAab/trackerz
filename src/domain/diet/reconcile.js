@@ -1,21 +1,21 @@
 // Reconcile a day's LOGGED rows (food / workout / hydration) against that day's
 // plan items, so anything you captured free-form ("had egg curry n rotis", "did
 // legs at gym", "cake last night") auto-ticks the matching plan check-off instead
-// of waiting for a manual tap. Pure module: no DOM, no Supabase — importable by
+// of waiting for a manual tap. Pure module: no DOM, no Supabase - importable by
 // the UI and by tests.
 //
 // Output per item id: { source: "auto"|"suggested", confidence, recordId, table }.
 // "auto"  = strong match (the UI ticks it outright).
 // "suggested" = weak match (the UI shows a faint ✓ to confirm).
 // Anything not matched is simply absent (and the logged row still shows up in the
-// day's macro gauges / feed — a non-plan food like cake just isn't a check-off).
+// day's macro gauges / feed - a non-plan food like cake just isn't a check-off).
 
 import { isoWeekday, prescribedExercises, muscleFor } from "./plan.js";
 
 const AUTO_THRESHOLD = 0.6;
 const SUGGEST_THRESHOLD = 0.3;
 
-// Words that carry no dish signal — stripped before token matching so "had a big
+// Words that carry no dish signal - stripped before token matching so "had a big
 // bowl of egg curry" matches on {egg,curry}, not on {had,big,bowl,of}.
 const STOPWORDS = new Set([
   "the", "a", "an", "of", "and", "with", "had", "have", "ate", "eat", "eaten",
@@ -24,7 +24,7 @@ const STOPWORDS = new Set([
   "evening", "afternoon", "those", "that", "this", "it", "auto", "from", "spend",
 ]);
 
-// Pure measurement/unit noise — numbers and units shouldn't drive a dish match.
+// Pure measurement/unit noise - numbers and units shouldn't drive a dish match.
 const UNIT_RE = /^(\d+|g|kg|ml|l|mg|mcg|iu|scoops?|pcs?|pieces?|rs|x|min|mins)$/i;
 
 export function tokenize(text) {
@@ -105,7 +105,7 @@ function reconcileFood(meals, foodLogs) {
   return out;
 }
 
-// Any workout row on the day ticks the day's single workout item — presence is the
+// Any workout row on the day ticks the day's single workout item - presence is the
 // signal (one gym session = the day's workout). Cardio/walk rows count too.
 function reconcileWorkout(plan, workoutLogs) {
   const out = {};
@@ -116,7 +116,7 @@ function reconcileWorkout(plan, workoutLogs) {
 }
 
 // Per-EXERCISE gym auto-check: match a captured workout's logged sets to the
-// prescribed exercises so "did legs — leg press 3×12, leg curl 3×12" ticks those
+// prescribed exercises so "did legs - leg press 3×12, leg curl 3×12" ticks those
 // exercises on the gym checklist (the diet hub's analogue, but per ex.key not the
 // whole-day workout item). Gated by muscle group so "leg press" (quads) never
 // ticks "leg curl" (hamstrings); scored by prescribed-name token coverage so a

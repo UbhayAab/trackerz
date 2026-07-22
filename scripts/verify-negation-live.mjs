@@ -8,7 +8,7 @@ import pg from "pg";
 
 loadEnv({ path: ".env.local" });
 // Pooler fallback for when the direct db.* host is IPv6-only and fails to
-// resolve. Never inline the password here — set SUPABASE_DB_URL_POOLER in
+// resolve. Never inline the password here - set SUPABASE_DB_URL_POOLER in
 // .env.local (gitignored) alongside SUPABASE_DB_URL.
 const FALLBACK = process.env.SUPABASE_DB_URL_POOLER || "";
 const USER = "548339a8-6d61-4bd9-bc7e-9768be01e4eb";
@@ -38,7 +38,7 @@ async function mintUserJwt(email) {
   if (!token) throw new Error(`no hashed_token in generate_link response`);
 
   // token_hash (not `token`) is the form that exchanges without also needing the
-  // email — passing both is rejected as "only an email or phone should be provided".
+  // email - passing both is rejected as "only an email or phone should be provided".
   const ver = await fetch(`${SUPA}/auth/v1/verify`, {
     method: "POST",
     headers: { "content-type": "application/json", apikey: ANON },
@@ -79,7 +79,7 @@ try {
         apikey: ANON,
         authorization: `Bearer ${JWT}`,
       },
-      // Same body shape src/services/agent-runner.js sends — the field is `text`.
+      // Same body shape src/services/agent-runner.js sends - the field is `text`.
       body: JSON.stringify({ ingestionId, userId: USER, sourceType: "text", text: c.text, mode: "auto", mediaAssetIds: [] }),
     });
     const body = await res.text();

@@ -1,5 +1,5 @@
 // Client-side data export. Fetches the user's rows and downloads CSV/JSON in
-// the browser — no server round-trip. Gives users real ownership of their data.
+// the browser - no server round-trip. Gives users real ownership of their data.
 import { fetchLedger, fetchFoodLogs, fetchBodyMetrics, fetchWellnessLogs } from "./supabase-data.js";
 import { toCsv } from "../utils/csv.js";
 

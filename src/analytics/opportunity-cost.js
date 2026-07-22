@@ -40,7 +40,7 @@ export function computeOpportunityCost(ledgerEntries) {
   let count = 0;
   // Spend that post-dates the last close we have. The series stops at a month
   // end and the user keeps spending after it, so there is no benchmark to grow
-  // this money by — it is held at cost (a 1.0 multiplier) and disclosed rather
+  // this money by - it is held at cost (a 1.0 multiplier) and disclosed rather
   // than quietly folded in as if it had been measured.
   let unpricedSpent = 0;
   let unpricedCount = 0;

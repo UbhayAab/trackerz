@@ -1,4 +1,4 @@
--- Jarvis proactive engine — the "follow-on SQL" that 20260625000014_briefings.sql
+-- Jarvis proactive engine - the "follow-on SQL" that 20260625000014_briefings.sql
 -- promised. Turns the briefings table from a client-side stopgap into a scheduled
 -- autonomous loop: pg_cron fires jarvis_ping() at three IST slots, which reads the
 -- cron secret from app_secrets and asks pg_net to POST to the `jarvis` edge
@@ -62,7 +62,7 @@ alter table public.profiles add column if not exists email_brief boolean not nul
 alter table public.profiles add column if not exists quiet_hours jsonb not null default '{"start":"22:30","end":"06:45"}'::jsonb;
 
 -- 6. The cron→function bridge. SECURITY DEFINER so the cron job can read the
---    secret; EXECUTE is revoked from app roles below — only the postgres role
+--    secret; EXECUTE is revoked from app roles below - only the postgres role
 --    (which owns the cron jobs) and service_role may call it.
 create or replace function public.jarvis_ping(action text)
 returns bigint
@@ -76,7 +76,7 @@ declare
 begin
   select value into secret from public.app_secrets where name = 'JARVIS_CRON_SECRET';
   if secret is null then
-    raise warning 'jarvis_ping: JARVIS_CRON_SECRET missing from app_secrets — skipping %', action;
+    raise warning 'jarvis_ping: JARVIS_CRON_SECRET missing from app_secrets - skipping %', action;
     return null;
   end if;
   select net.http_post(

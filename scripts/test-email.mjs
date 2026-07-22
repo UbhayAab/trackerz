@@ -1,11 +1,11 @@
 // Sends one real test email through the exact path Jarvis uses, and prints
-// Resend's raw response — the only way to tell "accepted" from "delivered".
+// Resend's raw response - the only way to tell "accepted" from "delivered".
 import { config as loadEnv } from "dotenv";
 import pg from "pg";
 
 loadEnv({ path: ".env.local" });
 // Pooler fallback for when the direct db.* host is IPv6-only and fails to
-// resolve. Never inline the password here — set SUPABASE_DB_URL_POOLER in
+// resolve. Never inline the password here - set SUPABASE_DB_URL_POOLER in
 // .env.local (gitignored) alongside SUPABASE_DB_URL.
 const FALLBACK = process.env.SUPABASE_DB_URL_POOLER || "";
 const to = process.argv[2];
@@ -30,7 +30,7 @@ const res = await fetch("https://api.resend.com/emails", {
   body: JSON.stringify({
     from,
     to,
-    subject: "Trackerz — Jarvis delivery test",
+    subject: "Trackerz - Jarvis delivery test",
     text: "If you are reading this, Jarvis email delivery works. Reply is not monitored.",
   }),
 });

@@ -1,19 +1,19 @@
 // deno-lint-ignore-file no-explicit-any
-// Trackerz Jarvis edge function — the proactive engine.
+// Trackerz Jarvis edge function - the proactive engine.
 //
 // pg_cron → jarvis_ping() → pg_net POSTs here three times a day (see
 // 20260706000015_jarvis_engine.sql):
-//   closeout 00:05 IST — close the just-ended local day into habit_days (+ streaks),
+//   closeout 00:05 IST - close the just-ended local day into habit_days (+ streaks),
 //            write a `closeout` briefing, and on Sundays the weekly_reviews row.
-//   morning  07:00 IST — compose the facts JSON, let DeepSeek-chat narrate it
+//   morning  07:00 IST - compose the facts JSON, let DeepSeek-chat narrate it
 //            (Gemini fallback, deterministic fallback below that), persist the
 //            `morning` briefing, deliver via Resend email + Web Push.
-//   evening  20:30 IST — nudge on what is still fixable today; push only
+//   evening  20:30 IST - nudge on what is still fixable today; push only
 //            (email only when actionable).
 //
 // Auth: `x-jarvis-secret` header matching app_secrets JARVIS_CRON_SECRET runs all
 // enabled users (the cron path); a user JWT runs just that user ("Brief me now").
-// Deployed with verify_jwt=false — auth is enforced in-function because the
+// Deployed with verify_jwt=false - auth is enforced in-function because the
 // publishable/new-style API keys are not JWTs.
 //
 // The voice model NEVER invents figures: it is prompted to copy numbers verbatim
@@ -153,14 +153,14 @@ function jbInQuietHours(instant, timeZone, quiet) {
   return s < e ? (mins >= s && mins < e) : (mins >= s || mins < e);
 }
 
-// Standing scaffold names, mirrored from lib/diet-scaffold.mjs (labels only —
+// Standing scaffold names, mirrored from lib/diet-scaffold.mjs (labels only -
 // the brief needs the day's headline, not the meal list). Keep in sync by hand.
 var JB_WEEKDAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 var JB_WORKOUT_BY_WEEKDAY = { 1: "A", 2: "cardio", 3: "cardio", 4: "cardio", 5: "B", 6: "A", 7: "B" };
 var JB_WORKOUTS = {
   A: { name: "Workout A", kind: "gym" },
   B: { name: "Workout B", kind: "gym" },
-  cardio: { name: "Cardio — forgiven day", kind: "cardio" },
+  cardio: { name: "Cardio - forgiven day", kind: "cardio" },
 };
 
 function jbDietLabelForWeekday(wd) {
@@ -220,7 +220,7 @@ function jbCloseDay(input) {
   }
 
   // A 'skipped'/'rest' row records that the user answered the day ("no gym
-  // today") — it is NOT training. Counting every row is what turned "Did not go
+  // today") - it is NOT training. Counting every row is what turned "Did not go
   // to gym bro" into a completed workout and a rolling gym streak. Rows written
   // before the status column existed have no status and stay 'done'.
   var realWorkouts = [];
@@ -235,7 +235,7 @@ function jbCloseDay(input) {
 
   // sleepH stays NULL when nothing was measured. It used to default to 0, which
   // the voice model then narrated as the fact "you got zero sleep" every single
-  // day — a number the app had never collected.
+  // day - a number the app had never collected.
   var steps = 0, sleepH = null, weightKg = null;
   for (var b = 0; b < bodyMetrics.length; b++) {
     var m = bodyMetrics[b], v = Number(m.value) || 0;
@@ -265,7 +265,7 @@ function jbCloseDay(input) {
   var caloriesTarget = jbBudgetAmount(budgets, "daily_calories");
   var spendCap = jbDailySpendCap(budgets);
 
-  // `logged` counts ALL rows including a skipped workout — declining the gym is
+  // `logged` counts ALL rows including a skipped workout - declining the gym is
   // still answering the day, and the logging streak should survive it.
   var logged = (ledger.length + foods.length + workouts.length + wellness.length + bodyMetrics.length + sessions.length) > 0;
   // A forgiven-cardio day counts on 10k steps OR any real session; rest days always count.
@@ -314,7 +314,7 @@ function jbSafeToSpend(o) {
   return { hasBudget: true, monthlyCap: cap, remaining: Math.round(remaining), daysLeft: daysLeft, perDay: Math.round(remaining / daysLeft) };
 }
 
-// Assemble the morning facts object — the ONLY numbers the voice model may use.
+// Assemble the morning facts object - the ONLY numbers the voice model may use.
 function jbBriefFacts(o) {
   var wd = jbWeekdayFromKey(o.dateKey);
   var workout = jbPlannedWorkout(wd, o.gymPayload);
@@ -339,7 +339,7 @@ function jbBriefFacts(o) {
       // "workout done". Both are exposed now, distinctly.
       workout_done: y.flags ? Boolean(y.flags.workout) : Boolean(y.workoutDone),
       workout_ok: y.flags ? Boolean(y.flags.workout_ok) : Boolean(y.workoutDone),
-      // null (not false) when no target/cap exists — "no target" must never be
+      // null (not false) when no target/cap exists - "no target" must never be
       // narrated as "missed"/"over".
       protein_hit: (y.caps && y.caps.proteinTarget != null && y.caps.proteinTarget > 0)
         ? Boolean(y.flags && y.flags.protein_hit) : null,
@@ -357,10 +357,10 @@ function jbBriefFacts(o) {
   };
 }
 
-// Deterministic morning brief — the always-works voice the LLM only embellishes.
+// Deterministic morning brief - the always-works voice the LLM only embellishes.
 function jbMorningFallback(facts) {
   var lines = [];
-  lines.push("Good morning — " + facts.weekday + ", " + facts.diet_label + ".");
+  lines.push("Good morning - " + facts.weekday + ", " + facts.diet_label + ".");
   var y = facts.yesterday;
   if (y && y.logged_anything) {
     var ybits = [jbRupees(y.spend) + " spent"];
@@ -389,7 +389,7 @@ function jbMorningFallback(facts) {
   return lines.join(" ");
 }
 
-// Evening nudge — only what is still fixable today.
+// Evening nudge - only what is still fixable today.
 function jbEveningBody(s) {
   var nudges = [];
   var pt = jbRound(s.proteinTarget), p = jbRound(s.proteinToday);
@@ -402,7 +402,7 @@ function jbEveningBody(s) {
   if (s.spendCap != null && jbRound(s.todaySpend) > jbRound(s.spendCap)) {
     nudges.push("over today's spend by " + jbRupees(jbRound(s.todaySpend) - jbRound(s.spendCap)));
   }
-  var headline = nudges.length ? "Evening check-in — still time" : "Evening check-in — on track";
+  var headline = nudges.length ? "Evening check-in - still time" : "Evening check-in - on track";
   var body = nudges.length ? headline + ": " + nudges.join(" · ") + "." : headline + ". Nothing left undone.";
   return { headline: headline, nudges: nudges, body: body };
 }
@@ -446,7 +446,7 @@ function jbWeeklySummary(days) {
     averages: {
       protein: n ? Math.round(t.protein / n) : 0,
       calories: n ? Math.round(t.calories / n) : 0,
-      // null, not 0 — "no sleep was recorded this week" is not "you slept 0h".
+      // null, not 0 - "no sleep was recorded this week" is not "you slept 0h".
       sleep_h: t.sleepN ? Math.round((t.sleep / t.sleepN) * 10) / 10 : null,
     },
     hits: hits,
@@ -455,14 +455,14 @@ function jbWeeklySummary(days) {
 }
 
 // Voice contract: the model phrases, the facts JSON owns every number.
-var JB_VOICE_SYSTEM = "You are Jarvis, the user's personal chief of staff inside their life tracker. Write their morning brief from the facts JSON: 3 to 6 short sentences, direct address, brisk and warm, plain text only (no markdown, no emoji, no headings, no bullet lists). Every figure you mention must be copied verbatim from the facts JSON — never invent, recompute, or extrapolate a number. NULL MEANS NOT MEASURED AND NOT SET: if a value is null, that thing was never recorded or never configured — say NOTHING about it at all. Never render null as zero, and never describe it as missed, over, failed, skipped, or lacking. In particular, if sleep_h is null the app has no sleep data, so do not mention sleep in any form. Only mention a metric when its value is a real number. workout_done=false means no session happened; if workout_ok is true on the same day it was a planned rest or forgiven day, so do not call it a miss. Currency is INR; write amounts as Rs. Cover: how yesterday closed, today's plan (workout and protein/calorie targets), safe-to-spend if present, any subscription due soon, and the strongest streak worth protecting. End with one concrete next move for the morning.";
+var JB_VOICE_SYSTEM = "You are Jarvis, the user's personal chief of staff inside their life tracker. Write their morning brief from the facts JSON: 3 to 6 short sentences, direct address, brisk and warm, plain text only (no markdown, no emoji, no headings, no bullet lists). Every figure you mention must be copied verbatim from the facts JSON - never invent, recompute, or extrapolate a number. NULL MEANS NOT MEASURED AND NOT SET: if a value is null, that thing was never recorded or never configured - say NOTHING about it at all. Never render null as zero, and never describe it as missed, over, failed, skipped, or lacking. In particular, if sleep_h is null the app has no sleep data, so do not mention sleep in any form. Only mention a metric when its value is a real number. workout_done=false means no session happened; if workout_ok is true on the same day it was a planned rest or forgiven day, so do not call it a miss. Currency is INR; write amounts as Rs. Cover: how yesterday closed, today's plan (workout and protein/calorie targets), safe-to-spend if present, any subscription due soon, and the strongest streak worth protecting. End with one concrete next move for the morning.";
 
 function jbVoiceUserPrompt(facts) {
   return "FACTS JSON:\n" + JSON.stringify(facts) + "\n\nWrite the morning brief now, plain text only.";
 }
 // ==== JARVIS-BRIEF MIRROR END ====
 
-// -------- per-user data access (service role; RLS bypassed on purpose — this is
+// -------- per-user data access (service role; RLS bypassed on purpose - this is
 // the scheduled server acting FOR the user; every write is audit-logged) --------
 
 type Profile = {
@@ -512,11 +512,11 @@ async function fetchDayRows(admin: any, userId: string, startISO: string, endISO
 
   // A failed read is NOT an empty day. Returning [] on error is how a transient
   // Supabase blip became "you logged nothing yesterday", got frozen into
-  // habit_days, and reset every streak. Fail loudly instead — the caller skips
+  // habit_days, and reset every streak. Fail loudly instead - the caller skips
   // the day rather than recording a fiction.
   const reads = { ledger, foods, workouts, wellness, metrics, sleep };
   for (const [name, res] of Object.entries(reads)) {
-    if (res?.error) throw new Error(`fetchDayRows: ${name} read failed — ${res.error.message}`);
+    if (res?.error) throw new Error(`fetchDayRows: ${name} read failed - ${res.error.message}`);
   }
 
   return {
@@ -571,11 +571,11 @@ async function fetchWeeklyWorkouts(admin: any, userId: string, dateKey: string, 
   const end = jbDayWindow(dateKey, tz).endISO;
   const { count, error } = await admin.from("workout_logs")
     .select("id", { count: "exact", head: true })
-    // Skipped/rest days are answered days, not training — they must not count
+    // Skipped/rest days are answered days, not training - they must not count
     // toward the weekly_workouts goal.
     .eq("user_id", userId).neq("status", "skipped")
     .gte("occurred_at", start).lt("occurred_at", end);
-  if (error) throw new Error(`fetchWeeklyWorkouts read failed — ${error.message}`);
+  if (error) throw new Error(`fetchWeeklyWorkouts read failed - ${error.message}`);
   return count ?? 0;
 }
 
@@ -721,7 +721,7 @@ function etStatsFromFacts(facts) {
     if (etHasValue(y.calories) && y.calories > 0) out.push({ label: "Calories yesterday", value: String(Math.round(y.calories)) + " kcal" });
     if (etHasValue(y.protein) && y.protein > 0) out.push({ label: "Protein yesterday", value: String(Math.round(y.protein)) + " g" });
     if (etHasValue(y.spend)) out.push({ label: "Spent yesterday", value: etRupees(y.spend) });
-    // sleep_h is null whenever no sleep was recorded — omit, never render 0.
+    // sleep_h is null whenever no sleep was recorded - omit, never render 0.
     if (etHasValue(y.sleep_h) && y.sleep_h > 0) out.push({ label: "Slept", value: String(y.sleep_h) + " h" });
     if (etHasValue(y.weight_kg)) out.push({ label: "Weight", value: String(y.weight_kg) + " kg" });
     out.push({ label: "Workout yesterday", value: y.workout_done ? "done" : (y.workout_ok ? "rest day" : "not logged") });
@@ -829,17 +829,17 @@ function etRenderText(o) {
 }
 
 // Subject lines carry the headline number so the inbox list is useful without
-// opening anything. Never invent one — fall back to a plain subject.
+// opening anything. Never invent one - fall back to a plain subject.
 function etSubjectFor(kind, facts, dateLabel) {
   var y = facts && facts.yesterday;
   if (kind === "morning") {
     if (y && y.logged_anything && etHasValue(y.calories) && y.calories > 0) {
-      return "Morning brief — " + Math.round(y.calories) + " kcal yesterday";
+      return "Morning brief - " + Math.round(y.calories) + " kcal yesterday";
     }
-    return "Morning brief" + (dateLabel ? " — " + dateLabel : "");
+    return "Morning brief" + (dateLabel ? " - " + dateLabel : "");
   }
-  if (kind === "evening") return "Evening check-in — still time";
-  if (kind === "closeout") return "Day closed" + (dateLabel ? " — " + dateLabel : "");
+  if (kind === "evening") return "Evening check-in - still time";
+  if (kind === "closeout") return "Day closed" + (dateLabel ? " - " + dateLabel : "");
   if (kind === "weekly") return "Your week in review";
   return "Trackerz";
 }
@@ -940,7 +940,7 @@ async function sendEmail(
   const forDate = opts.forDate ?? null;
 
   // Claim the slot first. A unique-violation here means this exact message was
-  // already delivered — that is a successful no-op, not an error.
+  // already delivered - that is a successful no-op, not an error.
   const { data: claim, error: claimErr } = await admin.from("email_deliveries").insert({
     user_id: userId, kind, for_date: forDate, to_email: to, subject: message.subject, status: "queued",
   }).select("id").single();
@@ -1021,7 +1021,7 @@ async function sendPush(admin: any, profile: Profile, title: string, body: strin
     } catch (err: any) {
       const status = err?.response?.status ?? 0;
       if (status === 404 || status === 410) {
-        // Endpoint expired/unsubscribed — prune it.
+        // Endpoint expired/unsubscribed - prune it.
         await admin.from("push_subscriptions").delete().eq("id", sub.id);
       }
     }
@@ -1090,7 +1090,7 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
     await upsertBriefing(admin, profile.id, "weekly", dateKey, wBody, { weekly, week_start: weekStart });
 
     // The weekly review is the one message worth reading in full, and it was
-    // never emailed — it only ever existed as a row nobody opened.
+    // never emailed - it only ever existed as a row nobody opened.
     delivery.weeklyEmail = await sendEmail(admin, profile.id, "weekly", {
       body: wBody,
       forDate: dateKey,
@@ -1104,7 +1104,7 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
         { label: "Avg protein", value: `${weekly.averages.protein} g` },
         { label: "Avg calories", value: `${weekly.averages.calories} kcal` },
       ].concat(
-        // sleep_h is null when the week has no sleep data at all — omit the row
+        // sleep_h is null when the week has no sleep data at all - omit the row
         // rather than reporting an average of zero.
         weekly.averages.sleep_h != null ? [{ label: "Avg sleep", value: `${weekly.averages.sleep_h} h` }] : [],
       ),
@@ -1207,13 +1207,13 @@ async function runEvening(admin: any, profile: Profile, now: Date, force: boolea
 
   const delivery: Record<string, unknown> = {};
   delivery.push = await sendPush(admin, profile, evening.headline, evening.nudges.join(" · ") || evening.body, now);
-  // Only email when something is still fixable — an "all clear" at 20:30 is not
+  // Only email when something is still fixable - an "all clear" at 20:30 is not
   // worth an inbox interruption, and unread mail is how people learn to ignore
   // the ones that matter.
   if (evening.nudges.length) {
     delivery.email = await sendEmail(admin, profile.id, "evening", {
       body: evening.body, bullets: evening.nudges, forDate: todayKey, profile,
-      subject: `Evening check-in — ${evening.nudges.length} thing${evening.nudges.length === 1 ? "" : "s"} still open`,
+      subject: `Evening check-in - ${evening.nudges.length} thing${evening.nudges.length === 1 ? "" : "s"} still open`,
     });
   }
 
@@ -1274,7 +1274,7 @@ Deno.serve(async (req) => {
       if (error) return Response.json({ ok: false, error: `profiles read failed: ${error.message}` }, { status: 500, headers: corsHeaders });
       // Skip fixture accounts. An abandoned E2E signup (e2e_*@test.local) was
       // still a live profile row, so every slot ran the whole brief pipeline
-      // twice — doubling LLM spend and firing Resend at an address that cannot
+      // twice - doubling LLM spend and firing Resend at an address that cannot
       // exist, which risks the sender reputation the real brief depends on.
       profiles = (data || []).filter((p: Profile) => !isFixtureProfile(p));
     } else {

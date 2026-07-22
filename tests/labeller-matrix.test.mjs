@@ -1,7 +1,7 @@
-// LABELLER MATRIX — 1000+ combinatorial cases over the DETERMINISTIC routing
+// LABELLER MATRIX - 1000+ combinatorial cases over the DETERMINISTIC routing
 // layer (lib/fan-out-expander.mjs + lib/capture-intent.mjs + lib/request-router.mjs).
 //
-// WHAT THIS TESTS: the deterministic salvage/fan-out net — the guarantees that
+// WHAT THIS TESTS: the deterministic salvage/fan-out net - the guarantees that
 // hold WITHOUT the LLM. Primary routing is the DeepSeek brain (it turns "ate
 // omelette for 70" into expense+food); this net catches food/spend/workout the
 // model under-emits and suppresses logs for grocery purchases and change-commands.

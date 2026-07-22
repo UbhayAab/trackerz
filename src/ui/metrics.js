@@ -2,7 +2,7 @@ import { inr } from "../utils/formatters.js";
 
 // The ONE metric renderer. Every figure here comes from state.metrics, which
 // sync.js derives from the single source (budget goals -> resolveDietTargets).
-// No page hardcodes a target — change a goal and every number below moves.
+// No page hardcodes a target - change a goal and every number below moves.
 export function renderMetrics(state) {
   const m = state.metrics || {};
   const protein = Math.round(Number(m.protein) || 0);

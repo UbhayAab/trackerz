@@ -6,7 +6,7 @@ const ok = (r) => assert.equal(r.ok, true, `expected ok, got ${JSON.stringify(r)
 const flagged = (r, f) => { assert.equal(r.ok, false); assert.ok(r.flags.includes(f), `expected flag ${f}, got ${JSON.stringify(r.flags)}`); };
 
 // ---------------------------------------------------------------------------
-// plausible values pass clean (generous caps — no false positives)
+// plausible values pass clean (generous caps - no false positives)
 // ---------------------------------------------------------------------------
 ok(sanityCheck("create_expense_candidate", { amount: 250, occurred_at: NOW }, NOW));
 ok(sanityCheck("create_expense_candidate", { amount: 150000, occurred_at: NOW }, NOW)); // a rent payment

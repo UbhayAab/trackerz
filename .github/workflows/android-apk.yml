@@ -1,0 +1,129 @@
+name: Build Android APK
+
+# Builds a DEBUG-signed Trackerz APK entirely on the GitHub runner, so the
+# phone owner never installs Android Studio, the JDK, or the Android SDK.
+# They just open the finished run on their phone and download the artifact.
+#
+# The APK is DEBUG-signed on purpose: a personal sideload does not need the
+# Play Store, and a debug signature installs fine after Android shows its
+# normal "install from unknown source" prompt. No signing secret is required,
+# so this workflow needs no repository secrets at all.
+#
+# NOTE: This build is UNVERIFIED ON HARDWARE. CI proves the project assembles;
+# it cannot prove Health Connect reads work on a real OnePlus phone.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+# Only need to read the repo and upload an artifact.
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Install the Capacitor tooling WITHOUT touching the repo's package.json
+      # or its test-time devDependencies. --no-save keeps package.json/lockfile
+      # unchanged so `npm test` (a plain node:assert chain) is never affected.
+      - name: Install Capacitor tooling (no-save)
+        run: |
+          npm install --no-save --no-audit --no-fund \
+            @capacitor/core@^6 \
+            @capacitor/cli@^6 \
+            @capacitor/android@^6
+
+      # webDir cannot be "." - the Capacitor CLI hard-rejects ".", "./", "..".
+      # So we mirror the EXISTING web app (unchanged, not forked) into www/,
+      # which capacitor.config.json points at. Everything the browser loads
+      # (index.html, pages/, src/, lib/, vendor/, styles/, icons/, sw.js,
+      # manifest, share-target) is copied verbatim. Native/build/dev-only
+      # trees are excluded so they do not bloat the WebView assets.
+      - name: Stage web app into www/
+        run: |
+          rm -rf www
+          mkdir -p www
+          rsync -a \
+            --exclude='www' \
+            --exclude='android' \
+            --exclude='ios' \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='tests' \
+            --exclude='scripts' \
+            --exclude='supabase' \
+            --exclude='screenshots' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='capacitor.config.json' \
+            --exclude='package.json' \
+            --exclude='package-lock.json' \
+            ./ www/
+          test -f www/index.html || { echo "www/index.html missing after staging"; exit 1; }
+
+      # android/ is committed (it holds the Kotlin Health Connect plugin), so
+      # normally we only sync. The `cap add` branch is a safety net for a fresh
+      # checkout where android/ was somehow not committed.
+      - name: Add android platform if missing
+        run: |
+          if [ ! -f android/settings.gradle ]; then
+            echo "android/ not committed - generating platform"
+            npx cap add android
+          else
+            echo "android/ present - will sync only"
+          fi
+
+      # Copies www/ into the native project and regenerates the Capacitor
+      # config/plugin glue (assets/public, capacitor.build.gradle, etc.).
+      - name: Capacitor sync
+        run: npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      # Debug build - no keystore, no secrets.
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Locate APK
+        id: apk
+        run: |
+          APK=$(find android/app/build/outputs/apk/debug -name '*.apk' | head -n1)
+          test -n "$APK" || { echo "No APK produced"; exit 1; }
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "Built: $APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trackerz-debug-apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30

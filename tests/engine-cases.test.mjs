@@ -1,4 +1,4 @@
-// ENGINE CASE MATRIX — drives the whole deterministic layer (router + intent +
+// ENGINE CASE MATRIX - drives the whole deterministic layer (router + intent +
 // fan-out/salvage + sanity) over a large corpus of real, messy, mixed captures
 // and checks the routing of EVERY one. This is the "every case handled" guard.
 import assert from "node:assert/strict";
@@ -15,14 +15,14 @@ const hasName = (r, n) => names(r).includes(n);
 // expectation helpers
 const EXP = "create_expense_candidate", FOOD = "create_food_log_candidate", WORK = "create_workout_log_candidate";
 
-// [evidence, { expense, food, workout }] — true=must exist, false=must NOT exist.
+// [evidence, { expense, food, workout }] - true=must exist, false=must NOT exist.
 const CASES = [
   // --- eat vs buy vs made (cost decides the money side) ---
   ["bought paneer and cheese for 50 rupees", { expense: true, food: false }],
   ["made paneer sabzi which costed me 50 rupees", { expense: true, food: true }],
   ["just made paneer sabzi", { expense: false, food: true }],
   ["spent 120 for mushroom sandwich and rose milk", { expense: true, food: true }],
-  ["groceries for the week — paneer and rice, paid 800", { expense: true, food: false }],
+  ["groceries for the week - paneer and rice, paid 800", { expense: true, food: false }],
   ["picked up 2kg curd and bread for the fridge", { food: false }], // grocery -> no meal
   ["had dal and 2 rotis for lunch", { expense: false, food: true }],
   ["paid 250 at zomato for lunch", { expense: true, food: true }],

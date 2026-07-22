@@ -1,5 +1,5 @@
 // Applies SQL files to the Supabase project's Postgres directly.
-// Reads DB URL from .env.local. Idempotent — every migration we ship is safe
+// Reads DB URL from .env.local. Idempotent - every migration we ship is safe
 // to re-run.
 //
 // Usage:

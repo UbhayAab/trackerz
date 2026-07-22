@@ -1,4 +1,4 @@
-// Home Jarvis panel. Renders the proactive briefing at the top of the Home feed —
+// Home Jarvis panel. Renders the proactive briefing at the top of the Home feed -
 // the LLM-voiced body written server-side by the jarvis edge fn, plus fact chips
 // (streaks, safe-to-spend, weekly workouts) pulled from payload.facts, or the
 // nudge chips for evening/legacy rows. A dismiss ✕ marks it seen. The HTML

@@ -78,7 +78,7 @@ export async function fetchLedger({ limit = 50 } = {}) {
     // A merged-away duplicate must not be counted again. This function feeds
     // EVERY browser-side money number (the month tile, the period aggregator,
     // opportunity cost, exports), so without this filter merging a duplicate
-    // would visibly change nothing — the whole point of the merge.
+    // would visibly change nothing - the whole point of the merge.
     .is("merged_into", null)
     .order("occurred_at", { ascending: false })
     .limit(limit);
@@ -234,7 +234,7 @@ export async function startSleepSession(at = new Date()) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
   const open = await fetchOpenSleepSession();
-  if (open) return open; // already asleep — tapping again is a no-op, not an error
+  if (open) return open; // already asleep - tapping again is a no-op, not an error
   const { data, error } = await supabase
     .from("sleep_sessions")
     .insert({ user_id: userId, started_at: at.toISOString(), source: "button" })
@@ -272,7 +272,7 @@ export async function logGymAnswer(status, { description = null, occurredAt = nu
     .from("workout_logs")
     .insert({
       user_id: userId,
-      description: description || (safe === "done" ? "Gym — logged from Home" : "No gym today"),
+      description: description || (safe === "done" ? "Gym - logged from Home" : "No gym today"),
       status: safe,
       occurred_at: (occurredAt ? new Date(occurredAt) : new Date()).toISOString(),
     })
@@ -282,7 +282,7 @@ export async function logGymAnswer(status, { description = null, occurredAt = nu
   return data;
 }
 
-// Today's gym answer, if any — so the buttons render their current state.
+// Today's gym answer, if any - so the buttons render their current state.
 export async function fetchTodayGymAnswer(date = new Date()) {
   const supabase = await getSupabaseClient();
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -308,6 +308,42 @@ export async function fetchWorkoutLogs({ limit = 200 } = {}) {
     .limit(limit);
   if (error) throw error;
   return data || [];
+}
+
+// Fetch the food logs + expense ledger rows the recurring-spend detector
+// (lib/spend-patterns.mjs) learns from: "you've paid Rs 110 for this same lunch
+// four times". Only the two tables and columns detectPatterns actually reads -
+// keep it lean so it stays cheap to call on capture. A read error THROWS (never
+// returns []): a failed history read must be visibly different from "no history
+// yet", or the detector would silently forget every learned pattern.
+export async function fetchSpendPatternHistory({ sinceDays = 120, limit = 2000 } = {}) {
+  const supabase = await getSupabaseClient();
+  const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+  const [food, ledger] = await Promise.all([
+    supabase
+      .from("food_logs")
+      .select("id, ingestion_id, occurred_at, meal_name, description")
+      .gte("occurred_at", since)
+      .order("occurred_at", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("ledger_entries")
+      .select("id, ingestion_id, occurred_at, merchant, description, amount, direction")
+      // Only real spend carries a price signal; a merged-away duplicate must not
+      // be counted as a second sighting of the same meal.
+      .eq("direction", "expense")
+      .is("merged_into", null)
+      .gte("occurred_at", since)
+      .order("occurred_at", { ascending: false })
+      .limit(limit),
+  ]);
+  if (food.error) throw food.error;
+  if (ledger.error) throw ledger.error;
+  // Tag each row with its source table so the detector never has to guess money
+  // vs food from the shape of a row.
+  const foodRows = (food.data || []).map((r) => ({ ...r, table: "food_logs" }));
+  const ledgerRows = (ledger.data || []).map((r) => ({ ...r, table: "ledger_entries" }));
+  return { foodLogs: foodRows, ledgerEntries: ledgerRows, rows: [...foodRows, ...ledgerRows] };
 }
 
 // Fetch every food / workout / hydration row that falls on one local calendar
@@ -354,7 +390,7 @@ export async function logWorkoutSession({ description, duration_min = null, inte
 }
 
 // Log a body-composition data point (weight, body_fat_pct, waist_cm, …) into the
-// existing body_metrics table — no separate measurements table.
+// existing body_metrics table - no separate measurements table.
 export async function logBodyMetric({ metric_type, value, unit = "", occurred_at = null } = {}) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
@@ -456,7 +492,7 @@ export async function logMealFromTemplate(template) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
   // instantiate() carries a source_template_id helper field that is not a
-  // food_logs column — strip it before insert.
+  // food_logs column - strip it before insert.
   const { source_template_id, ...foodRow } = instantiate(template);
   const { data, error } = await supabase
     .from("food_logs")
@@ -490,7 +526,7 @@ export async function fetchBriefingFor({ kind, forDate }) {
   return data || null;
 }
 
-// The freshest briefing for a date regardless of kind — the scheduled jarvis fn
+// The freshest briefing for a date regardless of kind - the scheduled jarvis fn
 // writes morning/evening rows server-side, so Home shows whichever landed last.
 export async function fetchLatestBriefing(forDate) {
   const supabase = await getSupabaseClient();
@@ -539,7 +575,7 @@ export async function fetchOpenAiActions({ limit = 50 } = {}) {
 
 // Raw-query audit: every capture in the last `sinceDays`, plus the AI run that
 // processed it and the tool calls it produced. Three small windowed queries,
-// joined client-side by buildAuditEntries() (pure) — avoids depending on
+// joined client-side by buildAuditEntries() (pure) - avoids depending on
 // PostgREST embeds and keeps the join unit-testable.
 export async function fetchRawQueryAudit({ sinceDays = 7, limit = 200 } = {}) {
   const supabase = await getSupabaseClient();
@@ -613,7 +649,7 @@ export async function fetchDuplicates({ limit = 50 } = {}) {
   return data || [];
 }
 
-// fetchDuplicates() only carries table+id references — the audit page needs the
+// fetchDuplicates() only carries table+id references - the audit page needs the
 // actual amount/merchant/description to show the user what the pair IS. Only
 // ledger_entries pairs exist today (dedupe-scan.js is money-only); resolve
 // whichever tables show up so this doesn't silently break if that ever changes.
@@ -825,7 +861,7 @@ export async function markStatementRowUnpromotable(statementRowId, reason) {
 }
 
 // Statement rows still missing from the ledger, across every import. Returns
-// null when the server gives no count — an unknown backlog is not a backlog of 0.
+// null when the server gives no count - an unknown backlog is not a backlog of 0.
 export async function countUnpromotedStatementRows() {
   const supabase = await getSupabaseClient();
   const { count, error } = await supabase

@@ -29,7 +29,7 @@ export function renderNav(activeId) {
 }
 
 // Stamp the live build version on every page (top-right). Tap it to force a
-// fresh load: unregister the service worker, clear all caches, then reload — so a
+// fresh load: unregister the service worker, clear all caches, then reload - so a
 // stale browser cache can never trap you on an old version.
 export function stampVersion() {
   if (typeof document === "undefined" || !document.body) return;
@@ -39,7 +39,7 @@ export function stampVersion() {
     el.id = "versionStamp";
     el.type = "button";
     el.className = "version-stamp";
-    el.title = "Live build — tap to force-update (clears cache + reloads)";
+    el.title = "Live build - tap to force-update (clears cache + reloads)";
     el.addEventListener("click", forceFreshReload);
     document.body.appendChild(el);
   }

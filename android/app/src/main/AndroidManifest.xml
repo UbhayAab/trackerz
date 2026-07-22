@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest for the Trackerz Capacitor shell.
+
+  UNTESTED ON HARDWARE.
+
+  The Health Connect permissions below are the WHOLE reason this native shell
+  exists - a browser can never hold them. They must exactly match
+  HealthConnectPlugin.READ_PERMISSIONS; asking for a permission the plugin does
+  not read is a privacy smell and can fail Play review.
+
+  Health Connect also demands that the app expose a privacy-policy screen it can
+  deep-link into, or it refuses to show the permission sheet at all. That is the
+  HealthPrivacyPolicyActivity + the two intent filters near the bottom (one for
+  Android 13-, one for Android 14+). Leaving them out makes the permission
+  request look, to the user, exactly like a denial.
+
+  NOTE: `npx cap sync` / `cap add android` will regenerate a stock version of
+  this file and drop everything Health-Connect-specific. If that happens, restore
+  the four Health blocks below: the <uses-permission android.permission.health.*>
+  lines, the <queries> block, the ViewPermissionUsageActivity alias, and the
+  HealthPrivacyPolicyActivity. The GitHub Actions workflow copies this file back
+  into place after sync for exactly this reason.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Health Connect READ permissions. Keep in sync with HealthConnectPlugin.READ_PERMISSIONS. -->
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_HYDRATION" />
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+
+    <!-- The web app loads its own DB library and talks to Supabase over HTTPS. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      Lets the app see and deep-link the Health Connect provider. On Android 11+
+      this <queries> block is required even to check whether the package exists.
+    -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <!--
+          Privacy-policy screen Health Connect requires. exported=true because a
+          different process (the Health Connect app / the platform) launches it.
+
+          This <activity> MUST be declared before the <activity-alias> below -
+          Android requires an alias's targetActivity to appear earlier in the
+          manifest.
+
+          Filter - Android 13 and below: Health Connect fires this action.
+        -->
+        <activity
+            android:name=".health.HealthPrivacyPolicyActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Alias - Android 14+: the platform routes the health-permission rationale
+          here via VIEW_PERMISSION_USAGE + the HEALTH_PERMISSIONS category. Guarded
+          by START_VIEW_PERMISSION_USAGE so only the system can launch it.
+        -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".health.HealthPrivacyPolicyActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+</manifest>

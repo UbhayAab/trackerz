@@ -1,5 +1,5 @@
 // Compute how the day's intake so far compares to the share of the day elapsed.
-// `pace` is the elapsed fraction of the day in [0, 1] — useful as a "you should
+// `pace` is the elapsed fraction of the day in [0, 1] - useful as a "you should
 // be roughly at this much by now" reference. `gap` is target minus actual.
 //
 // Inputs:
@@ -7,7 +7,7 @@
 //             `protein_g`, `occurred_at`). Rows without an occurred_at are
 //             still counted toward totals but ignored for the time check.
 //   target:   { calories, protein_g }
-//   now:      optional Date or ISO string — defaults to "latest log time" or now.
+//   now:      optional Date or ISO string - defaults to "latest log time" or now.
 //
 // Returns: { caloriesSoFar, proteinSoFar, paceForCalories, paceForProtein, gap }
 //   where gap = { calories, protein_g } = target - soFar.

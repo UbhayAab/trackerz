@@ -20,7 +20,7 @@ const migrationTables = new Set(tableNames(migrationSql));
 
 // 1. Every migration table is mirrored in schema.sql.
 for (const t of migrationTables) {
-  assert.ok(schemaTables.has(t), `schema.sql is missing table "${t}" that a migration creates — schema.sql must be the single source of truth`);
+  assert.ok(schemaTables.has(t), `schema.sql is missing table "${t}" that a migration creates - schema.sql must be the single source of truth`);
 }
 
 // 2. Migration-added columns on existing tables are present in schema.sql.

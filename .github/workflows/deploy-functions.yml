@@ -27,7 +27,7 @@ jobs:
       - name: Deploy agent function
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
-            echo "::warning::No SUPABASE_ACCESS_TOKEN secret set — skipping deploy. Add it under repo Settings > Secrets and variables > Actions, then re-run."
+            echo "::warning::No SUPABASE_ACCESS_TOKEN secret set - skipping deploy. Add it under repo Settings > Secrets and variables > Actions, then re-run."
             exit 0
           fi
           supabase functions deploy agent --project-ref "$PROJECT_REF"

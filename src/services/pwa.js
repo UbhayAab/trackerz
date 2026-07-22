@@ -52,7 +52,7 @@ export function registerServiceWorker() {
 
 // Chrome only lets us call prompt() later if we cancel its default mini-infobar,
 // so cancelling means we owe the user a button. The old version only wired one
-// when the page already had #installAppBtn — no page has one, so installing was
+// when the page already had #installAppBtn - no page has one, so installing was
 // suppressed everywhere and never offered again. Create the affordance if the
 // page doesn't provide it.
 export function bindInstallPrompt(buttonId = "installAppBtn") {
@@ -76,7 +76,7 @@ export function bindInstallPrompt(buttonId = "installAppBtn") {
         // would be the same lie as before.
         btn.hidden = true;
         if (choice?.outcome !== "accepted") {
-          showToast("Install dismissed — you can still install from the browser menu.");
+          showToast("Install dismissed - you can still install from the browser menu.");
         }
       } catch (err) {
         showToast(`Install failed: ${err?.message || err}`, { kind: "error" });

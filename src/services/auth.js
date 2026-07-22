@@ -51,7 +51,7 @@ export async function initAuth() {
         notify();
       });
     } catch (err) {
-      // A network/CDN failure is NOT "signed out" — say so, so the sign-in card
+      // A network/CDN failure is NOT "signed out" - say so, so the sign-in card
       // does not silently blame the user for a broken connection.
       lastAuthError = err?.message || String(err);
     }
@@ -199,7 +199,7 @@ export async function signInWithProvider(provider) {
   const supabase = await getSupabaseClient();
   const redirect = appRedirectUrl();
 
-  // signInWithOAuth only builds a URL and navigates — it resolves with
+  // signInWithOAuth only builds a URL and navigates - it resolves with
   // error:null even when the provider is DISABLED server-side, so the old code
   // could never report a failure. Ask the authorize endpoint first: a disabled
   // provider answers with a 400/error redirect, which we can show as text
@@ -224,7 +224,7 @@ export async function signInWithProvider(provider) {
 // reliable way to know: signInWithOAuth builds the authorize URL locally and
 // navigates, so it resolves error:null even for a disabled provider, and
 // probing /authorize cross-origin only yields an opaque response.
-// Fetched once per page load. Never throws — an inconclusive probe returns null
+// Fetched once per page load. Never throws - an inconclusive probe returns null
 // and the normal redirect is allowed to proceed.
 let providerSettingsPromise = null;
 

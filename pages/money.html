@@ -31,13 +31,35 @@
           <span class="status-pill">INR</span>
         </section>
 
+        <!-- Period selector. The tiles and the ledger below show THIS window and
+             say so, so a number is never ambiguous about which days it covers.
+             Labels start blank/em-dashed: money.js fills them once it knows. -->
+        <section class="period-bar" id="moneyPeriodBar" aria-label="Period">
+          <div class="period-tabs" role="group" aria-label="Period length">
+            <button type="button" class="period-tab" data-money-period="daily" aria-pressed="false">Day</button>
+            <button type="button" class="period-tab" data-money-period="weekly" aria-pressed="false">Week</button>
+            <button type="button" class="period-tab is-active" data-money-period="monthly" aria-pressed="true">Month</button>
+          </div>
+          <div class="period-nav">
+            <button type="button" class="period-step" data-money-step="-1" aria-label="Previous period">◀</button>
+            <span class="period-label" id="moneyPeriodLabel">-</span>
+            <button type="button" class="period-step" data-money-step="1" aria-label="Next period" disabled>▶</button>
+          </div>
+          <div class="period-jump">
+            <label class="period-jump-label" for="moneyPeriodDate">Jump to</label>
+            <input type="date" id="moneyPeriodDate" class="period-date" />
+            <button type="button" class="period-today" data-money-today hidden>Today</button>
+          </div>
+          <p class="period-note" id="moneyPeriodNote" hidden></p>
+        </section>
+
         <section class="summary-rail" aria-label="Money summary">
           <!-- Em-dashes are the honest pre-load state; money.js fills these from
                the ledger/imports/review reads and leaves the dash if a read fails. -->
-          <article class="summary-tile"><span>Spend this month</span><strong id="summaryMoneySpend">—</strong></article>
-          <article class="summary-tile"><span>Ledger rows</span><strong id="summaryLedgerRows">—</strong></article>
-          <article class="summary-tile"><span>Statement imports</span><strong id="summaryImportRows">—</strong></article>
-          <article class="summary-tile"><span>Money to review</span><strong id="summaryMoneyReview">—</strong></article>
+          <article class="summary-tile"><span id="summaryMoneySpendLabel">Spend</span><strong id="summaryMoneySpend">-</strong></article>
+          <article class="summary-tile"><span id="summaryLedgerRowsLabel">Ledger rows</span><strong id="summaryLedgerRows">-</strong></article>
+          <article class="summary-tile"><span>Statement imports · all</span><strong id="summaryImportRows">-</strong></article>
+          <article class="summary-tile"><span>Money to review · open</span><strong id="summaryMoneyReview">-</strong></article>
         </section>
 
         <section class="command-grid">
@@ -45,7 +67,9 @@
             <div class="panel-title-row">
               <div>
                 <p class="eyebrow">Ledger</p>
-                <h2>Latest rows</h2>
+                <!-- money.js overwrites this with the selected period, so the
+                     table never shows rows from a window it doesn't name. -->
+                <h2 id="ledgerPanelTitle">Latest rows</h2>
               </div>
               <span class="status-pill muted">deduped</span>
             </div>
@@ -77,7 +101,7 @@
               </div>
             </div>
             <div id="importTable" class="data-table-wrap" data-mode="auto"></div>
-            <p class="import-foot-note">Re-importing a past statement isn't built — the original file isn't stored. Drop the file above to import it again.</p>
+            <p class="import-foot-note">Re-importing a past statement isn't built - the original file isn't stored. Drop the file above to import it again.</p>
           </article>
         </section>
 

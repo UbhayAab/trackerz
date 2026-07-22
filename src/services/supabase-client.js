@@ -5,7 +5,7 @@ import { getSupabaseConfig } from "../config.js";
 // was offline the import rejected and NO page module ran at all: no bottom nav,
 // diet stuck on "Loading…", Process button dead. The library is now vendored
 // (same-origin, precached by sw.js) and loaded dynamically, so a load failure
-// costs us the database — not the whole app.
+// costs us the database - not the whole app.
 const VENDORED = "../../vendor/supabase-js/@supabase/supabase-js@2.74.0/index.mjs";
 // Kept only as a rescue path for a partial/stale deploy where vendor/ is
 // missing. It is tried second, and offline it simply fails like the first.
@@ -100,7 +100,7 @@ function showLibraryFailureBanner(err) {
     const text = document.createElement("span");
     text.style.flex = "1 1 220px";
     text.textContent =
-      "Could not load the database library, so nothing on this page is real data — " +
+      "Could not load the database library, so nothing on this page is real data - " +
       "no totals, logs or plans have been read. Reconnect and reload.";
     const retry = document.createElement("button");
     retry.type = "button";

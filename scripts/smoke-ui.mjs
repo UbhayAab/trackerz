@@ -39,7 +39,7 @@ const page = await browser.newPage({ viewport: { width: 414, height: 896 } }); /
 const consoleErrors = [];
 const failedRequests = [];
 page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
-page.on("requestfailed", (r) => failedRequests.push(`${r.method()} ${r.url()} — ${r.failure()?.errorText}`));
+page.on("requestfailed", (r) => failedRequests.push(`${r.method()} ${r.url()} - ${r.failure()?.errorText}`));
 page.on("response", (r) => { if (r.status() >= 400) failedRequests.push(`${r.status()} ${r.url()}`); });
 
 await page.goto(BASE, { waitUntil: "domcontentloaded" });

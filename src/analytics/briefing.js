@@ -21,7 +21,7 @@ export function buildBriefing(kind, snapshot = {}) {
 
   if (kind === "morning") {
     const lines = [];
-    const head = `Good morning — ${s.weekdayName || "today"}${s.dietLabel ? `, ${s.dietLabel}` : ""}.`;
+    const head = `Good morning - ${s.weekdayName || "today"}${s.dietLabel ? `, ${s.dietLabel}` : ""}.`;
     lines.push(head);
     if (s.workoutName) lines.push(`Planned: ${s.workoutName}${s.workoutKind === "cardio" ? " (forgiven cardio day)" : ""}.`);
     const targets = [];
@@ -32,7 +32,7 @@ export function buildBriefing(kind, snapshot = {}) {
     return { kind, forDate, body: lines.join(" "), payload: { headline: head, nudges: lines.slice(1), stats: pickStats(s) } };
   }
 
-  // evening — only ACTIONABLE nudges (a neutral "on track" if there are none).
+  // evening - only ACTIONABLE nudges (a neutral "on track" if there are none).
   const nudges = [];
   if (s.proteinTarget) {
     const gap = r(s.proteinTarget) - r(s.proteinToday);
@@ -51,7 +51,7 @@ export function buildBriefing(kind, snapshot = {}) {
   if (s.planItemsLeft != null && s.planItemsLeft > 0) {
     nudges.push(`${s.planItemsLeft} plan item${s.planItemsLeft === 1 ? "" : "s"} left`);
   }
-  const headline = nudges.length ? "Evening check-in — a few things left" : "Evening check-in — on track ✓";
+  const headline = nudges.length ? "Evening check-in - a few things left" : "Evening check-in - on track ✓";
   const body = nudges.length ? `${headline}: ${nudges.join(" · ")}.` : `${headline}.`;
   return { kind, forDate, body, payload: { headline, nudges, stats: pickStats(s) } };
 }

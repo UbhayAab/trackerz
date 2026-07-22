@@ -36,7 +36,7 @@ export function setDietPlanOverride(payload) {
 // A permanent GYM override from user_plans, mirroring _dietOverride/
 // setDietPlanOverride exactly. Without this, a standing schedule change
 // ("here's my Monday-Friday gym schedule") writes successfully but was never
-// read back — planForDate() only ever folded DATE-SCOPED gym rows onto the
+// read back - planForDate() only ever folded DATE-SCOPED gym rows onto the
 // fixed weekday scaffold, with no path for a lasting replacement.
 let _gymOverride = null;
 export function setGymPlanOverride(payload) {
@@ -67,7 +67,7 @@ function normRows(v) {
   return v ? [v] : [];
 }
 
-// Local "YYYY-MM-DD" (matches the diet hub + reconcile day keys — NOT UTC).
+// Local "YYYY-MM-DD" (matches the diet hub + reconcile day keys - NOT UTC).
 export function localDateKey(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -139,7 +139,7 @@ export function planForDate(date = new Date()) {
   }
   const meals = (dietPayload && overrideMeals(dietPayload)) || mealsFor(dietType);
 
-  // Gym: a permanent override and/or this date's rows fold onto the scaffold —
+  // Gym: a permanent override and/or this date's rows fold onto the scaffold -
   // same shape as diet above. A full payload replaces the standing schedule; a
   // delta merges onto it (or onto the fixed weekday scaffold if no override).
   const datedGymRows = normRows(_gymDated.get(key));
@@ -203,7 +203,7 @@ export function prescribedExercises(workout) {
     const text = String(raw).trim();
     const m = text.match(/^(.*?)[\s,]+(\d+)\s*[×x]\s*(\d+)\s*(s|sec|secs)?\b/i);
     if (m) {
-      const name = m[1].replace(/[•\-–—]\s*$/, "").trim();
+      const name = m[1].replace(/[•\---]\s*$/, "").trim();
       const muscle = muscleFor(name);
       return {
         key: `ex${i}`, name, raw: text,
@@ -218,7 +218,7 @@ export function prescribedExercises(workout) {
 }
 
 // Sessions logged in the trailing 7 days (rolling window, same day-window
-// convention as habit-score.js's windowDays() — not a calendar Mon-Sun week,
+// convention as habit-score.js's windowDays() - not a calendar Mon-Sun week,
 // so the count never resets mid-week). Feeds the "weekly_workouts" goal.
 export function weeklyWorkoutCount(workoutLogs = [], todayISO) {
   const anchor = todayISO ? new Date(todayISO) : new Date();

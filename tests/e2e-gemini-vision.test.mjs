@@ -35,7 +35,7 @@ async function call(parts) {
   return json.candidates[0].content.parts[0].text;
 }
 
-// 1) text only — instruction-following with no ambiguity
+// 1) text only - instruction-following with no ambiguity
 const r1 = await call([{ text: "What is 17 + 25? Reply with just the number." }]);
 assert.match(r1.trim(), /\b42\b/, `expected 42, got: ${r1}`);
 console.log("✓ text round-trip");

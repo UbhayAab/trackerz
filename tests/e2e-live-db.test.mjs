@@ -14,7 +14,7 @@ loadEnv({ path: ".env.local" });
 
 const url = process.env.SUPABASE_DB_URL?.replace(/\?sslmode=require/, "");
 if (!url) {
-  console.error("SUPABASE_DB_URL missing — skipping e2e-live-db");
+  console.error("SUPABASE_DB_URL missing - skipping e2e-live-db");
   process.exit(0);
 }
 
@@ -52,7 +52,7 @@ async function cleanup() {
     const r = await client.query(`delete from public.${t} where user_id = $1`, [userId]).catch(() => null);
     if (r?.rowCount) console.log(`  cleaned ${r.rowCount} from ${t}`);
   }
-  // profiles is FK to auth.users which we never created — skip auth.users cleanup
+  // profiles is FK to auth.users which we never created - skip auth.users cleanup
   // since we created a profile with a synthetic UUID (no auth.users FK enforcement
   // in our test). If FK rejects insert, test fails fast.
 }

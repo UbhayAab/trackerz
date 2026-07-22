@@ -31,8 +31,8 @@ const NON_WRITE = new Set(["request_user_review", "link_duplicate_candidates"]);
 
 // 1. Every WRITE tool must have both an applyTool() case and a tableForTool() mapping.
 for (const t of writeTools) {
-  assert.ok(applyCases.includes(t), `WRITE tool "${t}" has no applyTool() case — high-confidence writes would silently vanish`);
-  assert.ok(tableCases.includes(t), `WRITE tool "${t}" has no tableForTool() mapping — audit row would have a null table`);
+  assert.ok(applyCases.includes(t), `WRITE tool "${t}" has no applyTool() case - high-confidence writes would silently vanish`);
+  assert.ok(tableCases.includes(t), `WRITE tool "${t}" has no tableForTool() mapping - audit row would have a null table`);
 }
 
 // 2. Every allow-listed tool is classified: either a write tool or a known non-write tool.
