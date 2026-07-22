@@ -12,6 +12,7 @@ import { registerServiceWorker, bindInstallPrompt, bindOnlineDrain } from "../se
 import { runCapture } from "../services/agent-runner.js";
 import { ensureTodayBriefing, watchTodayBriefings } from "../services/briefing.js";
 import { renderBriefingStrip } from "../ui/briefing-strip.js";
+import { bindQuickActions } from "../ui/quick-actions.js";
 
 registerServiceWorker();
 bindInstallPrompt("installAppBtn");
@@ -27,6 +28,7 @@ bootWithAuth(async () => {
     renderDietPlan(state);
   });
   bindCapturePanel();
+  bindQuickActions();
   bindInsights();
   bindAdditionsFeed();
   bindDietPlan();

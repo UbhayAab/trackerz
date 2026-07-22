@@ -103,14 +103,60 @@ assert.equal(emptyDay.flags.protein_hit, false);
 // A rest day is forgiven even with nothing logged.
 assert.equal(jbCloseDay({ budgets: [], plannedKind: "rest" }).flags.workout_ok, true);
 
+// --- skipped workouts must not count as training -----------------------------
+// The production bug: "Did not go to gym bro" wrote a workout_logs row, and
+// jbCloseDay counted every row, so the brief reported a completed workout.
+const skippedOnly = jbCloseDay({
+  workouts: [{ status: "skipped", duration_min: null }],
+  budgets: [], plannedKind: "gym",
+});
+assert.equal(skippedOnly.workoutDone, false, "a skipped row is not a workout");
+assert.equal(skippedOnly.flags.workout, false);
+assert.equal(skippedOnly.flags.workout_ok, false);
+assert.equal(skippedOnly.flags.logged, true, "declining the gym still counts as answering the day");
+
+// A REAL workout with no duration and no sets still counts — the affirmative
+// salvage path emits exactly that shape, so gating on duration would silently
+// reset the gym streak on genuine training days.
+const bareWorkout = jbCloseDay({
+  workouts: [{ status: "done", duration_min: null }],
+  budgets: [], plannedKind: "gym",
+});
+assert.equal(bareWorkout.workoutDone, true, "a duration-less done row is still a workout");
+
+// Legacy rows written before the status column existed default to done.
+assert.equal(jbCloseDay({ workouts: [{ duration_min: 45 }], budgets: [], plannedKind: "gym" }).workoutDone, true);
+
+// --- sleep is null when unmeasured, never 0 ----------------------------------
+assert.equal(jbCloseDay({ budgets: [], plannedKind: "gym" }).sleepH, null, "no sleep data => null, not 0");
+const slept = jbCloseDay({
+  sleepSessions: [{ started_at: "2026-07-21T17:00:00Z", ended_at: "2026-07-21T23:30:00Z" }],
+  budgets: [], plannedKind: "gym",
+});
+assert.equal(slept.sleepH, 6.5, "a completed sleep session yields real hours");
+// An open session (still asleep) contributes nothing rather than reading as 0.
+assert.equal(jbCloseDay({ sleepSessions: [{ started_at: "2026-07-21T17:00:00Z", ended_at: null }], budgets: [] }).sleepH, null);
+
 // --- streaks -----------------------------------------------------------------
 const s1 = jbNextStreaks(null, day.flags);
 assert.deepEqual(s1, { workout: 1, protein: 1, budget: 1, logging: 1 });
 const s2 = jbNextStreaks({ workout: 4, protein: 9, budget: 2, logging: 30 }, day.flags);
 assert.deepEqual(s2, { workout: 5, protein: 10, budget: 3, logging: 31 });
-// An empty day resets activity streaks but keeps budget alive (Rs 0 is under cap).
+// An empty day resets EVERY streak, budget included. It used to keep the budget
+// streak alive on the theory that "Rs 0 is under cap" — but a day with nothing
+// logged is not evidence of Rs 0 spent, it is evidence the user never opened the
+// app. Growing a budget streak from missing data is the same lie as reporting
+// sleep_h 0 when no sleep was ever measured.
 const s3 = jbNextStreaks(s2, emptyDay.flags);
-assert.deepEqual(s3, { workout: 0, protein: 0, budget: 4, logging: 0 });
+assert.deepEqual(s3, { workout: 0, protein: 0, budget: 0, logging: 0 });
+assert.equal(emptyDay.flags.under_budget, false);
+
+// A day the user DID log, under the cap, still earns the budget streak.
+const quietButLogged = jbCloseDay({
+  foods: [{ calories_estimate: 300, protein_g: 20 }],
+  budgets, plannedKind: "gym",
+});
+assert.equal(quietButLogged.flags.under_budget, true);
 
 // --- safe to spend + facts ---------------------------------------------------
 assert.deepEqual(jbSafeToSpend({ monthlyCap: 0 }), { hasBudget: false });

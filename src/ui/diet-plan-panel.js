@@ -19,6 +19,7 @@ import { getSupabaseClient } from "../services/supabase-client.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 import { fetchDayLogs } from "../services/supabase-data.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { showToast } from "./toast.js";
 
 const CONTAINER = "#dietPlan";
 const STATE_PREFIX = "trackerz.diet.v1.";
@@ -95,7 +96,8 @@ async function insertLog(spec) {
 }
 async function deleteLog(table, id) {
   const supabase = await getSupabaseClient();
-  await supabase.from(table).delete().eq("id", id);
+  const { error } = await supabase.from(table).delete().eq("id", id);
+  if (error) throw error; // the caller has to restore the tick, so it must know
 }
 
 // Effective check state for an item, merging manual localStorage state with the
@@ -128,15 +130,20 @@ function item(plan, state, { id, time, name, detail }) {
     : r.source === "suggested" ? '<span class="diet-suggest" title="Looks logged — tap to confirm">suggested</span>' : "";
   const actual = r.table === "food_logs" && r.recordId ? foodDescriptionFor(r.recordId) : null;
   const shownDetail = actual || detail;
+  // id/time/name all come from a user_plans payload the AI authored, so every one
+  // of them is untrusted text — never interpolate them raw.
   return `<label class="diet-item${cls ? " " + cls : ""}">
-    <input type="checkbox" data-diet-id="${id}"${r.done ? " checked" : ""} />
-    <span class="diet-time">${time || ""}</span>
-    <span class="diet-body"><span class="diet-name">${name}${badge}</span>${shownDetail ? `<span class="diet-detail">${actual ? "Logged: " : ""}${escapeHtml(shownDetail)}</span>` : ""}</span>
+    <input type="checkbox" data-diet-id="${escapeHtml(id)}"${r.done ? " checked" : ""} />
+    <span class="diet-time">${escapeHtml(time || "")}</span>
+    <span class="diet-body"><span class="diet-name">${escapeHtml(name)}${badge}</span>${shownDetail ? `<span class="diet-detail">${actual ? "Logged: " : ""}${escapeHtml(shownDetail)}</span>` : ""}</span>
   </label>`;
 }
 
+// Quotes are escaped too because this also guards attribute values (data-diet-id).
 function escapeHtml(s) {
-  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  return String(s ?? "").replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
 }
 
 // One exercise string -> a readable row: name on the left, the sets×reps or
@@ -231,15 +238,20 @@ export function renderDietPlan(appState) {
 
   const mealIds = plan.meals.map((m) => m.id);
   const waterIds = plan.water.map((w) => w.id);
+  // The denominator is however many meals the plan actually has — an AI-authored
+  // override can be 3 or 6, and a hardcoded "/4" would assert a plan that isn't there.
+  const mealBadge = mealIds.length
+    ? `${countDone(mealIds, state)}/${mealIds.length} meals`
+    : "No meals planned";
 
   el.innerHTML = `
     ${dateStepper()}
     <div class="panel-title-row">
       <div>
         <p class="eyebrow">${isViewingToday() ? "Today" : "Showing"} · ${plan.weekdayName}</p>
-        <h2>${plan.dietLabel} · ${plan.workout.name}</h2>
+        <h2>${escapeHtml(plan.dietLabel)} · ${escapeHtml(plan.workout.name)}</h2>
       </div>
-      <span class="metric-badge">${countDone(mealIds, state)}/4 meals</span>
+      <span class="metric-badge">${mealBadge}</span>
     </div>
     ${macroTally(plan)}
     ${nutrientPanel(plan)}
@@ -250,7 +262,7 @@ export function renderDietPlan(appState) {
     </div>
 
     <div class="diet-section">
-      <p class="diet-head">🏋️ ${plan.workout.name} <span class="diet-detail">${plan.workout.rules || ""}</span></p>
+      <p class="diet-head">🏋️ ${escapeHtml(plan.workout.name)} <span class="diet-detail">${escapeHtml(plan.workout.rules || "")}</span></p>
       ${item(plan, state, { id: plan.workout.id, time: "", name: "Log this workout", detail: workoutMeta(plan.workout) })}
       <ul class="workout-list">${plan.workout.items.map(formatExercise).join("")}</ul>
     </div>
@@ -347,7 +359,16 @@ export function bindDietPlan() {
             const rec = await insertLog(spec);
             state[id] = { done: true, source: "manual", recordId: rec.id, table: spec.table };
             saveDayState(key, state);
-          } catch { /* keep the local check even if the sync write fails */ }
+          } catch (err) {
+            // A tick with no row behind it is a lie: the gauges, the trackers and
+            // Jarvis all read the row, not the checkbox. Undo the tick instead.
+            delete state[id];
+            saveDayState(key, state);
+            cb.checked = false;
+            showToast(`Couldn't log that: ${err?.message || err}`, { kind: "error", duration: 5000 });
+            renderDietPlan();
+            return;
+          }
         }
       }
     } else {
@@ -358,8 +379,18 @@ export function bindDietPlan() {
       state[id] = { done: false, source: "manual" };
       saveDayState(key, state);
       if (recordId && table && canSync()) {
-        try { await deleteLog(table, recordId); } catch { /* best effort */ }
-        delete _recon[id];
+        try {
+          await deleteLog(table, recordId);
+          delete _recon[id];
+        } catch (err) {
+          // The row survived, so the item really is still logged — put the tick back.
+          state[id] = { done: true, source: prev?.source || match?.source || "manual", recordId, table };
+          saveDayState(key, state);
+          cb.checked = true;
+          showToast(`Couldn't remove that log: ${err?.message || err}`, { kind: "error", duration: 5000 });
+          renderDietPlan();
+          return;
+        }
       }
     }
     if (canSync()) {

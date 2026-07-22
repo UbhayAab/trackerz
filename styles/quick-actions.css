@@ -1,0 +1,172 @@
+/* One-tap row: sleep / water / gym.
+   Sized for a thumb on a phone — every control is >= 44px tall, which the audit
+   flagged the 30px gym controls for failing. Rows scroll horizontally rather
+   than wrapping into a tall stack or forcing the page to scroll sideways. */
+
+.quick-actions {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+.quick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.quick-row::-webkit-scrollbar { display: none; }
+
+.quick-label {
+  flex: 0 0 auto;
+  min-width: 46px;
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted, #7c8a82);
+  font-weight: 600;
+}
+
+.quick-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.32));
+  background: var(--surface, #fff);
+  color: var(--ink, #17211c);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 120ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.quick-btn:hover:not([disabled]) { border-color: var(--accent, #138a5b); }
+.quick-btn:active:not([disabled]) { transform: scale(0.96); }
+.quick-btn[disabled] { opacity: 0.45; cursor: default; }
+
+.quick-btn:focus-visible {
+  outline: 2px solid var(--accent, #138a5b);
+  outline-offset: 2px;
+}
+
+.quick-glyph { font-size: 1rem; line-height: 1; }
+
+/* Active = this is today's recorded answer. */
+.quick-btn.is-active {
+  background: var(--accent, #138a5b);
+  border-color: var(--accent, #138a5b);
+  color: #fff;
+}
+.quick-btn.quick-gym-no.is-active {
+  background: var(--muted, #7c8a82);
+  border-color: var(--muted, #7c8a82);
+}
+
+.quick-undo {
+  min-width: 44px;
+  padding: 0 12px;
+  font-size: 1.05rem;
+}
+
+.quick-note {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--muted, #7c8a82);
+  padding-left: 2px;
+}
+
+.quick-meter {
+  display: inline-block;
+  width: 54px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line, rgba(125, 140, 132, 0.28));
+  overflow: hidden;
+}
+.quick-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #138a5b);
+  transition: width 220ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-btn, .quick-meter > span { transition: none; }
+  .quick-btn:active:not([disabled]) { transform: none; }
+}
+
+/* ---- auth feedback ---- */
+
+/* The sign-in card used to fail silently: a rejected OAuth redirect, an
+   unreachable project and "just signed out" all rendered the same empty form. */
+.auth-banner {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(190, 70, 60, 0.34);
+  background: rgba(190, 70, 60, 0.09);
+  color: #b4483c;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.link-button {
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  padding: 6px 0;
+  min-height: 32px;
+  color: var(--accent, #138a5b);
+  font: inherit;
+  font-size: 0.84rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.oauth-button.is-unavailable {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+/* Local test mode is indistinguishable from being signed in until you notice
+   your data is missing. Make it impossible to miss. */
+.local-mode-banner {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #8a5a13;
+  color: #fff;
+  font-size: 0.82rem;
+  text-align: center;
+}
+.local-mode-banner .secondary-button {
+  min-height: 32px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+}

@@ -15,32 +15,103 @@ function notify() {
   for (const l of sessionListeners) l(currentSession);
 }
 
+// Surfaced to the UI so a failed session restore is visible instead of looking
+// like "you were signed out".
+let lastAuthError = null;
+export function getLastAuthError() {
+  return lastAuthError;
+}
+
 export async function initAuth() {
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    const local = getStoredLocalSession();
-    if (local) {
-      currentSession = local;
-      notify();
-      return currentSession;
-    }
-
+    // The REAL session always wins. This used to return the localStorage
+    // "developer local test mode" session before ever contacting Supabase, so
+    // one tap on "Continue locally" permanently shadowed the real account: the
+    // app looked signed in, every query ran as `local:<email>`, and the owner's
+    // own data was invisible with no way back except clearing site data.
     try {
       const supabase = await getSupabaseClient();
-      const { data } = await supabase.auth.getSession();
-      currentSession = data.session;
-      notify();
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        lastAuthError = error.message || String(error);
+      } else if (data?.session) {
+        clearLocalSession();
+        currentSession = data.session;
+        notify();
+        supabase.auth.onAuthStateChange((_event, session) => {
+          currentSession = session;
+          notify();
+        });
+        return currentSession;
+      }
       supabase.auth.onAuthStateChange((_event, session) => {
-        currentSession = session;
+        if (session) clearLocalSession();
+        currentSession = session || getStoredLocalSession();
         notify();
       });
-    } catch {
-      currentSession = null;
-      notify();
+    } catch (err) {
+      // A network/CDN failure is NOT "signed out" — say so, so the sign-in card
+      // does not silently blame the user for a broken connection.
+      lastAuthError = err?.message || String(err);
     }
+
+    currentSession = getStoredLocalSession();
+    notify();
     return currentSession;
   })();
   return initPromise;
+}
+
+export function clearLocalSession() {
+  try { globalThis.localStorage?.removeItem(LOCAL_SESSION_KEY); } catch { /* private mode */ }
+}
+
+// Leave local test mode without nuking the whole origin's storage.
+export async function exitLocalSession() {
+  clearLocalSession();
+  currentSession = null;
+  initPromise = null;
+  notify();
+  await initAuth();
+  return currentSession;
+}
+
+// Send a password-reset link. Without this the password form was a dead end:
+// there was no way to set or recover a password anywhere in the app.
+export async function sendPasswordReset(email) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(normalizeEmail(email), {
+    redirectTo: appRedirectUrl(),
+  });
+  if (error) throw error;
+}
+
+// Complete the reset once the user lands back from the emailed link.
+export async function updatePassword(newPassword) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+}
+
+// Supabase bounces OAuth / magic-link failures back to the app as query or hash
+// params. Nothing read them, so "Continue with Google" looked like it silently
+// did nothing. Returns a human-readable reason, or null.
+export function readAuthRedirectError() {
+  const loc = globalThis.location;
+  if (!loc) return null;
+  const fromHash = new URLSearchParams(String(loc.hash || "").replace(/^#/, ""));
+  const fromQuery = new URLSearchParams(loc.search || "");
+  const code = fromHash.get("error") || fromQuery.get("error")
+    || fromHash.get("error_code") || fromQuery.get("error_code");
+  if (!code) return null;
+  const desc = fromHash.get("error_description") || fromQuery.get("error_description") || "";
+  const readable = decodeURIComponent(desc.replace(/\+/g, " ")) || code;
+  // Clean the URL so the banner does not survive a refresh forever.
+  try {
+    history.replaceState(null, "", `${loc.pathname}${loc.search.replace(/[?&]error[^&]*/g, "")}`);
+  } catch { /* non-browser */ }
+  return readable;
 }
 
 export function getCurrentSession() {
@@ -82,11 +153,24 @@ export async function signInLocal({ email, name } = {}) {
   return currentSession;
 }
 
+// The app's own origin+directory, which must also be in the Supabase project's
+// redirect allow-list or GoTrue silently downgrades to site_url.
+export function appRedirectUrl() {
+  const loc = globalThis.location;
+  if (!loc?.origin) return undefined;
+  return `${loc.origin}${loc.pathname.replace(/[^/]*$/, "")}`;
+}
+
 export async function signInWithEmail(email) {
   const supabase = await getSupabaseClient();
   const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: globalThis.location?.href },
+    email: normalizeEmail(email),
+    options: {
+      emailRedirectTo: appRedirectUrl(),
+      // A typo used to silently create a brand-new empty account and then report
+      // success, which looks identical to "my data vanished".
+      shouldCreateUser: false,
+    },
   });
   if (error) throw error;
 }
@@ -113,14 +197,62 @@ export async function signInWithProvider(provider) {
     throw new Error(`Unsupported provider: ${provider}`);
   }
   const supabase = await getSupabaseClient();
-  const redirect = globalThis.location?.origin
-    ? `${globalThis.location.origin}${globalThis.location.pathname.replace(/[^/]*$/, "")}`
-    : undefined;
+  const redirect = appRedirectUrl();
+
+  // signInWithOAuth only builds a URL and navigates — it resolves with
+  // error:null even when the provider is DISABLED server-side, so the old code
+  // could never report a failure. Ask the authorize endpoint first: a disabled
+  // provider answers with a 400/error redirect, which we can show as text
+  // instead of ejecting the user to a Supabase error page.
+  const probe = await providerAvailability(provider);
+  if (probe.enabled === false) {
+    throw new Error(
+      `${provider[0].toUpperCase()}${provider.slice(1)} sign-in is not enabled on this Supabase project` +
+      `${probe.reason ? ` (${probe.reason})` : ""}. Use your email and password, or enable the provider in ` +
+      `Supabase → Authentication → Providers.`,
+    );
+  }
+
   const { error } = await supabase.auth.signInWithOAuth({
     provider,
     options: redirect ? { redirectTo: redirect } : undefined,
   });
   if (error) throw error;
+}
+
+// GoTrue publishes which providers are actually turned on. This is the only
+// reliable way to know: signInWithOAuth builds the authorize URL locally and
+// navigates, so it resolves error:null even for a disabled provider, and
+// probing /authorize cross-origin only yields an opaque response.
+// Fetched once per page load. Never throws — an inconclusive probe returns null
+// and the normal redirect is allowed to proceed.
+let providerSettingsPromise = null;
+
+export function getEnabledProviders() {
+  if (!providerSettingsPromise) {
+    providerSettingsPromise = (async () => {
+      try {
+        const { getSupabaseConfig } = await import("../config.js");
+        const cfg = await getSupabaseConfig();
+        if (!cfg?.url || !cfg?.key) return null;
+        const res = await fetch(`${cfg.url}/auth/v1/settings`, { headers: { apikey: cfg.key } });
+        if (!res.ok) return null;
+        const json = await res.json();
+        return json?.external || null;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return providerSettingsPromise;
+}
+
+export async function providerAvailability(provider) {
+  const external = await getEnabledProviders();
+  if (!external || !(provider in external)) return { enabled: null };
+  return external[provider]
+    ? { enabled: true }
+    : { enabled: false, reason: "disabled in Supabase → Authentication → Providers" };
 }
 
 export async function signOut() {

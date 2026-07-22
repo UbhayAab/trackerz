@@ -30,23 +30,34 @@ function shortDate(iso) {
 
 export async function hydrateStateFromSupabase() {
   if (isLocalSession()) return;
+  // A failed read is NOT an empty table. Every fetch below used to be
+  // .catch(() => []), so a dropped connection rebuilt the whole dashboard from
+  // empty arrays and the UI confidently said "nothing logged yet" over data that
+  // was sitting right there. Track which reads failed so the UI can say
+  // "couldn't load" instead of inventing an empty day.
+  const failed = [];
+  const soft = (name, promise) => promise.catch((err) => {
+    failed.push(`${name}: ${err?.message || err}`);
+    return [];
+  });
+
   try {
     const [ledger, foods, actions, imports, budgets, bodyMetrics, wellnessLogs, knownSubs] = await Promise.all([
-      fetchLedger({ limit: 500 }).catch(() => []),
-      fetchFoodLogs({ limit: 300 }).catch(() => []),
-      fetchOpenAiActions().catch(() => []),
-      fetchOpenImports().catch(() => []),
-      fetchBudgets().catch(() => []),
-      fetchBodyMetrics().catch(() => []),
-      fetchWellnessLogs().catch(() => []),
-      fetchSubscriptions().catch(() => []),
+      soft("ledger", fetchLedger({ limit: 500 })),
+      soft("food", fetchFoodLogs({ limit: 300 })),
+      soft("review queue", fetchOpenAiActions()),
+      soft("imports", fetchOpenImports()),
+      soft("budgets", fetchBudgets()),
+      soft("body metrics", fetchBodyMetrics()),
+      soft("wellness", fetchWellnessLogs()),
+      soft("subscriptions", fetchSubscriptions()),
     ]);
-    const mealTemplates = await fetchMealTemplates().catch(() => []);
-    const userPlans = await fetchUserPlans().catch(() => []);
-    const workoutLogs = await fetchWorkoutLogs().catch(() => []);
-    const notes = await fetchNotes().catch(() => []);
-    const memoryFacts = await fetchMemoryFacts().catch(() => []);
-    const targetEvents = await fetchTargetEvents().catch(() => []);
+    const mealTemplates = await soft("meal templates", fetchMealTemplates());
+    const userPlans = await soft("plans", fetchUserPlans());
+    const workoutLogs = await soft("workouts", fetchWorkoutLogs());
+    const notes = await soft("notes", fetchNotes());
+    const memoryFacts = await soft("memory", fetchMemoryFacts());
+    const targetEvents = await soft("target events", fetchTargetEvents());
 
     // Self-heal food macros at DISPLAY time: the lookup table is the source of
     // truth for everyday foods, so recompute macros from the description even for
@@ -209,13 +220,23 @@ export async function hydrateStateFromSupabase() {
       state.metrics.caloriesTarget = dietTargets.calories;
       state.metrics.caloriesLeft = Math.max(0, Math.round(dietTargets.calories - caloriesToday));
       state.metrics.mealsToday = foods.filter((r) => isSameLocalDay(r.occurred_at)).length;
-      state.syncError = null;
+      // Partial failure is still failure — say which parts, so an empty panel
+      // is never mistaken for an empty day.
+      state.syncError = failed.length
+        ? `Couldn't load ${failed.length === 1 ? "one section" : `${failed.length} sections`} — ${failed[0]}`
+        : null;
+      state.syncFailedReads = failed;
     });
   } catch (err) {
     console.warn("hydrateStateFromSupabase failed", err);
     // Surface the failure instead of silently leaving a blank dashboard.
     updateState((state) => { state.syncError = err?.message || "Sync failed"; });
+    return { ok: false, failed: [err?.message || "Sync failed"] };
   }
+  // Returned rather than thrown: page boot awaits this and must keep going
+  // (the briefing strip still renders on a partial sync). Callers that care —
+  // e.g. the additions feed confirming a delete actually stuck — check `ok`.
+  return { ok: failed.length === 0, failed };
 }
 
 function humanizeTool(name, args = {}) {

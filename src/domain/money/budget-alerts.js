@@ -1,13 +1,17 @@
 // Computes budget alerts from current spend vs configured budgets.
 // Pure function: inputs are { ledger, budgets, today }. Outputs sorted alerts.
 
+import { goalDef } from "../goals.js";
+
 const PERIOD_DAYS = { daily: 1, weekly: 7, monthly: 30 };
 
 function periodStart(period, today) {
   const d = new Date(today);
   if (period === "daily") d.setHours(0, 0, 0, 0);
   else if (period === "weekly") {
-    const day = d.getDay();
+    // ISO week: Monday is day 1. This used to start weeks on Sunday while the
+    // Money page used ISO Monday, so the same week showed two different totals.
+    const day = (d.getDay() + 6) % 7;
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - day);
   } else if (period === "monthly") {
@@ -20,7 +24,7 @@ function periodStart(period, today) {
 function expectedPaceShare(period, today) {
   if (period === "daily") return 1;
   if (period === "weekly") {
-    const day = new Date(today).getDay() + 1;
+    const day = ((new Date(today).getDay() + 6) % 7) + 1; // ISO: Mon=1 … Sun=7
     return Math.min(1, day / 7);
   }
   if (period === "monthly") {
@@ -34,6 +38,13 @@ function expectedPaceShare(period, today) {
 export function computeBudgetAlerts({ ledger = [], budgets = [], today = new Date() } = {}) {
   const out = [];
   for (const budget of budgets) {
+    // Every goal shares the `budgets` table — daily_protein (160g), daily_calories
+    // (2200), weekly_workouts (4) all sit alongside monthly_spend. Without this
+    // guard the loop compared today's RUPEE spend against a protein target of
+    // 160 and a workout target of 4, so spending Rs 500 produced "daily budget
+    // exceeded by 212%" from the protein goal. Legacy rows with a null kind are
+    // real category budgets and must still pass.
+    if (budget.kind && goalDef(budget.kind)?.domain !== "money") continue;
     const start = periodStart(budget.period, today);
     const items = ledger.filter((r) =>
       r.direction === "expense"

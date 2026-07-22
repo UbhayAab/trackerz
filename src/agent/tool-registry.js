@@ -8,6 +8,8 @@ export const toolRegistry = [
   { name: "create_workout_log_candidate", domain: "fitness", write: true, destructive: false },
   { name: "create_body_metric_candidate", domain: "fitness", write: true, destructive: false },
   { name: "create_wellness_note_candidate", domain: "wellness", write: true, destructive: false },
+  { name: "create_hydration_candidate", domain: "wellness", write: true, destructive: false },
+  { name: "create_sleep_candidate", domain: "wellness", write: true, destructive: false },
   { name: "create_note_candidate", domain: "all", write: true, destructive: false },
   { name: "set_target_candidate", domain: "all", write: true, destructive: false },
   { name: "remember_fact", domain: "all", write: true, destructive: false },

@@ -7,7 +7,9 @@
 // 5. Jarvis Web Push: shows briefs/nudges sent by the jarvis edge function
 //    (payload: { title, body, url }) and focuses/opens the app on tap.
 
-const VERSION = "trackerz-v18-20260706";
+// Bumped so the caches poisoned by the old "cache any response" bug (404/503
+// HTML frozen in as the offline fallback) are dropped on activate.
+const VERSION = "trackerz-v19-20260723";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -62,8 +64,22 @@ async function networkFirst(req) {
     // wins (GitHub Pages sets ~10min cache headers that otherwise cause "ghost
     // versions"). The SW cache below is kept purely as the offline fallback.
     const fresh = await fetch(req, { cache: "no-store" });
-    const cache = await caches.open(VERSION);
-    cache.put(req, fresh.clone());
+    // Only ok, non-opaque responses are cacheable. Caching a 404/503 (a
+    // mid-deploy Pages blip, or a path that briefly doesn't exist) used to make
+    // that error the permanent offline page for the URL until the next version
+    // bump — the user would see "offline" on a route that was actually fine.
+    if (fresh && fresh.ok && fresh.type !== "opaque") {
+      const cache = await caches.open(VERSION);
+      cache.put(req, fresh.clone());
+      return fresh;
+    }
+    // A 5xx (a mid-deploy Pages blip) is a transport problem, not the truth
+    // about this URL — serve the last good copy if we have one, exactly as we
+    // do for a thrown fetch. A 4xx IS the truth, so it passes through.
+    if (fresh && fresh.status >= 500) {
+      const cached = await caches.match(req);
+      if (cached) return cached;
+    }
     return fresh;
   } catch {
     const cached = await caches.match(req);

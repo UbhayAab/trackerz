@@ -219,17 +219,41 @@ function jbCloseDay(input) {
     calories += Number(foods[f].calories_estimate) || 0;
   }
 
-  var workoutMin = 0;
-  for (var w = 0; w < workouts.length; w++) workoutMin += Number(workouts[w].duration_min) || 0;
+  // A 'skipped'/'rest' row records that the user answered the day ("no gym
+  // today") — it is NOT training. Counting every row is what turned "Did not go
+  // to gym bro" into a completed workout and a rolling gym streak. Rows written
+  // before the status column existed have no status and stay 'done'.
+  var realWorkouts = [];
+  for (var rw = 0; rw < workouts.length; rw++) {
+    var st = workouts[rw] && workouts[rw].status;
+    if (st === "skipped" || st === "rest") continue;
+    realWorkouts.push(workouts[rw]);
+  }
 
-  var steps = 0, sleepH = 0, weightKg = null;
+  var workoutMin = 0;
+  for (var w = 0; w < realWorkouts.length; w++) workoutMin += Number(realWorkouts[w].duration_min) || 0;
+
+  // sleepH stays NULL when nothing was measured. It used to default to 0, which
+  // the voice model then narrated as the fact "you got zero sleep" every single
+  // day — a number the app had never collected.
+  var steps = 0, sleepH = null, weightKg = null;
   for (var b = 0; b < bodyMetrics.length; b++) {
     var m = bodyMetrics[b], v = Number(m.value) || 0;
     if (m.metric_type === "steps" && v > steps) steps = v;
-    else if (m.metric_type === "sleep_hours" && v > sleepH) sleepH = v;
+    else if (m.metric_type === "sleep_hours" && v > 0 && v > (sleepH || 0)) sleepH = v;
     else if (m.metric_type === "weight" && v > 0) weightKg = v;
   }
-  sleepH = Math.round(sleepH * 10) / 10;
+  // Completed sleep_sessions are the primary source; body_metrics is the legacy one.
+  var sessions = input.sleepSessions || [];
+  var sessionH = 0;
+  for (var sx = 0; sx < sessions.length; sx++) {
+    var s0 = sessions[sx];
+    if (!s0 || !s0.started_at || !s0.ended_at) continue;
+    var hrs = (new Date(s0.ended_at).getTime() - new Date(s0.started_at).getTime()) / 3600000;
+    if (hrs > 0 && hrs < 24) sessionH += hrs;
+  }
+  if (sessionH > 0) sleepH = sessionH;
+  sleepH = sleepH == null ? null : Math.round(sleepH * 10) / 10;
 
   var moodSum = 0, moodN = 0;
   for (var q = 0; q < wellness.length; q++) {
@@ -241,9 +265,11 @@ function jbCloseDay(input) {
   var caloriesTarget = jbBudgetAmount(budgets, "daily_calories");
   var spendCap = jbDailySpendCap(budgets);
 
-  var logged = (ledger.length + foods.length + workouts.length + wellness.length + bodyMetrics.length) > 0;
-  // A forgiven-cardio day counts on 10k steps OR any logged session; rest days always count.
-  var workoutDone = workouts.length > 0 || steps >= 10000;
+  // `logged` counts ALL rows including a skipped workout — declining the gym is
+  // still answering the day, and the logging streak should survive it.
+  var logged = (ledger.length + foods.length + workouts.length + wellness.length + bodyMetrics.length + sessions.length) > 0;
+  // A forgiven-cardio day counts on 10k steps OR any real session; rest days always count.
+  var workoutDone = realWorkouts.length > 0 || steps >= 10000;
   var workoutForgiven = !workoutDone && plannedKind === "rest";
   var flags = {
     logged: logged,
@@ -251,7 +277,9 @@ function jbCloseDay(input) {
     workout_forgiven: workoutForgiven,
     workout_ok: workoutDone || workoutForgiven,
     protein_hit: proteinTarget != null && proteinTarget > 0 && protein >= proteinTarget * 0.9,
-    under_budget: spendCap != null && spend <= spendCap,
+    // A day with NOTHING logged is not a day under budget. Counting it grew the
+    // budget streak on days the user never opened the app.
+    under_budget: spendCap != null && logged && spend <= spendCap,
   };
 
   return {
@@ -306,7 +334,11 @@ function jbBriefFacts(o) {
     },
     yesterday: y ? {
       spend: y.spend, protein: y.protein, calories: y.calories,
-      workout_done: y.flags ? Boolean(y.flags.workout_ok) : y.workoutDone,
+      // workout_done means a session actually happened. It used to carry
+      // workout_ok, so a rest/forgiven day with zero training was narrated as
+      // "workout done". Both are exposed now, distinctly.
+      workout_done: y.flags ? Boolean(y.flags.workout) : Boolean(y.workoutDone),
+      workout_ok: y.flags ? Boolean(y.flags.workout_ok) : Boolean(y.workoutDone),
       // null (not false) when no target/cap exists — "no target" must never be
       // narrated as "missed"/"over".
       protein_hit: (y.caps && y.caps.proteinTarget != null && y.caps.proteinTarget > 0)
@@ -414,7 +446,8 @@ function jbWeeklySummary(days) {
     averages: {
       protein: n ? Math.round(t.protein / n) : 0,
       calories: n ? Math.round(t.calories / n) : 0,
-      sleep_h: t.sleepN ? Math.round((t.sleep / t.sleepN) * 10) / 10 : 0,
+      // null, not 0 — "no sleep was recorded this week" is not "you slept 0h".
+      sleep_h: t.sleepN ? Math.round((t.sleep / t.sleepN) * 10) / 10 : null,
     },
     hits: hits,
     end_streaks: n ? (rows[n - 1].streaks || {}) : {},
@@ -422,7 +455,7 @@ function jbWeeklySummary(days) {
 }
 
 // Voice contract: the model phrases, the facts JSON owns every number.
-var JB_VOICE_SYSTEM = "You are Jarvis, the user's personal chief of staff inside their life tracker. Write their morning brief from the facts JSON: 3 to 6 short sentences, direct address, brisk and warm, plain text only (no markdown, no emoji, no headings, no bullet lists). Every figure you mention must be copied verbatim from the facts JSON — never invent, recompute, or extrapolate a number. A null value means that target or cap is simply not set — skip it entirely; never describe null as missed, over, or failed. Currency is INR; write amounts as Rs. Cover: how yesterday closed, today's plan (workout and protein/calorie targets), safe-to-spend if present, any subscription due soon, and the strongest streak worth protecting. End with one concrete next move for the morning.";
+var JB_VOICE_SYSTEM = "You are Jarvis, the user's personal chief of staff inside their life tracker. Write their morning brief from the facts JSON: 3 to 6 short sentences, direct address, brisk and warm, plain text only (no markdown, no emoji, no headings, no bullet lists). Every figure you mention must be copied verbatim from the facts JSON — never invent, recompute, or extrapolate a number. NULL MEANS NOT MEASURED AND NOT SET: if a value is null, that thing was never recorded or never configured — say NOTHING about it at all. Never render null as zero, and never describe it as missed, over, failed, skipped, or lacking. In particular, if sleep_h is null the app has no sleep data, so do not mention sleep in any form. Only mention a metric when its value is a real number. workout_done=false means no session happened; if workout_ok is true on the same day it was a planned rest or forgiven day, so do not call it a miss. Currency is INR; write amounts as Rs. Cover: how yesterday closed, today's plan (workout and protein/calorie targets), safe-to-spend if present, any subscription due soon, and the strongest streak worth protecting. End with one concrete next move for the morning.";
 
 function jbVoiceUserPrompt(facts) {
   return "FACTS JSON:\n" + JSON.stringify(facts) + "\n\nWrite the morning brief now, plain text only.";
@@ -437,8 +470,18 @@ type Profile = {
   push_enabled?: boolean; email_brief?: boolean; quiet_hours?: { start?: string; end?: string } | null;
 };
 
+// Test fixtures left behind in production. Matching on the profile alone keeps
+// this cheap (no auth lookup per user per slot).
+const FIXTURE_NAME_RE = /^(e2e|test|dummy|fixture|smoke)[_-]/i;
+function isFixtureProfile(p: Profile & { display_name?: string }): boolean {
+  return FIXTURE_NAME_RE.test(String(p?.display_name || "")) || FIXTURE_ID.has(p?.id);
+}
+// Explicit allow-list of known-abandoned fixture accounts (display_name here is
+// "Ubhay", so the pattern above does not catch it).
+const FIXTURE_ID = new Set<string>(["b788d68f-aee7-476b-9e50-f2cf9b3804c0"]);
+
 async function fetchDayRows(admin: any, userId: string, startISO: string, endISO: string) {
-  const [ledger, foods, workouts, wellness, metrics] = await Promise.all([
+  const [ledger, foods, workouts, wellness, metrics, sleep] = await Promise.all([
     admin.from("ledger_entries")
       .select("amount, direction, is_discretionary")
       .eq("user_id", userId).is("merged_into", null)
@@ -448,7 +491,9 @@ async function fetchDayRows(admin: any, userId: string, startISO: string, endISO
       .eq("user_id", userId)
       .gte("occurred_at", startISO).lt("occurred_at", endISO),
     admin.from("workout_logs")
-      .select("duration_min")
+      // `status` decides whether this counts as training. Selecting it is what
+      // stops a 'skipped' row ("no gym today") from reading as a workout.
+      .select("duration_min, status")
       .eq("user_id", userId)
       .gte("occurred_at", startISO).lt("occurred_at", endISO),
     admin.from("wellness_logs")
@@ -459,13 +504,28 @@ async function fetchDayRows(admin: any, userId: string, startISO: string, endISO
       .select("metric_type, value")
       .eq("user_id", userId)
       .gte("occurred_at", startISO).lt("occurred_at", endISO),
+    admin.from("sleep_sessions")
+      .select("started_at, ended_at")
+      .eq("user_id", userId).not("ended_at", "is", null)
+      .gte("ended_at", startISO).lt("ended_at", endISO),
   ]);
+
+  // A failed read is NOT an empty day. Returning [] on error is how a transient
+  // Supabase blip became "you logged nothing yesterday", got frozen into
+  // habit_days, and reset every streak. Fail loudly instead — the caller skips
+  // the day rather than recording a fiction.
+  const reads = { ledger, foods, workouts, wellness, metrics, sleep };
+  for (const [name, res] of Object.entries(reads)) {
+    if (res?.error) throw new Error(`fetchDayRows: ${name} read failed — ${res.error.message}`);
+  }
+
   return {
     ledger: ledger.data || [],
     foods: foods.data || [],
     workouts: workouts.data || [],
     wellness: wellness.data || [],
     bodyMetrics: metrics.data || [],
+    sleepSessions: sleep.data || [],
   };
 }
 
@@ -509,9 +569,13 @@ async function fetchSubsDue(admin: any, userId: string, now: Date) {
 async function fetchWeeklyWorkouts(admin: any, userId: string, dateKey: string, tz: string) {
   const start = jbDayWindow(jbAddDays(dateKey, -6), tz).startISO;
   const end = jbDayWindow(dateKey, tz).endISO;
-  const { count } = await admin.from("workout_logs")
+  const { count, error } = await admin.from("workout_logs")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", userId).gte("occurred_at", start).lt("occurred_at", end);
+    // Skipped/rest days are answered days, not training — they must not count
+    // toward the weekly_workouts goal.
+    .eq("user_id", userId).neq("status", "skipped")
+    .gte("occurred_at", start).lt("occurred_at", end);
+  if (error) throw new Error(`fetchWeeklyWorkouts read failed — ${error.message}`);
   return count ?? 0;
 }
 
@@ -900,8 +964,13 @@ Deno.serve(async (req) => {
     const cronSecret = await resolveSecretOptional("JARVIS_CRON_SECRET");
     const headerSecret = req.headers.get("x-jarvis-secret") || "";
     if (cronSecret && headerSecret && safeEqual(headerSecret, cronSecret)) {
-      const { data } = await admin.from("profiles").select("*").eq("briefing_enabled", true);
-      profiles = data || [];
+      const { data, error } = await admin.from("profiles").select("*").eq("briefing_enabled", true);
+      if (error) return Response.json({ ok: false, error: `profiles read failed: ${error.message}` }, { status: 500, headers: corsHeaders });
+      // Skip fixture accounts. An abandoned E2E signup (e2e_*@test.local) was
+      // still a live profile row, so every slot ran the whole brief pipeline
+      // twice — doubling LLM spend and firing Resend at an address that cannot
+      // exist, which risks the sender reputation the real brief depends on.
+      profiles = (data || []).filter((p: Profile) => !isFixtureProfile(p));
     } else {
       const auth = req.headers.get("authorization") || "";
       const jwt = auth.startsWith("Bearer ") ? auth.slice(7) : "";

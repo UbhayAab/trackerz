@@ -227,8 +227,27 @@ create table if not exists public.workout_logs (
   sets jsonb not null default '[]'::jsonb,
   bodyweight_kg numeric,
   notes text,
+  -- done | skipped | rest. A 'skipped' row records that the user ANSWERED the
+  -- day ("no gym today") without it counting as training. Counting every row as
+  -- a workout is what made the brief report gym sessions the user had denied.
+  status text not null default 'done' check (status in ('done','skipped','rest')),
   occurred_at timestamptz not null,
   created_at timestamptz not null default now()
+);
+
+-- Sleep. started_at alone = "asleep right now"; ended_at fills in on wake, and
+-- duration is always derived, so a half-open session can never read as 0 hours.
+create table if not exists public.sleep_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  ingestion_id uuid references public.raw_ingestions(id) on delete set null,
+  started_at timestamptz not null,
+  ended_at timestamptz,
+  quality smallint check (quality is null or quality between 1 and 5),
+  note text,
+  source text not null default 'button',
+  created_at timestamptz not null default now(),
+  constraint sleep_sessions_order_check check (ended_at is null or ended_at > started_at)
 );
 
 create table if not exists public.nifty_monthly_closes (
@@ -531,7 +550,7 @@ begin
       'workout_logs','merchant_aliases','category_memory','subscriptions',
       'bank_format_memory','meal_templates','hydration_logs','weekly_reviews',
       'audit_log','user_secrets','user_plans','memory_facts','notes','briefings',
-      'habit_days','push_subscriptions'
+      'habit_days','push_subscriptions','sleep_sessions'
     ])
   loop
     execute format('alter table public.%I enable row level security', t);
