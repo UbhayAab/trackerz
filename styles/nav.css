@@ -4,30 +4,46 @@
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
+  /* Six equal columns. auto-fit/minmax would wrap onto a second row on a narrow
+     phone and push the bar off-screen; a fixed count keeps one row always. */
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
   width: min(100%, 980px);
   margin: 0 auto;
-  padding: 8px 10px calc(env(safe-area-inset-bottom, 0px) + 10px);
+  padding: 6px 6px calc(env(safe-area-inset-bottom, 0px) + 8px);
   background: rgba(247, 246, 241, 0.92);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
-  z-index: 5;
+  /* Above the sticky local-mode banner and any panel, so it is never covered. */
+  z-index: 40;
 }
 
 .nav-item {
   display: grid;
   place-items: center;
   min-height: 48px;
+  padding: 0 2px;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted);
-  font-size: 0.84rem;
+  /* Sized so all six labels fit a 320px screen without truncating. */
+  font-size: 0.7rem;
   font-weight: var(--weight-semibold);
   text-decoration: none;
+  text-align: center;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
   transition: background 140ms ease, color 140ms ease;
+}
+
+@media (min-width: 420px) {
+  .bottom-nav { gap: 4px; padding-left: 10px; padding-right: 10px; }
+  .nav-item { font-size: 0.8rem; }
 }
 
 .nav-item:hover {
