@@ -44,8 +44,9 @@ function inRange(ts, range) {
   return t >= new Date(range.startISO).getTime() && t < new Date(range.endISO).getTime();
 }
 
-function summarize({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics = [] }, range) {
-  let spend = 0, income = 0, calories = 0, protein = 0, mealCount = 0, steps = 0, sleepHours = 0, sleepCount = 0;
+function summarize({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics = [], sleepSessions = [] }, range) {
+  let spend = 0, income = 0, calories = 0, protein = 0, mealCount = 0;
+  let steps = 0, stepDays = 0, sleepHours = 0, sleepCount = 0;
   let moodSum = 0, moodCount = 0;
   for (const r of ledger) {
     if (!inRange(r.occurred_at, range)) continue;
@@ -65,8 +66,16 @@ function summarize({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics 
   }
   for (const b of bodyMetrics) {
     if (!inRange(b.occurred_at, range)) continue;
-    if (b.metric_type === "steps") steps += Number(b.value || 0);
+    if (b.metric_type === "steps") { steps += Number(b.value || 0); stepDays += 1; }
     else if (b.metric_type === "sleep_hours") { sleepHours += Number(b.value || 0); sleepCount += 1; }
+  }
+  // Sleep from completed sessions - a night belongs to the day you WOKE. This is
+  // the primary source; bodyMetrics sleep_hours is the legacy path above.
+  for (const s of sleepSessions) {
+    if (!s.started_at || !s.ended_at) continue;
+    if (!inRange(s.ended_at, range)) continue;
+    const h = (new Date(s.ended_at) - new Date(s.started_at)) / 3600000;
+    if (h > 0 && h < 24) { sleepHours += h; sleepCount += 1; }
   }
   return {
     range,
@@ -75,8 +84,11 @@ function summarize({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics 
     calories: Math.round(calories),
     protein: Math.round(protein),
     mealCount,
-    steps,
-    sleepHoursAvg: sleepCount ? Number((sleepHours / sleepCount).toFixed(1)) : 0,
+    // null, not 0, when nothing was measured. Steps and sleep have no manual
+    // entry path yet (they come from the watch), so 0 always meant "no data" -
+    // rendering it as a measured 0 is the exact trust bug this app keeps hitting.
+    steps: stepDays ? steps : null,
+    sleepHoursAvg: sleepCount ? Number((sleepHours / sleepCount).toFixed(1)) : null,
     moodAvg: moodCount ? Number((moodSum / moodCount).toFixed(2)) : null,
   };
 }
@@ -86,9 +98,9 @@ function pctDelta(curr, prev) {
   return Number(((curr - prev) / prev).toFixed(3));
 }
 
-export function aggregatePeriods({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics = [], today = new Date() } = {}) {
+export function aggregatePeriods({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics = [], sleepSessions = [], today = new Date() } = {}) {
   const buckets = bucketsFor(today);
-  const input = { ledger, foodLogs, wellnessLogs, bodyMetrics };
+  const input = { ledger, foodLogs, wellnessLogs, bodyMetrics, sleepSessions };
   const today_ = summarize(input, buckets.today);
   const yesterday = summarize(input, buckets.yesterday);
   const week = summarize(input, buckets.week);

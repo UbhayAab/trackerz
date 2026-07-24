@@ -10,6 +10,14 @@ function fmt(n, { currency = false } = {}) {
   return Math.round(n).toLocaleString("en-IN");
 }
 
+// A value with a unit suffix that stays clean when the value is absent: renders
+// "7.2h" with data, plain "-" (not "-h") without. This is what stops the
+// analytics page reporting "Sleep 0h" for a night it never measured.
+function fmtUnit(n, unit) {
+  if (n === null || n === undefined) return "-";
+  return `${Math.round(n * 10) / 10}${unit}`;
+}
+
 function fmtDelta(p) {
   if (p === null || p === undefined || !isFinite(p)) return "";
   const arrow = p > 0 ? "▲" : p < 0 ? "▼" : "•";
@@ -22,10 +30,10 @@ function deltaClass(p) {
   return "delta flat";
 }
 
-export function renderDashboards({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics = [], budgets = [], subscriptions = [], today = new Date() } = {}) {
+export function renderDashboards({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics = [], sleepSessions = [], budgets = [], subscriptions = [], today = new Date() } = {}) {
   const root = document.getElementById("dashboardViews");
   if (!root) return;
-  const agg = aggregatePeriods({ ledger, foodLogs, wellnessLogs, bodyMetrics, today });
+  const agg = aggregatePeriods({ ledger, foodLogs, wellnessLogs, bodyMetrics, sleepSessions, today });
   const insights = composeInsights({ aggregates: agg, budgets, subscriptions, ledger, today });
   const series = dailySeries({ rows: ledger.filter((r) => r.direction === "expense"), today, days: 30, valueOf: (r) => Math.abs(Number(r.amount || 0)) });
 
@@ -41,7 +49,7 @@ export function renderDashboards({ ledger = [], foodLogs = [], wellnessLogs = []
       ${tile("Calories",    fmt(agg.today.calories),                        fmtDelta(agg.deltas.dod_calories),  deltaClass(agg.deltas.dod_calories))}
       ${tile("Meals",       fmt(agg.today.mealCount))}
       ${tile("Steps",       fmt(agg.today.steps))}
-      ${tile("Sleep (avg)", `${fmt(agg.today.sleepHoursAvg)}h`)}
+      ${tile("Sleep",       fmtUnit(agg.today.sleepHoursAvg, "h"))}
     </div>
     <div class="dashboard-view" data-view="week" hidden>
       ${tile("Week spend",  fmt(agg.week.spend, { currency: true }),        fmtDelta(agg.deltas.wow_spend),     deltaClass(agg.deltas.wow_spend))}
@@ -49,7 +57,7 @@ export function renderDashboards({ ledger = [], foodLogs = [], wellnessLogs = []
       ${tile("Avg protein", `${fmt(agg.week.protein / 7)}g`)}
       ${tile("Meals",       fmt(agg.week.mealCount))}
       ${tile("Steps total", fmt(agg.week.steps))}
-      ${tile("Sleep avg",   `${fmt(agg.week.sleepHoursAvg)}h`)}
+      ${tile("Sleep avg",   fmtUnit(agg.week.sleepHoursAvg, "h"))}
     </div>
     <div class="dashboard-view" data-view="month" hidden>
       ${tile("Month spend", fmt(agg.month.spend, { currency: true }),       fmtDelta(agg.deltas.mom_spend),     deltaClass(agg.deltas.mom_spend))}

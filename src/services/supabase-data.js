@@ -288,6 +288,20 @@ export async function adjustSleepWake(sessionId, wakeAt) {
   return { row: data, hours: clamp.hours, capped: clamp.capped };
 }
 
+// Completed sleep sessions for the analytics/brief windows. Open sessions are
+// excluded - a night with no wake time has no duration to report.
+export async function fetchSleepSessions({ limit = 120 } = {}) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("sleep_sessions")
+    .select("id, started_at, ended_at, quality, source, note")
+    .not("ended_at", "is", null)
+    .order("ended_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
 // ---- gym: answered either way ----
 // `status` is the whole point: a 'skipped' row records that the day was answered
 // without counting as training, so the streak stays honest and the evening nudge

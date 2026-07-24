@@ -15,6 +15,7 @@ bootWithAuth(async () => {
       foodLogs: state.foodLogs || [],
       wellnessLogs: state.wellnessLogs || [],
       bodyMetrics: state.bodyMetrics || [],
+      sleepSessions: state.sleepSessions || [],
       budgets: state.budgets || [],
       subscriptions: state.subscriptions || [],
       today: new Date(),

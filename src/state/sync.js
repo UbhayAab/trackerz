@@ -1,7 +1,7 @@
 import {
   fetchLedger, fetchFoodLogs, fetchOpenAiActions, fetchOpenImports, fetchBudgets,
   fetchBodyMetrics, fetchWellnessLogs, fetchSubscriptions, persistDetectedSubscriptions,
-  fetchMealTemplates, fetchUserPlans, fetchWorkoutLogs,
+  fetchMealTemplates, fetchUserPlans, fetchWorkoutLogs, fetchSleepSessions,
   fetchNotes, fetchMemoryFacts, fetchTargetEvents,
 } from "../services/supabase-data.js";
 import { setDietPlanOverride, setGymPlanOverride, setDatedPlanOverrides, parsePlanScope, planForDate, isoWeekday } from "../domain/diet/plan.js";
@@ -55,6 +55,7 @@ export async function hydrateStateFromSupabase() {
     const mealTemplates = await soft("meal templates", fetchMealTemplates());
     const userPlans = await soft("plans", fetchUserPlans());
     const workoutLogs = await soft("workouts", fetchWorkoutLogs());
+    const sleepSessions = await soft("sleep", fetchSleepSessions());
     const notes = await soft("notes", fetchNotes());
     const memoryFacts = await soft("memory", fetchMemoryFacts());
     const targetEvents = await soft("target events", fetchTargetEvents());
@@ -206,6 +207,7 @@ export async function hydrateStateFromSupabase() {
       state.additions = buildAdditions(ledger, foods, userPlans, { notes, targetEvents, reviewActions: actions });
       state.wellnessLogs = wellnessLogs;
       state.bodyMetrics = bodyMetrics;
+      state.sleepSessions = sleepSessions;
       state.workoutLogs = workoutLogs;
       state.budgets = budgets;
       state.subscriptions = subscriptions;
