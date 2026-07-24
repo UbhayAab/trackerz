@@ -10,6 +10,12 @@ export function bootWithAuth(onReady) {
     onReady(session) {
       if (started) return;
       started = true;
+      // Fire-and-forget: on the Android app, with SMS auto-capture switched on and
+      // permission granted, pull any new bank/UPI transaction SMS into the ledger.
+      // Hard no-op in a browser (no bridge) and never blocks or breaks boot.
+      import("../services/sms-capture.js")
+        .then((m) => m.initSmsAutoCapture())
+        .catch(() => {});
       onReady(session);
     },
   });

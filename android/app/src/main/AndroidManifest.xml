@@ -36,6 +36,16 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+      SMS read + receive: auto-capture UPI/bank spend from transaction SMS. There is
+      no public GPay/UPI API; the bank SMS every payment triggers is the only device
+      -side signal, so SmsReaderPlugin reads it and feeds it to the capture pipeline.
+      These are Play-restricted permissions - fine for this personal sideloaded debug
+      APK. `npx cap sync` may drop these; the CI workflow restores this file.
+    -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+
+    <!--
       Lets the app see and deep-link the Health Connect provider. On Android 11+
       this <queries> block is required even to check whether the package exists.
     -->

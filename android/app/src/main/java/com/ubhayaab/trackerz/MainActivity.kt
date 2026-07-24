@@ -19,12 +19,14 @@ package com.ubhayaab.trackerz
 import android.os.Bundle
 import com.getcapacitor.BridgeActivity
 import com.ubhayaab.trackerz.health.HealthConnectPlugin
+import com.ubhayaab.trackerz.sms.SmsReaderPlugin
 
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Must precede super.onCreate(): the bridge is constructed there and only
         // exposes plugins registered by that point.
         registerPlugin(HealthConnectPlugin::class.java)
+        registerPlugin(SmsReaderPlugin::class.java)
         super.onCreate(savedInstanceState)
     }
 }
