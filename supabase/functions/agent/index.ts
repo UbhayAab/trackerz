@@ -1579,10 +1579,10 @@ function spSuggestForCapture(text, patterns, options) {
 const FOOD_TABLE: any[] = [
   { key: "egg", kind: "count", aliases: ["egg", "eggs", "boiled egg", "boiled eggs", "whole egg", "whole eggs", "anda", "ande"], calories: 72, protein_g: 6.3, carbs_g: 0.4, fat_g: 5 },
   { key: "egg white", kind: "count", aliases: ["egg white", "egg whites", "whites"], calories: 17, protein_g: 3.6, carbs_g: 0.2, fat_g: 0.1 },
-  { key: "roti", kind: "count", aliases: ["roti", "rotis", "phulka", "phulkas", "chapati", "chapatis", "chapathi", "fulka"], calories: 110, protein_g: 3.5, carbs_g: 22, fat_g: 1 },
+  { key: "roti", kind: "count", gramsPerUnit: 45, aliases: ["roti", "rotis", "phulka", "phulkas", "chapati", "chapatis", "chapathi", "fulka"], calories: 110, protein_g: 3.5, carbs_g: 22, fat_g: 1 },
   { key: "paratha", kind: "count", aliases: ["paratha", "parathas", "parantha"], calories: 240, protein_g: 5, carbs_g: 30, fat_g: 10 },
   { key: "aloo paratha", kind: "count", aliases: ["aloo paratha", "aloo parathas", "potato paratha"], calories: 320, protein_g: 6, carbs_g: 38, fat_g: 14 },
-  { key: "rice", kind: "count", aliases: ["rice", "rice bowl", "steamed rice", "jeera rice", "white rice", "boiled rice", "chawal", "bhaat"], calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0.5 },
+  { key: "rice", kind: "count", gramsPerUnit: 150, aliases: ["rice", "rice bowl", "steamed rice", "jeera rice", "white rice", "boiled rice", "chawal", "bhaat"], calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0.5 },
   { key: "dal", kind: "count", aliases: ["dal", "daal", "dal bowl", "lentils", "tadka dal", "dal fry"], calories: 150, protein_g: 9, carbs_g: 20, fat_g: 3 },
   { key: "sabzi", kind: "count", aliases: ["sabzi", "sabji", "mixed veg", "veg curry", "bhindi", "aloo gobi"], calories: 130, protein_g: 4, carbs_g: 12, fat_g: 7 },
   { key: "rajma", kind: "count", aliases: ["rajma", "kidney beans"], calories: 200, protein_g: 12, carbs_g: 30, fat_g: 4 },
@@ -1711,6 +1711,12 @@ function foodMultiplier(item: any): number {
   const e = item.entry;
   if (e.kind === "gram") return (item.grams != null ? item.grams : (item.qty || 1) * (e.per || 100)) / (e.per || 100);
   if (e.kind === "ml") return (item.ml != null ? item.ml : (item.qty || 1) * (e.per || 250)) / (e.per || 250);
+  // count-kind: a gram/ml quantity is a WEIGHT, not a serving count. "250 g rice"
+  // must NOT become 250 katoris (that was a 100x blow-up: 250g -> 52,500 kcal).
+  // Convert via grams/ml-per-serving when known; otherwise a weighed mention is a
+  // single serving, never servings x the raw gram number. Mirror of lib/food-nutrition.mjs.
+  if (item.grams != null) return e.gramsPerUnit ? item.grams / e.gramsPerUnit : 1;
+  if (item.ml != null) return e.mlPerUnit ? item.ml / e.mlPerUnit : 1;
   return item.qty || 1;
 }
 function estimateNutrition(text: string): any {
@@ -2254,10 +2260,13 @@ async function persistRunAndActions(
       groundingNote = "low_evidence";
     }
     // [STAGE 9] sanity: implausible values (Rs 5,40,000 OCR slip, 50,000-cal meal,
-    // year-3025 date) still commit but are tagged so the feed flags them for review.
+    // year-3025 date) must NOT auto-commit - a single 52,500-kcal row poisons the
+    // day total, the streaks and the next brief. Demote to review so a human
+    // confirms before it lands, and keep the flag so the feed can explain why.
     const sanity = sanityCheck(tc.name, tc.arguments, new Date().toISOString());
     if (!sanity.ok) {
       groundingNote = groundingNote ? `${groundingNote},${sanity.flags.join(",")}` : sanity.flags.join(",");
+      if (status === "auto_applied") status = "proposed";
     }
     if (status === "auto_applied") {
       try {
@@ -2286,7 +2295,9 @@ async function persistRunAndActions(
       tool_name: tc.name, arguments: tc.arguments, confidence: tc.confidence,
       status, applied_record_table: appliedTable, applied_record_id: appliedId,
       applied_at: appliedId ? new Date().toISOString() : null,
-      undo_payload: appliedId ? { table: appliedTable, id: appliedId } : (groundingNote ? { review_reason: groundingNote } : null),
+      undo_payload: appliedId
+        ? (groundingNote ? { table: appliedTable, id: appliedId, note: groundingNote } : { table: appliedTable, id: appliedId })
+        : (groundingNote ? { review_reason: groundingNote } : null),
     });
   }
 
