@@ -54,6 +54,15 @@
         <intent>
             <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>
+        <!--
+          Package visibility (Android 11+) for pay-from-app: without this,
+          resolveActivity() for a upi:// intent returns null even when GPay/PhonePe
+          is installed, and UpiPayPlugin would wrongly report "no UPI app".
+        -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
     </queries>
 
     <application

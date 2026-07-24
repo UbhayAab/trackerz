@@ -10,11 +10,15 @@ export function bootWithAuth(onReady) {
     onReady(session) {
       if (started) return;
       started = true;
-      // Fire-and-forget: on the Android app, with SMS auto-capture switched on and
-      // permission granted, pull any new bank/UPI transaction SMS into the ledger.
-      // Hard no-op in a browser (no bridge) and never blocks or breaks boot.
+      // Fire-and-forget device syncs. Both are hard no-ops in a browser (no bridge)
+      // and never block or break boot:
+      //  - SMS auto-capture: pull new bank/UPI transaction SMS into the ledger.
+      //  - Health Connect: pull watch sleep + steps (throttled to once per 6h).
       import("../services/sms-capture.js")
         .then((m) => m.initSmsAutoCapture())
+        .catch(() => {});
+      import("../services/health-sync.js")
+        .then((m) => m.initHealthAutoSync())
         .catch(() => {});
       onReady(session);
     },
