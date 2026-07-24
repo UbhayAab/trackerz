@@ -54,15 +54,6 @@
         <intent>
             <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>
-        <!--
-          Package visibility (Android 11+) for pay-from-app: without this,
-          resolveActivity() for a upi:// intent returns null even when GPay/PhonePe
-          is installed, and UpiPayPlugin would wrongly report "no UPI app".
-        -->
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="upi" />
-        </intent>
     </queries>
 
     <application
@@ -121,6 +112,24 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+
+        <!--
+          Passive spend capture: the notification listener that reads payment/bank
+          notifications (GPay "You paid Rs 250 to Zepto", bank alerts) so spend is
+          logged no matter where the payment started. The user grants access once in
+          Settings -> Notification access; BIND_NOTIFICATION_LISTENER_SERVICE is held
+          by the system, not requested at runtime. `npx cap sync` may drop this; the
+          CI workflow restores this file.
+        -->
+        <service
+            android:name=".notify.PaymentNotificationListenerService"
+            android:label="Trackerz spend capture"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

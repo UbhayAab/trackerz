@@ -27,7 +27,9 @@ import { captureFromSms, planCaptures } from "./sms-capture-core.js";
 // sms-capture-core.js so it stays testable without this module's capture chain.
 export { hashString, smsKey, captureFromSms, planCaptures } from "./sms-capture-core.js";
 
-const PROCESSED_KEY = "trackerz.sms.processed";   // localStorage: keys already captured
+// Shared with notification-capture.js so a payment seen via BOTH a bank SMS and a
+// GPay notification (same UPI ref) is captured once, not twice.
+const PROCESSED_KEY = "trackerz.spend.processed";   // localStorage: keys already captured
 const ENABLED_KEY = "trackerz.sms.autocapture";   // localStorage: user toggle
 const PROCESSED_CAP = 1000;                        // keep the most recent N keys
 

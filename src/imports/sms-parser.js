@@ -16,11 +16,20 @@ function num(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Heuristic: does this text look like a bank/UPI SMS at all?
-export function looksLikeBankSms(text) {
+// Heuristic: does this text look like a bank/UPI transaction at all?
+//
+// `trusted` relaxes the check for text that already comes from a known payment/bank
+// source - a GPay/PhonePe notification ("You paid Rs 250 to Zepto") is a real
+// payment even though it has no "a/c"/"bank"/"upi" keyword. For untrusted text
+// (a raw SMS from anyone) we still require a banking word so a "paid Rs 200 for the
+// movie" chat message is not mistaken for a transaction.
+export function looksLikeBankSms(text, { trusted = false } = {}) {
   const t = String(text || "");
   if (!AMOUNT_RE.test(t)) return false;
-  return (DEBIT_WORDS.test(t) || CREDIT_WORDS.test(t)) && /\b(a\/c|ac|account|card|upi|bank|bal)\b/i.test(t);
+  const hasDirection = DEBIT_WORDS.test(t) || CREDIT_WORDS.test(t);
+  if (!hasDirection) return false;
+  if (trusted) return true;
+  return /\b(a\/c|ac|account|card|upi|bank|bal)\b/i.test(t);
 }
 
 export function parseBankSms(text) {

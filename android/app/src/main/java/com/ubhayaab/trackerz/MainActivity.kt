@@ -20,7 +20,7 @@ import android.os.Bundle
 import com.getcapacitor.BridgeActivity
 import com.ubhayaab.trackerz.health.HealthConnectPlugin
 import com.ubhayaab.trackerz.sms.SmsReaderPlugin
-import com.ubhayaab.trackerz.upi.UpiPayPlugin
+import com.ubhayaab.trackerz.notify.NotifyReaderPlugin
 
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,7 +28,7 @@ class MainActivity : BridgeActivity() {
         // exposes plugins registered by that point.
         registerPlugin(HealthConnectPlugin::class.java)
         registerPlugin(SmsReaderPlugin::class.java)
-        registerPlugin(UpiPayPlugin::class.java)
+        registerPlugin(NotifyReaderPlugin::class.java)
         super.onCreate(savedInstanceState)
     }
 }
