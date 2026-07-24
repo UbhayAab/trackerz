@@ -10,6 +10,10 @@
 @import "./styles/audit.css";
 @import "./styles/briefing.css";
 @import "./styles/quick-actions.css";
+@import "./styles/analytics-insights.css";
+@import "./styles/diet-insights.css";
+@import "./styles/money-insights.css";
+@import "./styles/gym-insights.css";
 @import "./styles/nav.css";
 @import "./styles/theme-premium.css";
 @import "./styles/motion.css";

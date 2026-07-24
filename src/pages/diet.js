@@ -4,6 +4,7 @@ import { renderOperationalTables } from "../ui/operational-tables.js";
 import { renderNav } from "../ui/navigation.js";
 import { bindBudgetInputs, renderBudgetInputs } from "../ui/budget-inputs.js";
 import { renderDietPlan, bindDietPlan } from "../ui/diet-plan-panel.js";
+import { renderDietInsights } from "../ui/diet-insights-panel.js";
 import { subscribe } from "../state/app-state.js";
 import { bootWithAuth } from "./bootstrap.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
@@ -29,6 +30,9 @@ bootWithAuth(async () => {
     // The day-navigable diet log (stepper + calendar + swipe strip). Same panel as
     // the Home hub - additive here so the dedicated Diet page can reach past days.
     renderDietPlan(state);
+    // Separate coaching panel: protein gap, best sources, macro balance, 7-day
+    // protein chart. Pure engine (lib/diet-insights.mjs); never touches the plan.
+    renderDietInsights(state);
   });
   bindInsights();
   bindBudgetInputs("dietBudgetStatus");
