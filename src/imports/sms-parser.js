@@ -9,7 +9,20 @@ const REF_RE = /(?:ref(?:erence)?(?:\s*no)?|utr|txn|upi\s*ref)\.?\s*:?\s*([A-Za-
 const MERCHANT_RE = /(?:\bat\b|\bto\b|\bvpa\b|info:|towards)\s+([A-Za-z0-9][A-Za-z0-9 &._@-]{2,40})/i;
 
 const DEBIT_WORDS = /\b(debit(?:ed)?|spent|withdrawn|paid|purchase|sent|deducted)\b/i;
-const CREDIT_WORDS = /\b(credit(?:ed)?|received|deposited|refund(?:ed)?|salary|added)\b/i;
+// "credited" (the verb), NOT bare "credit" - otherwise "Credit Card" reads as an
+// incoming credit and every credit-card purchase SMS becomes ambiguous and is dropped.
+const CREDIT_WORDS = /\b(credited|received|deposited|refund(?:ed)?|salary|added)\b/i;
+
+// Messages that CONTAIN an amount + a debit/credit word but did NOT move money.
+// Booking these is phantom spend - the exact "logs things that never happened" bug.
+// A future/scheduled mandate, a collect/payment request, or a declined/failed attempt.
+const NON_TXN_RE = /\b(will\s+be\s+(?:debited|deducted|charged)|will\s+get\s+debited|is\s+due|due\s+on|scheduled(?:\s+for)?|standing\s+instruction|e-?mandate|has\s+requested|is\s+requesting|requesting\s+you|collect\s+request|payment\s+request|requested\s+money|payment\s+reminder|declined|failed|unsuccessful|insufficient|not\s+processed)\b/i;
+
+// A debit that is NOT fresh spend: paying off a credit-card bill (the underlying
+// swipes were already logged), or a self/own-account transfer. Booking these on top
+// of the card swipes double-counts - the #1 over-count for a credit-card-first user.
+const CC_BILL_RE = /\b(cred(?:\.club)?|billdesk|credit\s*card\s*(?:bill|payment|due)|card\s*bill|cc\s*bill|payment\s*towards\s*(?:your\s*)?card|towards\s*card\s*ending)\b/i;
+const SELF_TRANSFER_RE = /\b(self\s*transfer|transfer(?:red)?\s*to\s*self|to\s*your\s*own\s*account|own\s*a\/?c|self\s*a\/?c)\b/i;
 
 function num(value) {
   const n = Number(String(value).replace(/,/g, ""));
@@ -28,6 +41,9 @@ export function looksLikeBankSms(text, { trusted = false } = {}) {
   if (!AMOUNT_RE.test(t)) return false;
   const hasDirection = DEBIT_WORDS.test(t) || CREDIT_WORDS.test(t);
   if (!hasDirection) return false;
+  // A future/requested/declined message is not a completed transaction - drop it so
+  // it never becomes phantom spend.
+  if (NON_TXN_RE.test(t)) return false;
   if (trusted) return true;
   return /\b(a\/c|ac|account|card|upi|bank|bal)\b/i.test(t);
 }
@@ -52,6 +68,12 @@ export function parseBankSms(text) {
   const isCredit = CREDIT_WORDS.test(t);
   const direction = isDebit && !isCredit ? "expense" : isCredit && !isDebit ? "income" : null;
 
+  // Classify non-spend debits so they are not double-counted against the card swipes
+  // (cc_bill) or booked as spend at all (self-transfer). Only meaningful for debits.
+  const txnType = direction === "expense"
+    ? (CC_BILL_RE.test(t) ? "cc_bill" : SELF_TRANSFER_RE.test(t) ? "self_transfer" : "purchase")
+    : "purchase";
+
   const accountMatch = t.match(ACCOUNT_RE);
   const refMatch = t.match(REF_RE);
   const merchantMatch = t.match(MERCHANT_RE);
@@ -68,6 +90,7 @@ export function parseBankSms(text) {
     ok: Boolean(amount),
     amount,
     direction,
+    txnType,
     merchant,
     accountSuffix: accountMatch ? accountMatch[1] : null,
     reference: refMatch ? refMatch[1] : null,
