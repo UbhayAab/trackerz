@@ -113,6 +113,25 @@ function mirrorBlock(src, file) {
   );
 }
 
+// --- 5. sleep-window block parity (lib/sleep-window.mjs -> agent edge fn) -----
+// The sleep window resolver is copied verbatim into the agent edge function
+// between SLEEP-WINDOW markers. Any drift means "slept 7h" resolves differently
+// on the server than in the client applier that imports the same lib.
+function markedBlock(src, file, startMark, endMark) {
+  const start = src.indexOf(startMark);
+  const end = src.indexOf(endMark);
+  assert.ok(start !== -1 && end !== -1 && end > start, `${startMark} markers missing in ${file}`);
+  return src.slice(src.indexOf("\n", start) + 1, src.lastIndexOf("\n", end) + 1);
+}
+{
+  const sleepLib = readFileSync("lib/sleep-window.mjs", "utf8");
+  assert.equal(
+    markedBlock(edge, "supabase/functions/agent/index.ts", "SLEEP-WINDOW MIRROR START", "SLEEP-WINDOW MIRROR END"),
+    markedBlock(sleepLib, "lib/sleep-window.mjs", "SLEEP-WINDOW MIRROR START", "SLEEP-WINDOW MIRROR END"),
+    "DRIFT in SLEEP-WINDOW mirror block: lib/sleep-window.mjs and the agent edge fn have diverged",
+  );
+}
+
 const GYM_CORPUS = [
   "did Workout A", "did chest and back", "worked out today", "bench 3x10 60kg",
   "squat 60kg 3x8", "leg press 2x12", "ran 5k", "walked 35 min", "brisk walk",

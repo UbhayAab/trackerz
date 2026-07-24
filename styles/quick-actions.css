@@ -207,3 +207,29 @@
   color: var(--muted, #7c8a82);
 }
 .spend-suggest-add[disabled] { opacity: 0.6; cursor: default; }
+
+/* ---- sleep wake-time adjuster ---- */
+/* Shown after "Woke up" (and when a session has been open too long). Nobody
+   remembers the exact minute, and a late tap logged an 11-hour night - this is
+   the one-tap correction so the recorded hours are real, not wall-clock. */
+.sleep-adjuster {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.32));
+  background: color-mix(in srgb, var(--accent, #138a5b) 6%, transparent);
+}
+.sleep-adjuster-lead { margin: 0 0 8px; font-size: 0.86rem; color: var(--ink, #17211c); }
+.sleep-adjuster-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sleep-adjuster-row input[type="datetime-local"] {
+  flex: 1 1 190px;
+  min-height: 44px;
+  min-width: 0;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.32));
+  background: var(--surface, #fff);
+  color: var(--ink, #17211c);
+  font: inherit;
+}
+.sleep-adjuster-row .quick-btn { min-height: 44px; }

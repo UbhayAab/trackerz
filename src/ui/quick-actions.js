@@ -17,7 +17,7 @@
 
 import {
   logHydration, fetchHydrationTotal, undoLastHydration,
-  fetchOpenSleepSession, startSleepSession, endSleepSession,
+  fetchOpenSleepSession, startSleepSession, endSleepSession, adjustSleepWake,
   logGymAnswer, fetchTodayGymAnswer,
 } from "../services/supabase-data.js";
 import { showToast } from "./toast.js";
@@ -118,6 +118,71 @@ async function refresh() {
     showToast(`Couldn't load quick actions: ${failed[0].reason?.message || failed[0].reason}`, { kind: "error" });
   }
   renderQuickActions();
+  maybePromptStaleSleep();
+}
+
+// If a sleep session has been open a long time you almost certainly woke and
+// forgot to tap. Rather than let it grow into a fake 20-hour night, surface a
+// gentle "when did you wake?" prompt so it gets resolved with a real time.
+const STALE_SLEEP_HOURS = 12;
+function maybePromptStaleSleep() {
+  if (!state.sleep?.started_at) return;
+  const openH = (Date.now() - new Date(state.sleep.started_at).getTime()) / 3600000;
+  if (openH < STALE_SLEEP_HOURS) return;
+  openWakeAdjuster(
+    state.sleep, null, false,
+    `You've been marked asleep since ${fmtTime(state.sleep.started_at)}. When did you actually wake?`,
+  );
+}
+
+// A one-tap wake-time corrector. `session` is the sleep row; on save it re-closes
+// the session at the chosen time. The default is "now", but the point is you can
+// set 7am even if you're tapping at 11am.
+function openWakeAdjuster(session, hours, capped, lead) {
+  const host = el(HOST_ID);
+  if (!host || !session) return;
+  document.getElementById("sleepAdjuster")?.remove();
+
+  const wrap = document.createElement("div");
+  wrap.id = "sleepAdjuster";
+  wrap.className = "sleep-adjuster";
+  const nowLocal = toLocalDatetimeValue(new Date());
+  wrap.innerHTML = `
+    <p class="sleep-adjuster-lead">${
+      lead || (capped
+        ? `Recorded about ${hours}h, but that looked long. When did you actually wake?`
+        : `Slept ${hours}h. Woke at a different time? Set it:`)
+    }</p>
+    <div class="sleep-adjuster-row">
+      <input type="datetime-local" id="sleepWakeInput" value="${nowLocal}" max="${nowLocal}" />
+      <button type="button" class="quick-btn" id="sleepWakeSave">Save wake time</button>
+      <button type="button" class="quick-btn" id="sleepWakeDismiss">Leave it</button>
+    </div>
+  `;
+  host.appendChild(wrap);
+
+  wrap.querySelector("#sleepWakeDismiss").addEventListener("click", () => wrap.remove());
+  wrap.querySelector("#sleepWakeSave").addEventListener("click", async () => {
+    const val = wrap.querySelector("#sleepWakeInput").value;
+    if (!val) { wrap.remove(); return; }
+    const save = wrap.querySelector("#sleepWakeSave");
+    save.disabled = true; save.textContent = "Saving...";
+    try {
+      const res = await adjustSleepWake(session.id, new Date(val));
+      showToast(`Sleep set to ${res.hours}h.`);
+      wrap.remove();
+      await refresh();
+    } catch (err) {
+      save.disabled = false; save.textContent = "Save wake time";
+      showToast(`Couldn't update: ${err?.message || err}`, { kind: "error", duration: 5000 });
+    }
+  });
+}
+
+// A Date -> "YYYY-MM-DDTHH:MM" in LOCAL time, which is what datetime-local wants.
+function toLocalDatetimeValue(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 async function withBusy(btn, fn) {
@@ -150,10 +215,14 @@ export function bindQuickActions() {
       await withBusy(btn, async () => {
         if (state.sleep) {
           const done = await endSleepSession();
-          showToast(done ? `Slept ${done.hours}h - logged.` : "No open sleep session.");
+          if (!done) { showToast("No open sleep session."); return; }
+          // Wall-clock is a guess: you may have woken hours before tapping. Offer
+          // the real wake time in one tap, and say plainly when we capped it.
+          showToast(done.capped ? `Logged ~${done.hours}h (looked long, capped)` : `Slept ${done.hours}h - logged.`);
+          openWakeAdjuster(done.row, done.hours, done.capped);
         } else {
           await startSleepSession();
-          showToast("Sleep started. Tap again when you wake up.");
+          showToast("Sleep started. Tap when you wake up - or just type \"slept 7h\" later.");
         }
       });
       return;

@@ -2,6 +2,7 @@ import { getSupabaseClient } from "./supabase-client.js";
 import { getCurrentSession } from "./auth.js";
 import { buildRowForTool } from "./action-applier.js";
 import { instantiate } from "../domain/diet/meal-templates.js";
+import { clampSleepSpan } from "../../lib/sleep-window.mjs";
 
 function requireUserId() {
   const session = getCurrentSession();
@@ -244,20 +245,47 @@ export async function startSleepSession(at = new Date()) {
   return data;
 }
 
-// Close the open session. Returns { row, hours } or null when nothing was open.
+// Close the open session. Returns { row, hours, capped } or null when nothing
+// was open. A span longer than SLEEP_MAX_HOURS almost always means a forgotten
+// tap (the 11-hour bug), so it is capped and flagged rather than recorded as a
+// real night. The caller offers a wake-time adjuster for exactly this reason.
 export async function endSleepSession(at = new Date()) {
   const supabase = await getSupabaseClient();
   const open = await fetchOpenSleepSession();
   if (!open) return null;
+  const clamp = clampSleepSpan(open.started_at, at.toISOString());
+  const update = { ended_at: clamp.ended_at };
+  if (clamp.capped) update.note = "approx - capped, tapped late; adjust wake time if wrong";
   const { data, error } = await supabase
     .from("sleep_sessions")
-    .update({ ended_at: at.toISOString() })
+    .update(update)
     .eq("id", open.id)
     .select()
     .single();
   if (error) throw error;
-  const hours = (new Date(data.ended_at) - new Date(data.started_at)) / 3600000;
-  return { row: data, hours: Math.round(hours * 10) / 10 };
+  return { row: data, hours: clamp.hours, capped: clamp.capped };
+}
+
+// Correct a session's wake time after the fact - the forgiving path for "I woke
+// at 7 but tapped at 11". Recomputes the flag: an adjusted, plausible span drops
+// the "approx" note.
+export async function adjustSleepWake(sessionId, wakeAt) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data: rows, error: readErr } = await supabase
+    .from("sleep_sessions").select("id, started_at").eq("id", sessionId).limit(1);
+  if (readErr) throw readErr;
+  const row = (rows || [])[0];
+  if (!row) throw new Error("sleep session not found");
+  const clamp = clampSleepSpan(row.started_at, new Date(wakeAt).toISOString());
+  if (clamp.hours == null) throw new Error("wake time must be after you went to sleep");
+  const { data, error } = await supabase
+    .from("sleep_sessions")
+    .update({ ended_at: clamp.ended_at, note: clamp.capped ? "approx - capped" : null })
+    .eq("id", sessionId).eq("user_id", userId)
+    .select().single();
+  if (error) throw error;
+  return { row: data, hours: clamp.hours, capped: clamp.capped };
 }
 
 // ---- gym: answered either way ----
