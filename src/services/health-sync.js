@@ -355,6 +355,39 @@ export async function syncAll({ startIso, endIso } = {}) {
   };
 }
 
+// -------------------------------------------------------------- auto-sync
+
+const AUTO_SYNC_KEY = "trackerz.health.autoSyncAt";
+const AUTO_SYNC_MIN_GAP_MS = 6 * 3600 * 1000; // pull at most once every 6 hours
+
+/**
+ * App-bootstrap entry: if we are on a device with health permission granted and the
+ * last auto-sync was more than 6h ago, pull sleep + steps in the background. No-op
+ * in a browser, without permission, or if it ran recently. Never throws.
+ *
+ * Idempotency inside syncAll (match on started_at / steps day) means an occasional
+ * overlap with a manual "Sync now" never duplicates a night or a day.
+ */
+export async function initHealthAutoSync() {
+  try {
+    if (!isNativeHealthAvailable()) return { started: false, reason: "browser" };
+    const perm = await checkPermissions();
+    if (perm?.outcome !== "granted" && perm?.outcome !== "partial") {
+      return { started: false, reason: "no_permission" };
+    }
+    let last = 0;
+    try { last = Number(globalThis.localStorage?.getItem(AUTO_SYNC_KEY)) || 0; } catch { last = 0; }
+    if (Date.now() - last < AUTO_SYNC_MIN_GAP_MS) return { started: false, reason: "recent" };
+    const result = await syncAll();
+    // Record AFTER a completed run (even a zero-synced one) so we don't re-hammer;
+    // a thrown/failed run skips this and retries on the next open.
+    try { globalThis.localStorage?.setItem(AUTO_SYNC_KEY, String(Date.now())); } catch { /* ignore */ }
+    return { started: true, result };
+  } catch (err) {
+    return { started: false, reason: err?.message || String(err) };
+  }
+}
+
 // -------------------------------------------------------------- small utilities
 
 function normalizeIso(raw) {
