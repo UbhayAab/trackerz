@@ -4,6 +4,7 @@ import { bindBudgetInputs } from "../ui/budget-inputs.js";
 import { bindJarvisCard } from "../ui/jarvis-settings.js";
 import { mountAccountPanel } from "../ui/account-panel.js";
 import { mountHealthPanel } from "../ui/health-panel.js";
+import { mountSmsPanel } from "../ui/sms-panel.js";
 import { bootWithAuth } from "./bootstrap.js";
 import { renderNav } from "../ui/navigation.js";
 import { registerServiceWorker } from "../services/pwa.js";
@@ -24,4 +25,7 @@ bootWithAuth(() => {
   // Health Connect (watch sleep/steps). In a plain browser this renders an
   // honest "Android app only" state; the bridge only exists inside the APK.
   mountHealthPanel();
+  // UPI auto-capture from bank SMS. Same honest "Android app only" fallback in a
+  // browser; inside the APK it grants SMS access and logs spend automatically.
+  mountSmsPanel();
 });
