@@ -6,6 +6,7 @@
 // function's WRITE_TOOLS. No browser/Supabase imports - keep it pure.
 
 import { goalDef } from "../domain/goals.js";
+import { sleepWindowFromArgs } from "../../lib/sleep-window.mjs";
 
 export const APPLIER_WRITE_TOOLS = [
   "create_expense_candidate",
@@ -78,11 +79,15 @@ export function buildRowForTool(action, userId) {
       return { table: "hydration_logs", row: {
         user_id: userId, ml: Math.round(Number(args.ml)) || 0, occurred_at: occurredAt,
       } };
-    case "create_sleep_candidate":
+    case "create_sleep_candidate": {
+      // Same window resolution the edge function uses: a duration ("slept 7h"),
+      // an explicit window, or an open bedtime marker - see lib/sleep-window.mjs.
+      const sleep = sleepWindowFromArgs(args, occurredAt);
       return { table: "sleep_sessions", row: {
-        ...base, started_at: args.started_at || occurredAt, ended_at: args.ended_at || null,
-        quality: args.quality ?? null, source: "capture",
+        ...base, started_at: sleep.started_at, ended_at: sleep.ended_at,
+        quality: args.quality ?? null, note: sleep.note, source: "capture",
       } };
+    }
     case "create_body_metric_candidate":
       return { table: "body_metrics", row: {
         ...base, metric_type: args.metric_type, value: args.value, unit: args.unit || "", occurred_at: occurredAt,

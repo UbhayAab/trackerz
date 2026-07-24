@@ -569,14 +569,16 @@ async function fetchSubsDue(admin: any, userId: string, now: Date) {
 async function fetchWeeklyWorkouts(admin: any, userId: string, dateKey: string, tz: string) {
   const start = jbDayWindow(jbAddDays(dateKey, -6), tz).startISO;
   const end = jbDayWindow(dateKey, tz).endISO;
-  const { count, error } = await admin.from("workout_logs")
-    .select("id", { count: "exact", head: true })
-    // Skipped/rest days are answered days, not training - they must not count
-    // toward the weekly_workouts goal.
+  // Count DISTINCT training days, not rows. Tapping the "Went" button AND typing
+  // "in gym doing back" on the same day writes two workout rows for one session;
+  // counting rows would report 2 of your 4 weekly workouts for a single gym trip.
+  const { data, error } = await admin.from("workout_logs")
+    .select("occurred_at")
     .eq("user_id", userId).neq("status", "skipped")
     .gte("occurred_at", start).lt("occurred_at", end);
   if (error) throw new Error(`fetchWeeklyWorkouts read failed - ${error.message}`);
-  return count ?? 0;
+  const days = new Set((data || []).map((r: any) => jbDateKeyInTz(new Date(r.occurred_at), tz)));
+  return days.size;
 }
 
 async function fetchHabitDay(admin: any, userId: string, dateKey: string) {
