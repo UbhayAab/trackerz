@@ -1,0 +1,164 @@
+/* Analytics page: cross-domain insight cards + hand-rolled SVG charts.
+   Theme-aware via tokens (--accent, --ink, --muted, --line, --panel). Severity
+   colours are defined here (the token set has no semantic status colours) and
+   flipped for dark mode. No fixed pixel widths -> no horizontal overflow at 360px. */
+
+/* ---- Severity palette (light) ---- */
+:root {
+  --sev-good: #1f9d55;
+  --sev-good-bg: rgba(31, 157, 85, 0.10);
+  --sev-info: var(--accent);
+  --sev-info-bg: var(--accent-soft);
+  --sev-warn: #b26a00;
+  --sev-warn-bg: rgba(214, 134, 0, 0.10);
+  --sev-critical: #b3261e;
+  --sev-critical-bg: rgba(179, 38, 30, 0.10);
+}
+:root[data-theme="dark"] {
+  --sev-good: #47c897;
+  --sev-good-bg: rgba(47, 185, 133, 0.14);
+  --sev-warn: #e0a53d;
+  --sev-warn-bg: rgba(224, 165, 61, 0.14);
+  --sev-critical: #f2857a;
+  --sev-critical-bg: rgba(242, 133, 122, 0.14);
+}
+
+/* ---- Insight cards ---- */
+.insight-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 560px) {
+  .insight-cards { grid-template-columns: 1fr 1fr; }
+}
+
+.insight-card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--sev-info);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 12px 14px;
+}
+.insight-card.sev-good { border-left-color: var(--sev-good); background: var(--sev-good-bg); }
+.insight-card.sev-info { border-left-color: var(--sev-info); }
+.insight-card.sev-warn { border-left-color: var(--sev-warn); background: var(--sev-warn-bg); }
+.insight-card.sev-critical { border-left-color: var(--sev-critical); background: var(--sev-critical-bg); }
+
+.insight-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.insight-domain {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.insight-sev-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sev-info);
+}
+.sev-good .insight-sev-dot { background: var(--sev-good); }
+.sev-warn .insight-sev-dot { background: var(--sev-warn); }
+.sev-critical .insight-sev-dot { background: var(--sev-critical); }
+
+.insight-headline {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.insight-detail {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  color: var(--ink-soft, var(--ink));
+  line-height: 1.35;
+}
+.insight-evidence {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.insight-evidence .ev-tag {
+  font-style: italic;
+  opacity: 0.8;
+}
+.insight-cards-empty,
+.insight-cards-error {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+}
+.insight-cards-error {
+  border-style: solid;
+  border-color: var(--sev-critical);
+  color: var(--sev-critical);
+}
+
+/* ---- Charts ---- */
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 14px 0;
+}
+@media (min-width: 560px) {
+  .chart-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.chart-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-width: 0; /* let the SVG shrink inside the grid, no page overflow */
+}
+.chart-card h3 {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.line-chart {
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  display: block;
+  overflow: visible;
+}
+.chart-line {
+  stroke: var(--accent);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.chart-dot {
+  fill: var(--accent);
+}
+.chart-target {
+  stroke: var(--muted);
+  opacity: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+.chart-target-label {
+  fill: var(--muted);
+  font-size: 8px;
+}
+.chart-empty {
+  margin: 0;
+  padding: 14px 4px;
+  text-align: center;
+}
+
+/* Spend sparkline colours (moved off the old hardcoded green). */
+.spark-line { stroke: var(--accent); }
+.spark-fill { fill: var(--accent-soft); }

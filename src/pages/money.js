@@ -1,5 +1,6 @@
 import { bindOperationalTables, renderOperationalTables } from "../ui/operational-tables.js";
 import { bindBudgetInputs, renderBudgetInputs } from "../ui/budget-inputs.js";
+import { renderMoneyInsights } from "../ui/money-insights-panel.js";
 import { renderNav } from "../ui/navigation.js";
 import { showToast } from "../ui/toast.js";
 import { getState, subscribe } from "../state/app-state.js";
@@ -69,6 +70,10 @@ function paint(state) {
   });
   renderBudgetInputs(state);
   renderMoneySummary(state, view);
+  // Whole-account intelligence, not window-scoped: it reads all of state.ledger.
+  // A hydrate-time ledger read failure (still-empty table) is passed through so
+  // a failed read renders as an error, never as an empty "no spend" panel.
+  renderMoneyInsights(state, { loading: !loaded, ledgerError: activeErrors(state).ledger });
 
   // The selected window reaches past what we hold - go get the rest rather than
   // report a total that silently excludes it.

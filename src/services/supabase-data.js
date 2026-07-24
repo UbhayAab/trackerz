@@ -345,7 +345,10 @@ export async function fetchWorkoutLogs({ limit = 200 } = {}) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("workout_logs")
-    .select("id, description, duration_min, intensity, sets, bodyweight_kg, notes, occurred_at")
+    // `status` is required by the gym intelligence engine (done vs skipped) - it
+    // was omitted, which silently dropped every real row from the consistency,
+    // streak, and weekly-volume insights.
+    .select("id, description, status, duration_min, intensity, sets, bodyweight_kg, notes, occurred_at")
     .order("occurred_at", { ascending: false })
     .limit(limit);
   if (error) throw error;

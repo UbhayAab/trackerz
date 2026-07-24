@@ -1,0 +1,111 @@
+/* Money intelligence panel. Theme-aware via the app's CSS variables
+   (--accent, --ink, --muted, --line, --card, --surface); no hardcoded light or
+   dark colours, so it flips with :root[data-theme]. No fixed pixel widths on
+   the layout - the grid collapses to one column and the chart scales to its
+   container, so there is no horizontal overflow on a 360px phone. */
+
+#moneyInsights .mi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+#moneyInsights .mi-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  min-width: 0; /* let content shrink instead of forcing overflow */
+}
+
+/* The chart spans the full width of the grid when there is room. */
+#moneyInsights .mi-card-wide {
+  grid-column: 1 / -1;
+}
+
+#moneyInsights .mi-card-title {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+#moneyInsights .mi-big {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.15;
+  word-break: break-word;
+}
+#moneyInsights .mi-unit { font-size: 0.9rem; font-weight: 500; color: var(--muted); }
+#moneyInsights .mi-sub { margin: 6px 0 0; font-size: 0.9rem; color: var(--ink-soft, var(--ink)); }
+#moneyInsights .mi-hint { margin: 6px 0 0; font-size: 0.82rem; color: var(--muted); }
+#moneyInsights .mi-total { margin: 8px 0 0; font-size: 0.82rem; color: var(--muted); }
+#moneyInsights .mi-source { margin: 10px 2px 0; font-size: 0.78rem; color: var(--muted); }
+
+#moneyInsights .mi-good { color: var(--accent); }
+#moneyInsights .mi-bad { color: #c0392b; }
+:root[data-theme="dark"] #moneyInsights .mi-bad { color: #ff6b5e; }
+
+#moneyInsights .mi-empty,
+#moneyInsights .mi-error {
+  margin: 4px 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+#moneyInsights .mi-error { color: #c0392b; }
+:root[data-theme="dark"] #moneyInsights .mi-error { color: #ff6b5e; }
+
+/* --- category chart --- */
+#moneyInsights .mi-chart-wrap {
+  width: 100%;
+  overflow-x: hidden; /* SVG already scales; guard against any spill */
+}
+#moneyInsights .mi-chart-wrap svg {
+  display: block;
+  max-width: 100%;
+}
+#moneyInsights .mi-bar-label {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+#moneyInsights .mi-bar-value {
+  fill: var(--muted);
+  font-size: 11px;
+}
+#moneyInsights .mi-bar-track { fill: var(--line); }
+#moneyInsights .mi-bar-fill { fill: var(--accent); }
+
+/* --- discretionary split bar --- */
+#moneyInsights .mi-splitbar {
+  display: flex;
+  width: 100%;
+  height: 10px;
+  margin: 10px 0 2px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--line);
+}
+#moneyInsights .mi-seg { display: block; height: 100%; }
+#moneyInsights .mi-seg-disc { background: var(--accent); }
+#moneyInsights .mi-seg-ess { background: var(--muted); }
+#moneyInsights .mi-seg-unk { background: var(--line-strong, var(--line)); }
+
+/* --- subscriptions list --- */
+#moneyInsights .mi-sublist { list-style: none; margin: 0; padding: 0; }
+#moneyInsights .mi-sublist li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+#moneyInsights .mi-sublist li:last-child { border-bottom: 0; }
+#moneyInsights .mi-sub-merchant { color: var(--ink); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#moneyInsights .mi-sub-when { color: var(--muted); white-space: nowrap; }

@@ -1,0 +1,133 @@
+/* Gym insights panel - theme-aware via tokens, no horizontal overflow at 360px. */
+
+#gymInsights .gi-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+@media (min-width: 560px) {
+  #gymInsights .gi-grid { grid-template-columns: 1fr 1fr; }
+}
+
+#gymInsights .gi-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 12px);
+  background: var(--panel, var(--card));
+  padding: 12px 13px;
+  min-width: 0; /* let children shrink, no page overflow */
+}
+#gymInsights .gi-card.gi-honest { border-style: dashed; }
+
+#gymInsights .gi-card-title {
+  font-size: var(--fs-xs, 0.72rem);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+#gymInsights .gi-stat-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+#gymInsights .gi-stat { display: flex; flex-direction: column; }
+#gymInsights .gi-num {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.05;
+}
+#gymInsights .gi-den { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+#gymInsights .gi-lbl { font-size: var(--fs-xs, 0.7rem); color: var(--muted); margin-top: 2px; }
+
+#gymInsights .gi-up { color: var(--money, var(--accent)); }
+#gymInsights .gi-down { color: var(--risk, #b5392a); }
+#gymInsights .gi-flat { color: var(--muted); }
+
+#gymInsights .gi-note,
+#gymInsights .gi-caption {
+  font-size: var(--fs-xs, 0.7rem);
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+#gymInsights .gi-empty {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.45;
+}
+#gymInsights .gi-error {
+  font-size: 0.82rem;
+  color: var(--risk, #b5392a);
+  margin: 8px 0 0;
+}
+
+/* charts */
+#gymInsights .gi-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 6px 0 2px;
+  color: var(--ink);
+  overflow: visible;
+}
+#gymInsights .gi-target {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+#gymInsights .gi-bar-val {
+  font-size: 9px;
+  fill: var(--muted);
+  text-anchor: middle;
+  font-weight: 600;
+}
+#gymInsights .gi-bar-x {
+  font-size: 8px;
+  fill: var(--muted-soft, var(--muted));
+  text-anchor: middle;
+}
+#gymInsights .gi-line { stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+#gymInsights .gi-area { fill: var(--accent-soft); opacity: 0.6; }
+
+/* progression list */
+#gymInsights .gi-prog { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#gymInsights .gi-prog-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+#gymInsights .gi-prog-ex { color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#gymInsights .gi-prog-top { font-weight: 700; color: var(--ink); }
+#gymInsights .gi-prog-trend { font-size: var(--fs-xs, 0.68rem); font-weight: 600; white-space: nowrap; }
+
+/* muscle balance */
+#gymInsights .gi-mb { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+#gymInsights .gi-mb-row {
+  display: grid;
+  grid-template-columns: 84px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+#gymInsights .gi-mb-name { color: var(--ink); text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#gymInsights .gi-mb-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+#gymInsights .gi-mb-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+#gymInsights .gi-mb-val { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+#gymInsights .status-pill.gi-pill-good {
+  background: var(--accent-soft);
+  color: var(--accent-strong, var(--accent));
+}
