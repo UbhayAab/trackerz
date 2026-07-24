@@ -34,16 +34,17 @@ class PaymentNotificationListenerService : NotificationListenerService() {
         const val MAX_BUFFER = 300
         private val LOCK = Any()
 
-        // Known UPI apps - a notification from one of these is TRUSTED (a bare
-        // "paid Rs X to Y" is a real payment, no banking word required).
+        // Pure P2P/merchant UPI apps - a notification from one of these is TRUSTED
+        // (a bare "paid Rs X to Y" is a real payment, no banking word required).
+        // Deliberately EXCLUDES CRED/Freecharge/BharatPe: their notifications are
+        // credit-card-bill payments and wallet loads, which would double-count the
+        // underlying card swipes / wallet spend. Those pass only if they also carry a
+        // banking word, and cc_bill text is dropped downstream anyway.
         val UPI_PACKAGES: Set<String> = setOf(
             "com.google.android.apps.nbu.paisa.user", // Google Pay
             "com.phonepe.app",                        // PhonePe
             "net.one97.paytm",                        // Paytm
-            "in.org.npci.upiapp",                     // BHIM
-            "com.dreamplug.androidapp",               // CRED
-            "com.freecharge.android",                 // Freecharge
-            "money.bharatpe.app"                      // BharatPe
+            "in.org.npci.upiapp"                      // BHIM
         )
 
         private val AMOUNT = Regex("(?:rs|inr|₹)\\.?\\s*[\\d,]+(?:\\.\\d{1,2})?", RegexOption.IGNORE_CASE)

@@ -80,4 +80,19 @@ const credit2 = captureFromSms({ body: "You received Rs 500 from Ramesh", source
 assert.equal(credit2.ok, true);
 assert.equal(credit2.parsed.direction, "income");
 
+// --- phantom-spend guards: future / requested / declined are NOT booked ---
+assert.equal(captureFromSms(sms("Rs 5000 will be debited on 25-Jul-26 towards your SIP. -HDFC")).ok, false, "future-dated mandate is not spend");
+assert.equal(captureFromSms(sms("Rs 1200 payment request from swiggy@upi. Approve in your UPI app.")).ok, false, "a collect request is not spend");
+assert.equal(captureFromSms(sms("Your txn of Rs 899 on card XX12 was DECLINED due to insufficient funds")).ok, false, "a declined txn is not spend");
+
+// --- credit-card-bill payment is NOT double-counted against the swipes ---
+const ccBill = captureFromSms(sms("Rs 42,000 debited from a/c XX12 to CRED for HDFC Credit Card bill payment. ref 411220001234"));
+assert.equal(ccBill.ok, false, "paying the card bill is not fresh spend");
+assert.equal(ccBill.reason, "non_spend_cc_bill");
+// but a normal card swipe IS spend
+assert.equal(captureFromSms(sms("Rs 250 spent on HDFC card XX12 at SWIGGY on 24-Jul via UPI")).ok, true, "a card swipe is real spend");
+
+// --- self-transfer between own accounts is not spend ---
+assert.equal(captureFromSms(sms("Rs 20000 debited from a/c XX12 - transferred to self a/c XX99 via IMPS")).reason, "non_spend_self_transfer");
+
 console.log("sms-capture tests passed");

@@ -44,6 +44,11 @@ export function captureFromSms(msg) {
   if (parsed.direction !== "expense" && parsed.direction !== "income") {
     return { ok: false, reason: "ambiguous_direction" };
   }
+  // A credit-card-bill payment settles swipes already logged; a self-transfer moves
+  // money without spending it. Neither is fresh spend - skip so we never double-count.
+  if (parsed.txnType === "cc_bill" || parsed.txnType === "self_transfer") {
+    return { ok: false, reason: `non_spend_${parsed.txnType}` };
+  }
   const text = smsToCaptureText(parsed);
   if (!text) return { ok: false, reason: "empty_text" };
   return { ok: true, key: smsKey(msg, parsed), text, parsed };
