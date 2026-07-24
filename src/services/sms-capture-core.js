@@ -34,7 +34,11 @@ export function smsKey(msg, parsed) {
  */
 export function captureFromSms(msg) {
   const body = msg?.body || "";
-  if (!looksLikeBankSms(body)) return { ok: false, reason: "not_bank_sms" };
+  // A message from a known payment/bank app (source "notification") is trusted, so
+  // "You paid Rs 250 to Zepto" counts even without a banking keyword. A raw SMS is
+  // not trusted and must carry one.
+  const trusted = msg?.trusted === true || msg?.source === "notification";
+  if (!looksLikeBankSms(body, { trusted })) return { ok: false, reason: "not_bank_sms" };
   const parsed = parseBankSms(body);
   if (!parsed.ok || !parsed.amount) return { ok: false, reason: "no_amount" };
   if (parsed.direction !== "expense" && parsed.direction !== "income") {

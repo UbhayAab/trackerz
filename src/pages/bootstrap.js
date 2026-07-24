@@ -10,10 +10,22 @@ export function bootWithAuth(onReady) {
     onReady(session) {
       if (started) return;
       started = true;
-      // Fire-and-forget device syncs. Both are hard no-ops in a browser (no bridge)
+      // Fire-and-forget device syncs. All are hard no-ops in a browser (no bridge)
       // and never block or break boot:
-      //  - SMS auto-capture: pull new bank/UPI transaction SMS into the ledger.
+      //  - Payment notifications: log spend from GPay/PhonePe/bank alerts, whatever
+      //    the payment origin (this is the primary passive spend capture).
+      //  - SMS: backstop for card/bank/laptop payments the notification misses.
       //  - Health Connect: pull watch sleep + steps (throttled to once per 6h).
+      import("../services/notification-capture.js")
+        .then((m) => {
+          m.initNotificationCapture();
+          // Re-drain each time the app regains focus - right after the user returns
+          // from paying in another app, their new spend is logged immediately.
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible" && m.isAutoCaptureEnabled()) m.drainAndCapture().catch(() => {});
+          });
+        })
+        .catch(() => {});
       import("../services/sms-capture.js")
         .then((m) => m.initSmsAutoCapture())
         .catch(() => {});

@@ -62,4 +62,22 @@ assert.match(k1, /^h:/, "refless key falls back to a hash");
 assert.equal(hashString("abc"), hashString("abc"), "hash is deterministic");
 assert.notEqual(hashString("abc"), hashString("abd"), "hash separates different inputs");
 
+// --- trusted notification path: a payment-app notification needs no banking word ---
+const gpayNotif = { body: "You paid Rs 250 to Zepto", dateIso: "2026-07-24T10:00:00.000Z", source: "notification", trusted: true };
+const notif = captureFromSms(gpayNotif);
+assert.equal(notif.ok, true, "a GPay 'You paid Rs 250 to Zepto' notification is captured");
+assert.equal(notif.parsed.direction, "expense");
+assert.equal(notif.parsed.amount, 250);
+assert.match(notif.parsed.merchant || "", /zepto/i, "merchant extracted from 'to Zepto'");
+
+// --- the SAME text as an untrusted raw SMS is NOT captured (could be a chat) ---
+const asRawSms = captureFromSms({ body: "You paid Rs 250 to Zepto", dateIso: "2026-07-24T10:00:00.000Z" });
+assert.equal(asRawSms.ok, false, "untrusted text with no banking word is rejected");
+assert.equal(asRawSms.reason, "not_bank_sms");
+
+// --- a received-money notification is income ---
+const credit2 = captureFromSms({ body: "You received Rs 500 from Ramesh", source: "notification", trusted: true, dateIso: "2026-07-24T11:00:00.000Z" });
+assert.equal(credit2.ok, true);
+assert.equal(credit2.parsed.direction, "income");
+
 console.log("sms-capture tests passed");

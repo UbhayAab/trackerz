@@ -1,7 +1,6 @@
 import { bindOperationalTables, renderOperationalTables } from "../ui/operational-tables.js";
 import { bindBudgetInputs, renderBudgetInputs } from "../ui/budget-inputs.js";
 import { renderMoneyInsights } from "../ui/money-insights-panel.js";
-import { mountUpiPayPanel } from "../ui/upi-pay-panel.js";
 import { renderNav } from "../ui/navigation.js";
 import { showToast } from "../ui/toast.js";
 import { getState, subscribe } from "../state/app-state.js";
@@ -52,9 +51,6 @@ bootWithAuth(async () => {
   bindBudgetInputs("moneyBudgetStatus");
   bindStatementImporter();
   bindPeriodBar();
-  // Pay-from-app (UPI). Browser shows an honest "Android app only" state. After a
-  // logged payment, re-hydrate so the new ledger row shows without a manual reload.
-  mountUpiPayPanel(async () => { await hydrateStateFromSupabase(); paint(getState()); });
 
   await hydrateStateFromSupabase();
   loaded = true;
