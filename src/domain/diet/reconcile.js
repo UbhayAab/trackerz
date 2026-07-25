@@ -105,11 +105,17 @@ function reconcileFood(meals, foodLogs) {
   return out;
 }
 
-// Any workout row on the day ticks the day's single workout item - presence is the
+// A workout row on the day ticks the day's single workout item - presence is the
 // signal (one gym session = the day's workout). Cardio/walk rows count too.
+//
+// A row whose status is 'skipped' or 'rest' is the OPPOSITE of a workout: it is the
+// user answering "no gym today". Those rows exist so the day counts as answered
+// without counting as training. Taking rows[0] blindly meant tapping "Skipped" on
+// Home ticked the workout below it as done - the app contradicting the user to their
+// face. Only a real session ticks the item.
 function reconcileWorkout(plan, workoutLogs) {
   const out = {};
-  const rows = workoutLogs || [];
+  const rows = (workoutLogs || []).filter((r) => r && r.status !== "skipped" && r.status !== "rest");
   if (!rows.length || !plan.workout) return out;
   out[plan.workout.id] = { source: "auto", confidence: 1, recordId: rows[0].id, table: "workout_logs" };
   return out;

@@ -208,6 +208,10 @@
 .additions-feed .add-row.is-target { border-color: rgba(56,118,212,0.4); background: rgba(56,118,212,0.08); }
 .additions-feed .add-dismiss { border: 0; background: transparent; font-size: 1rem; line-height: 1; min-width: 36px; min-height: 36px; cursor: pointer; opacity: 0.55; }
 .additions-feed .add-dismiss:active { opacity: 1; }
+/* 'Add it' commits a capture the agent left pending, instead of the old choice of
+   dismiss-and-retype-it-from-memory. */
+.additions-feed .add-apply { border: 1px solid rgba(19,138,91,0.55); background: transparent; color: inherit; font-size: 0.78rem; padding: 4px 10px; border-radius: 8px; min-height: 32px; margin-right: 6px; cursor: pointer; }
+.additions-feed .add-apply:active { background: rgba(19,138,91,0.12); }
 .additions-feed .add-undo { border: 1px solid rgba(56,118,212,0.5); background: transparent; color: inherit; font-size: 0.78rem; padding: 4px 10px; border-radius: 8px; min-height: 32px; cursor: pointer; }
 
 /* Workout exercises as readable rows: name left, sets×reps / duration as an
@@ -224,4 +228,35 @@
   font-weight: var(--weight-semibold); font-size: var(--fs-xs);
   color: var(--accent); background: var(--accent-soft);
   border-radius: var(--radius-pill); padding: 3px 10px;
+}
+
+/* ---- water: read-only running total ----
+   Water ENTRY lives in exactly one place (the quick row). This panel used to carry
+   six tickable slots against a 3450 ml schedule while the quick row offered
+   +250/+500/+1L against a hardcoded 3000 ml goal - two boxes, two vocabularies and
+   two percentages for the same glass of water. This is now just the total. */
+
+.diet-water .water-meter {
+  display: block;
+  width: 100%;
+  height: 7px;
+  margin: 6px 0 4px;
+  border-radius: 999px;
+  background: var(--line, rgba(125, 140, 132, 0.28));
+  overflow: hidden;
+}
+.diet-water .water-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #138a5b);
+  transition: width 220ms ease;
+}
+.diet-water .water-hint {
+  margin: 2px 0 0;
+  font-size: 0.74rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diet-water .water-meter > span { transition: none; }
 }

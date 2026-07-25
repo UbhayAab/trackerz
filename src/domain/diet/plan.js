@@ -220,13 +220,29 @@ export function prescribedExercises(workout) {
 // Sessions logged in the trailing 7 days (rolling window, same day-window
 // convention as habit-score.js's windowDays() - not a calendar Mon-Sun week,
 // so the count never resets mid-week). Feeds the "weekly_workouts" goal.
+//
+// Counts DISTINCT DAYS TRAINED, not rows. Two things made the old row count wrong,
+// and both were visible on one screen: ticking six exercises on the Gym page writes
+// six rows and read as six workouts, and a 'skipped' row - which is the user saying
+// "no gym today" - incremented the same number. The database currently holds more
+// skipped rows than done ones, so the headline figure was mostly counting days the
+// user did NOT train. The panel directly below this, and the morning brief, both
+// already count distinct done days; this now agrees with them.
+//
+// A null status predates the status column and means a real logged session.
 export function weeklyWorkoutCount(workoutLogs = [], todayISO) {
   const anchor = todayISO ? new Date(todayISO) : new Date();
   anchor.setHours(0, 0, 0, 0);
   const start = anchor.getTime() - 6 * 86_400_000;
   const end = anchor.getTime() + 86_400_000 - 1;
-  return (workoutLogs || []).filter((w) => {
-    const t = new Date(w.occurred_at).getTime();
-    return !Number.isNaN(t) && t >= start && t <= end;
-  }).length;
+  const days = new Set();
+  for (const w of workoutLogs || []) {
+    if (!w) continue;
+    if (w.status === "skipped" || w.status === "rest") continue;
+    const d = new Date(w.occurred_at);
+    const t = d.getTime();
+    if (Number.isNaN(t) || t < start || t > end) continue;
+    days.add(`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`);
+  }
+  return days.size;
 }

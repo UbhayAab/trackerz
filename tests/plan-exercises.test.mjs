@@ -75,6 +75,39 @@ import { planForDate, prescribedExercises, muscleFor, weeklyWorkoutCount } from 
   assert.equal(weeklyWorkoutCount([], today), 0, "no logs -> 0");
   assert.equal(weeklyWorkoutCount(undefined, today), 0, "missing logs array -> 0, not a throw");
   assert.equal(weeklyWorkoutCount([{ occurred_at: "not-a-date" }], today), 0, "unparseable date is ignored, not counted");
+
+  // DAYS TRAINED, not rows. Ticking six exercises on the Gym page writes six rows
+  // for one session and used to read as six workouts.
+  const sixTicksOneDay = [
+    { occurred_at: "2026-07-08T18:00:00+05:30", status: "done" },
+    { occurred_at: "2026-07-08T18:05:00+05:30", status: "done" },
+    { occurred_at: "2026-07-08T18:11:00+05:30", status: "done" },
+    { occurred_at: "2026-07-08T18:20:00+05:30", status: "done" },
+    { occurred_at: "2026-07-08T18:31:00+05:30", status: "done" },
+    { occurred_at: "2026-07-08T18:40:00+05:30", status: "done" },
+  ];
+  assert.equal(weeklyWorkoutCount(sixTicksOneDay, today), 1, "one gym trip is one workout, however many rows it wrote");
+
+  // A 'skipped' row is the user answering "no gym today". It must never raise the
+  // count of workouts done - the live DB holds more skipped rows than done ones.
+  const skips = [
+    { occurred_at: "2026-07-08T18:00:00+05:30", status: "skipped" },
+    { occurred_at: "2026-07-07T18:00:00+05:30", status: "skipped" },
+    { occurred_at: "2026-07-06T18:00:00+05:30", status: "rest" },
+  ];
+  assert.equal(weeklyWorkoutCount(skips, today), 0, "'no gym today' is not a workout");
+  assert.equal(
+    weeklyWorkoutCount([...skips, { occurred_at: "2026-07-05T18:00:00+05:30", status: "done" }], today),
+    1,
+    "skipped rows are ignored while real sessions still count",
+  );
+
+  // Legacy rows written before the status column existed are real sessions.
+  assert.equal(
+    weeklyWorkoutCount([{ occurred_at: "2026-07-08T18:00:00+05:30" }], today),
+    1,
+    "null status means a logged session, not an unknown",
+  );
 }
 
 console.log("plan-exercises.test.mjs: all assertions passed");

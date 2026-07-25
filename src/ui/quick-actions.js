@@ -20,11 +20,16 @@ import {
   fetchOpenSleepSession, startSleepSession, endSleepSession, adjustSleepWake,
   logGymAnswer, fetchTodayGymAnswer,
 } from "../services/supabase-data.js";
+import { WATER } from "../../lib/diet-scaffold.mjs";
 import { showToast } from "./toast.js";
 
 const HOST_ID = "quickActions";
 const WATER_STEPS = [250, 500, 1000];
-const WATER_GOAL_ML = 3000;
+// ONE water target for the whole app. This row used to say 3000 while the diet
+// plan's water schedule below it added up to 3450, so the same glass of water
+// showed two different percentages on one screen. Derive it from the schedule so
+// there is exactly one number and it cannot drift again.
+const WATER_GOAL_ML = WATER.reduce((sum, w) => sum + w.ml, 0);
 
 let state = { sleep: null, waterMl: 0, gym: null, busy: false };
 
@@ -101,6 +106,22 @@ export function renderQuickActions() {
       }</span>
     </div>
   `;
+}
+
+// Re-read the three facts from the server and repaint.
+//
+// EXPORTED because this row went stale the moment anything else logged the same
+// fact: type "went to gym" into the capture box and the Gym button below still read
+// "unanswered", so it got tapped again. That produced a real duplicate workout row
+// on 2026-07-22. The page now calls this after every state change.
+//
+// Coalesced: a burst of state updates collapses into one round of reads.
+let _inflight = null;
+export function refreshQuickActions() {
+  if (!el(HOST_ID)) return Promise.resolve();
+  if (_inflight) return _inflight;
+  _inflight = refresh().finally(() => { _inflight = null; });
+  return _inflight;
 }
 
 async function refresh() {

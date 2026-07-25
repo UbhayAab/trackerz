@@ -507,3 +507,31 @@
 .diag-status.fail {
   color: var(--risk);
 }
+
+/* ---- APK callout ----
+   Two features are physically impossible in a browser (payment-notification capture,
+   Health Connect). Both said "Android app only" and neither told the user where the
+   Android app was. This is the handle on that door. */
+
+.apk-callout {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.28));
+  border-left: 3px solid var(--accent, #138a5b);
+  border-radius: 12px;
+  background: var(--surface-alt, rgba(19, 138, 91, 0.05));
+}
+.apk-callout .apk-reason {
+  margin: 0 0 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.apk-callout .apk-download {
+  display: inline-block;
+  text-decoration: none;
+}
+.apk-callout .apk-note {
+  margin: 10px 0 0;
+  font-size: 0.74rem;
+  color: var(--muted, #7d8c84);
+}

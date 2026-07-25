@@ -15,6 +15,7 @@ import {
   isNativeSmsAvailable, checkPermission as smsCheck, requestPermission as smsRequest, backfill as smsBackfill,
   isAutoCaptureEnabled as smsEnabled, setAutoCaptureEnabled as setSmsEnabled,
 } from "../services/sms-capture.js";
+import { apkCalloutHtml } from "./apk-link.js";
 
 export function mountSpendCapturePanel() {
   const panel = document.getElementById("spendCapturePanel");
@@ -68,12 +69,13 @@ export function mountSpendCapturePanel() {
 
   if (!nativeNotify && !nativeSms) {
     pill.textContent = "Android app only";
-    intro.textContent =
+    intro.innerHTML =
       "There is no GPay or UPI API to read your transactions. What every payment DOES " +
       "leave on your phone is a notification and a bank SMS - and only the Trackerz " +
-      "Android app can read those. Install the APK, open this page there, and turn this " +
-      "on. Then you pay exactly as you do today (Zepto, a website, a shop QR, your card) " +
-      "and every rupee is logged for you.";
+      "Android app can read those. Install it, open this page there, and turn this on. " +
+      "Then you pay exactly as you do today (Zepto, a website, a shop QR, your card) and " +
+      "every rupee is logged for you, with no entry to come back and make." +
+      apkCalloutHtml("This is the only way payments log themselves. In a browser it cannot work at all.");
     return;
   }
 

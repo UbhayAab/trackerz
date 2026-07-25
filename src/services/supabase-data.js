@@ -3,6 +3,7 @@ import { getCurrentSession } from "./auth.js";
 import { buildRowForTool } from "./action-applier.js";
 import { instantiate } from "../domain/diet/meal-templates.js";
 import { clampSleepSpan } from "../../lib/sleep-window.mjs";
+import { rowForRepeat } from "../../lib/meal-repeats.mjs";
 
 function requireUserId() {
   const session = getCurrentSession();
@@ -325,6 +326,12 @@ export async function logGymAnswer(status, { description = null, occurredAt = nu
 }
 
 // Today's gym answer, if any - so the buttons render their current state.
+//
+// Reads the WHOLE day, not just the newest row. Logging exercises on the Gym page
+// writes rows that this used to miss whenever anything else landed afterwards, so
+// Home still read "unanswered" and got tapped again - one gym trip, two rows.
+// A real session outranks a "no gym" answer: if any done row exists for the day,
+// the day was trained, regardless of what was tapped afterwards.
 export async function fetchTodayGymAnswer(date = new Date()) {
   const supabase = await getSupabaseClient();
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -335,10 +342,12 @@ export async function fetchTodayGymAnswer(date = new Date()) {
     .select("id, description, status, occurred_at")
     .gte("occurred_at", start.toISOString())
     .lt("occurred_at", end.toISOString())
-    .order("occurred_at", { ascending: false })
-    .limit(1);
+    .order("occurred_at", { ascending: false });
   if (error) throw error;
-  return (data || [])[0] || null;
+  const rows = data || [];
+  if (!rows.length) return null;
+  // A null status predates the status column and means a logged session.
+  return rows.find((r) => r.status === "done" || r.status == null) || rows[0];
 }
 
 export async function fetchWorkoutLogs({ limit = 200 } = {}) {
@@ -402,7 +411,10 @@ export async function fetchDayLogs(date = new Date()) {
   const inDay = (q) => q.gte("occurred_at", start.toISOString()).lt("occurred_at", end.toISOString());
   const [food, workout, hydration] = await Promise.all([
     inDay(supabase.from("food_logs").select("id, occurred_at, meal_name, meal_slot, description, calories_estimate, protein_g, carbs_g, fat_g")),
-    inDay(supabase.from("workout_logs").select("id, occurred_at, description, duration_min, intensity")),
+    // `status` is NOT optional here. Without it the reconciler below cannot tell a
+    // real session from a "no gym today" answer, so tapping Skipped on Home ticked
+    // the plan's workout as DONE.
+    inDay(supabase.from("workout_logs").select("id, occurred_at, description, duration_min, intensity, status, sets")),
     inDay(supabase.from("hydration_logs").select("id, occurred_at, ml")),
   ]);
   if (food.error) throw food.error;
@@ -531,6 +543,23 @@ export async function revertTargetEvent(auditId) {
   }
   // Remove the audit row so the undo affordance disappears from the feed.
   await supabase.from("audit_log").delete().eq("id", auditId);
+}
+
+// One-tap repeat of a meal the user has already logged before. The row shape comes
+// from lib/meal-repeats.mjs (median macros of that meal's own history), so this
+// writes a real, complete food row with no model call and no cost.
+export async function logRepeatMeal(chip, { now = new Date() } = {}) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const row = rowForRepeat(chip, { now });
+  if (!row) throw new Error("Nothing to repeat.");
+  const { data, error } = await supabase
+    .from("food_logs")
+    .insert({ user_id: userId, ...row })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function logMealFromTemplate(template) {
