@@ -121,7 +121,12 @@ function markedBlock(src, file, startMark, endMark) {
   const start = src.indexOf(startMark);
   const end = src.indexOf(endMark);
   assert.ok(start !== -1 && end !== -1 && end > start, `${startMark} markers missing in ${file}`);
-  return src.slice(src.indexOf("\n", start) + 1, src.lastIndexOf("\n", end) + 1);
+  // Line endings are a checkout artifact, not drift. This repo is authored on
+  // Windows so most files are CRLF, but lib/sleep-window.mjs is LF, and the raw
+  // byte comparison failed on that alone while the two blocks were character for
+  // character identical. Normalising CR cannot hide a semantic difference - any
+  // real divergence still fails.
+  return src.slice(src.indexOf("\n", start) + 1, src.lastIndexOf("\n", end) + 1).replace(/\r\n/g, "\n");
 }
 {
   const sleepLib = readFileSync("lib/sleep-window.mjs", "utf8");

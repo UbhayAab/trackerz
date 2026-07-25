@@ -8,6 +8,8 @@ import { renderDietInsights } from "../ui/diet-insights-panel.js";
 import { subscribe } from "../state/app-state.js";
 import { bootWithAuth } from "./bootstrap.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { bindQuickActions } from "../ui/quick-actions.js";
+import { bindMealChips } from "../ui/meal-chips.js";
 
 // Diet domain helpers (Wave 4) - re-exported so the page module is the
 // single import surface used by the diet UI layer.
@@ -37,6 +39,13 @@ bootWithAuth(async () => {
   bindInsights();
   bindBudgetInputs("dietBudgetStatus");
   bindDietPlan();
+  // Water/sleep/gym entry lives in exactly ONE component. Mounting it here is what
+  // lets the Diet page log water at all - it previously had only the plan's fixed
+  // checkboxes, so an arbitrary amount could not be recorded from this page.
+  bindQuickActions();
+  // One tap re-logs a meal already in your history, with its own median macros.
+  // No model call, so the day's totals update immediately.
+  bindMealChips({ afterLog: () => hydrateStateFromSupabase() });
   renderDietPlan(); // first paint before state hydrates
   await hydrateStateFromSupabase();
 });

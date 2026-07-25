@@ -1,0 +1,88 @@
+/* REPEAT CHIPS - one tap re-logs a meal already in your history.
+   Sits between the one-tap row and the capture box, so the cheap path is the one
+   you reach first and typing is the fallback, not the default. */
+
+.meal-chips {
+  margin: 0 0 14px;
+}
+.meal-chips[hidden] {
+  display: none;
+}
+
+.chips-label {
+  margin: 0 0 8px;
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #7d8c84);
+}
+
+.chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  /* The row scrolls sideways rather than wrapping into a wall of buttons, and the
+     page itself must never scroll horizontally because of it. */
+  padding: 2px 2px 6px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.chip-row::-webkit-scrollbar {
+  height: 4px;
+}
+.chip-row::-webkit-scrollbar-thumb {
+  background: var(--line, rgba(125, 140, 132, 0.28));
+  border-radius: 999px;
+}
+
+.meal-chip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 13px;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.28));
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* Comfortably tappable on a phone without a stylus. */
+  min-height: 46px;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.meal-chip:active:not([disabled]) {
+  transform: scale(0.97);
+}
+.meal-chip:hover:not([disabled]) {
+  border-color: var(--accent, #138a5b);
+}
+.meal-chip[disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.meal-chip-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.meal-chip-macros {
+  font-size: 0.72rem;
+  color: var(--muted, #7d8c84);
+  white-space: nowrap;
+}
+
+/* A failed read is not "you have no repeats" - it says which it is. */
+.chips-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--danger, #c0392b);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meal-chip { transition: none; }
+  .meal-chip:active:not([disabled]) { transform: none; }
+}

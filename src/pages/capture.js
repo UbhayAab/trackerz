@@ -12,7 +12,8 @@ import { registerServiceWorker, bindInstallPrompt, bindOnlineDrain } from "../se
 import { runCapture } from "../services/agent-runner.js";
 import { ensureTodayBriefing, watchTodayBriefings } from "../services/briefing.js";
 import { renderBriefingStrip } from "../ui/briefing-strip.js";
-import { bindQuickActions } from "../ui/quick-actions.js";
+import { bindQuickActions, refreshQuickActions } from "../ui/quick-actions.js";
+import { bindMealChips, refreshMealChips } from "../ui/meal-chips.js";
 
 registerServiceWorker();
 bindInstallPrompt("installAppBtn");
@@ -26,9 +27,17 @@ bootWithAuth(async () => {
     renderInsights(state);
     renderMetrics(state);
     renderDietPlan(state);
+    // A capture that logged gym/water/sleep must be reflected in the one-tap row
+    // above, or it reads "unanswered" and gets tapped again - that is how a real
+    // duplicate workout row was created on 2026-07-22. Coalesced internally.
+    refreshQuickActions();
+    refreshMealChips();
   });
   bindCapturePanel();
   bindQuickActions();
+  // One tap re-logs a meal from your own history with its median macros - no model
+  // call, no wait. Refreshing state afterwards keeps the day's totals in step.
+  bindMealChips({ afterLog: () => hydrateStateFromSupabase() });
   bindInsights();
   bindAdditionsFeed();
   bindDietPlan();

@@ -363,6 +363,42 @@ function hydrationLogRow(rows) {
   </div>`;
 }
 
+// Water, READ-ONLY.
+//
+// This section used to be six tickable slots (wake-up 500, with-shake 500, ...)
+// while the one-tap row at the top of the same screen offered +250/+500/+1L against
+// a different daily target. Two boxes, two vocabularies, two percentages for one
+// glass of water, and a reconciler that matched them by exact ml so +250 and +1L
+// ticked nothing at all. Entry now lives in exactly one place - the quick row -
+// and this is the running total, which is the only thing this panel ever needed to
+// say. The target comes from the same schedule the quick row derives its goal from,
+// so the two numbers cannot disagree.
+function waterSummary(plan) {
+  const goal = (plan.water || []).reduce((a, w) => a + w.ml, 0);
+  const withMl = _dayHydration.filter((r) => num(r.ml) != null);
+  const total = withMl.reduce((a, r) => a + num(r.ml), 0);
+  const unknown = _dayHydration.length - withMl.length;
+  const pct = goal ? Math.min(100, Math.round((total / goal) * 100)) : 0;
+  const fmt = (ml) => (ml >= 1000 ? `${(ml / 1000).toFixed(ml % 1000 === 0 ? 0 : 1)} L` : `${ml} ml`);
+  // A failed read must not render as a confident "0 ml".
+  const unreadable = _dayLoad.status === "error";
+
+  return `
+    <div class="diet-section diet-water">
+      <p class="diet-head">💧 Water <span class="diet-detail">${
+        unreadable
+          ? "couldn't read this day"
+          : `${fmt(total)} of ${fmt(goal)}${unknown ? ` · ${unknown} entr${unknown > 1 ? "ies" : "y"} with no amount` : ""}`
+      }</span></p>
+      ${unreadable ? "" : `<div class="water-meter" aria-hidden="true"><span style="width:${pct}%"></span></div>`}
+      <p class="diet-detail water-hint">${
+        isViewingToday()
+          ? "Add water with the + buttons in the quick row at the top of this page."
+          : "Past days are read-only here."
+      }</p>
+    </div>`;
+}
+
 // What was ACTUALLY logged on the view date - the answer to "show me yesterday".
 // Distinguishes: rows / genuinely empty / still loading / failed to load.
 function loggedSection() {
@@ -422,7 +458,6 @@ export function renderDietPlan(appState) {
   const state = loadDayState(dayKey(_viewDate));
 
   const mealIds = plan.meals.map((m) => m.id);
-  const waterIds = plan.water.map((w) => w.id);
   // The denominator is however many meals the plan actually has - an AI-authored
   // override can be 3 or 6, and a hardcoded "/4" would assert a plan that isn't there.
   const mealBadge = mealIds.length
@@ -459,10 +494,7 @@ export function renderDietPlan(appState) {
       ${plan.supplements.map((s) => item(plan, state, { id: s.id, time: s.time, name: s.name, detail: s.note })).join("")}
     </div>
 
-    <div class="diet-section">
-      <p class="diet-head">💧 Water <span class="diet-detail">${countDone(waterIds, state) ? `${plan.water.filter((w) => resolveItem(w.id, state).done).reduce((a, w) => a + w.ml, 0)} ml` : "target 3.4-3.5 L"}</span></p>
-      ${plan.water.map((w) => item(plan, state, { id: w.id, time: w.time, name: w.label, detail: `${w.ml} ml` })).join("")}
-    </div>
+    ${waterSummary(plan)}
 
     <div class="diet-section diet-prep">
       <p class="diet-head">📋 Prep tonight - for tomorrow (${plan.tomorrowName} · ${plan.tomorrowDietLabel})</p>

@@ -4,7 +4,8 @@
 // Shaping is pure (lib/additions.mjs); this module is the DOM + write side.
 
 import { buildAdditions, groupByDay } from "../../lib/additions.mjs";
-import { deleteRow, revertTargetEvent, rejectAiAction } from "../services/supabase-data.js";
+import { deleteRow, revertTargetEvent, rejectAiAction, applyProposedAction } from "../services/supabase-data.js";
+import { getState } from "../state/app-state.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { showToast } from "./toast.js";
 
@@ -43,7 +44,12 @@ export function renderAdditionsFeed(state) {
           ${r.status === "target"
             ? `<button class="add-undo" type="button" aria-label="Undo ${esc(r.label)}">Undo</button>`
             : r.status === "review"
-            ? `<button class="add-dismiss" type="button" aria-label="Dismiss ${esc(r.label)}">✕</button>`
+            // A pending capture used to offer ONLY dismiss, so when the agent was
+            // rate-limited or unavailable the sole option was to throw the capture
+            // away and type it again from memory. The machinery to commit it
+            // (applyProposedAction + buildRowForTool) was already written and
+            // tested; it just had no button anywhere in the app.
+            ? `${r.applicable ? `<button class="add-apply" type="button" aria-label="Add ${esc(r.label)}">Add it</button>` : ""}<button class="add-dismiss" type="button" aria-label="Dismiss ${esc(r.label)}">✕</button>`
             : `<button class="add-del" type="button" aria-label="Delete ${esc(r.label)}">✕</button>`}
         </div>`).join("")}
     </div>`).join("");
@@ -91,6 +97,21 @@ export function bindAdditionsFeed() {
       await runRowAction(rowEl, "Undo", () => revertTargetEvent(rowEl.dataset.undoId));
       return;
     }
+    const applyBtn = event.target.closest(".add-apply");
+    if (applyBtn) {
+      const rowEl = applyBtn.closest("[data-add-id]");
+      if (!rowEl) return;
+      // applyProposedAction needs the whole action (tool_name + arguments), not
+      // just its id - state.aiActions is the raw list the sync already holds.
+      const action = (getState().aiActions || []).find((a) => a && a.id === rowEl.dataset.addId);
+      if (!action) {
+        showToast("That capture is no longer in the queue - refresh and try again.", { kind: "error" });
+        return;
+      }
+      await runRowAction(rowEl, "Add", () => applyProposedAction(action));
+      return;
+    }
+
     const dismissBtn = event.target.closest(".add-dismiss");
     if (dismissBtn) {
       const rowEl = dismissBtn.closest("[data-add-id]");

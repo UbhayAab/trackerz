@@ -23,6 +23,7 @@ import {
   syncAll,
   isNativeHealthAvailable,
 } from "../services/health-sync.js";
+import { apkCalloutHtml } from "./apk-link.js";
 
 const LAST_SYNC_KEY = "trackerz.health.lastSync";
 
@@ -123,10 +124,13 @@ export function mountHealthPanel() {
   if (!isNativeHealthAvailable()) {
     pill.textContent = "Android app only";
     statusText.textContent = "Not available in the browser";
-    hintEl.textContent =
+    // This used to point at "Settings -> download the APK from the latest build",
+    // which was not a thing that existed anywhere in the app.
+    hintEl.innerHTML =
       "Reading sleep, steps and heart rate needs Android Health Connect, which no browser " +
-      "can access. Install the Trackerz Android app (Settings → download the APK from the " +
-      "latest build) and open this page there to connect your OnePlus phone and watch.";
+      "can access. Install the Trackerz Android app and open this page there to connect " +
+      "your OnePlus phone and watch." +
+      apkCalloutHtml("Your watch already records sleep and steps. This is what lets Trackerz read them instead of you typing them.");
     connectBtn.disabled = true;
     syncBtn.disabled = true;
     connectBtn.title = "Only available in the Android app";

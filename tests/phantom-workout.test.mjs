@@ -67,4 +67,37 @@ assert.equal(foods(skippedLunch).length, 0, "a skipped meal must not be logged a
 // ...but an ingredient-level "no" is not a denial.
 assert.equal(foods(run("ate rice with no salt")).length, 1, "'no salt' is not a denied meal");
 
+// ---- the SECOND half of the same bug: reading a skipped row back ----
+//
+// Writing status='skipped' was only ever half the fix. The diet hub's reconciler
+// took the first workout row of the day regardless of status, so tapping "Skipped"
+// on Home ticked the workout item in the panel directly below it as DONE - the app
+// contradicting the user on the same screen, one scroll apart. The day-logs query
+// did not even select `status`, so the reconciler could not have known.
+const { reconcilePlan } = await import("../src/domain/diet/reconcile.js");
+
+const plan = { meals: [], water: [], workout: { id: "workout-mon", name: "Workout A", items: [] } };
+
+const skipped = reconcilePlan(plan, { workoutLogs: [{ id: "w1", status: "skipped", occurred_at: NOW }] });
+assert.equal(skipped["workout-mon"], undefined, "'no gym today' must not tick the day's workout item");
+
+const rest = reconcilePlan(plan, { workoutLogs: [{ id: "w2", status: "rest", occurred_at: NOW }] });
+assert.equal(rest["workout-mon"], undefined, "a rest day must not tick the day's workout item");
+
+const done = reconcilePlan(plan, { workoutLogs: [{ id: "w3", status: "done", occurred_at: NOW }] });
+assert.equal(done["workout-mon"]?.recordId, "w3", "a real session still ticks it");
+
+// Legacy rows written before the status column are real sessions.
+const legacy = reconcilePlan(plan, { workoutLogs: [{ id: "w4", occurred_at: NOW }] });
+assert.equal(legacy["workout-mon"]?.recordId, "w4", "null status means a logged session");
+
+// Skipped first, then actually went: the real session must win.
+const both = reconcilePlan(plan, {
+  workoutLogs: [
+    { id: "w5", status: "skipped", occurred_at: NOW },
+    { id: "w6", status: "done", occurred_at: NOW },
+  ],
+});
+assert.equal(both["workout-mon"]?.recordId, "w6", "a real session outranks an earlier skip");
+
 console.log("phantom-workout.test.mjs OK");

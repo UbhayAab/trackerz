@@ -30,7 +30,7 @@
     { "name": "Capture", "short_name": "Capture", "url": "./index.html" },
     { "name": "Money", "short_name": "Money", "url": "./pages/money.html" },
     { "name": "Diet", "short_name": "Diet", "url": "./pages/diet.html" },
-    { "name": "Insights", "short_name": "Insights", "url": "./pages/insights.html" }
+    { "name": "Insights", "short_name": "Insights", "url": "./pages/analytics.html" }
   ],
   "categories": ["finance", "lifestyle", "productivity", "health"]
 }
