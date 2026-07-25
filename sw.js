@@ -11,7 +11,9 @@
 
 // v20 precaches vendor/. Earlier bumps dropped the caches poisoned by the old
 // "cache any response" bug (404/503 HTML frozen in as the offline fallback).
-const VERSION = "trackerz-v20-20260723";
+// v21 adds the vendored SheetJS chunks; without a bump the old cache would serve
+// a precache list that never contained them.
+const VERSION = "trackerz-v21-20260725";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -43,6 +45,11 @@ const VENDOR = [
   "./vendor/supabase-js/node/events.mjs",
   "./vendor/supabase-js/node/process.mjs",
   "./vendor/supabase-js/node/tty.mjs",
+  // SheetJS, for bank statement import. Vendored for the same reason: it used to
+  // be a static esm.sh import inside statement-import.js, which the money page
+  // pulls in transitively, so a CDN hiccup blanked that entire page.
+  "./vendor/xlsx/xlsx@0.18.5/index.mjs",
+  "./vendor/xlsx/xlsx@0.18.5/es2022/xlsx.mjs",
 ];
 
 self.addEventListener("install", (event) => {

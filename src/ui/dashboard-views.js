@@ -59,7 +59,7 @@ export function renderDashboards({ ledger = [], foodLogs = [], wellnessLogs = []
     </div>
     <div class="dashboard-view" data-view="today">
       ${tile("Spend",       fmt(agg.today.spend, { currency: true }),       fmtDelta(agg.deltas.dod_spend),     deltaClass(agg.deltas.dod_spend))}
-      ${tile("Protein",     `${fmt(agg.today.protein)}g`,                   fmtDelta(agg.deltas.dod_protein),   deltaClass(agg.deltas.dod_protein))}
+      ${tile("Protein",     fmtUnit(agg.today.protein, "g"),               fmtDelta(agg.deltas.dod_protein),   deltaClass(agg.deltas.dod_protein))}
       ${tile("Calories",    fmt(agg.today.calories),                        fmtDelta(agg.deltas.dod_calories),  deltaClass(agg.deltas.dod_calories))}
       ${tile("Meals",       fmt(agg.today.mealCount))}
       ${tile("Steps",       fmt(agg.today.steps))}
@@ -68,7 +68,7 @@ export function renderDashboards({ ledger = [], foodLogs = [], wellnessLogs = []
     <div class="dashboard-view" data-view="week" hidden>
       ${tile("Week spend",  fmt(agg.week.spend, { currency: true }),        fmtDelta(agg.deltas.wow_spend),     deltaClass(agg.deltas.wow_spend))}
       ${tile("Prev week",   fmt(agg.prev_week.spend, { currency: true }))}
-      ${tile("Avg protein", `${fmt(agg.week.protein / 7)}g`)}
+      ${tile("Avg protein", fmtUnit(agg.week.protein === null ? null : agg.week.protein / 7, "g"))}
       ${tile("Meals",       fmt(agg.week.mealCount))}
       ${tile("Steps total", fmt(agg.week.steps))}
       ${tile("Sleep avg",   fmtUnit(agg.week.sleepHoursAvg, "h"))}

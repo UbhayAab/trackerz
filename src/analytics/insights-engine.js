@@ -6,7 +6,6 @@
 // weight trend, sleep debt, opportunity cost, transfers/refunds).
 
 import { aggregatePeriods } from "./period-aggregator.js";
-import { composeInsights } from "./insights-feed.js";
 import { computeOpportunityCost } from "./opportunity-cost.js";
 import { suggestProteinFixes } from "../domain/diet/protein-gap.js";
 import { detectLateSnackPattern } from "../domain/diet/late-snack-detector.js";
@@ -45,11 +44,14 @@ export function buildInsightFeed({
     if (text) items.push({ kind, severity, text });
   };
 
-  // Period deltas + budget alerts + subscription-due + basic diet (reuse).
+  // Period deltas + budget alerts + subscription-due + basic diet.
+  //
+  // These lines are NOT fanned into this feed. src/ui/dashboard-views.js already
+  // renders composeInsights() directly into its own Insights block, and on the
+  // Analytics page that block sits a few inches above #insightList - so three of
+  // the four lines in the list below were verbatim repeats of the ones above it.
+  // The aggregates are still computed here because the detectors below use them.
   const aggregates = aggregatePeriods({ ledger, foodLogs, wellnessLogs, bodyMetrics, today });
-  for (const it of composeInsights({ aggregates, budgets, subscriptions, ledger, today })) {
-    push(it.kind, it.severity, it.text);
-  }
 
   // Diet - protein gap with a concrete fix for today.
   const todayFoods = foodLogs.filter((r) => isSameLocalDay(r.occurred_at, today));

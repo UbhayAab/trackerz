@@ -6,7 +6,6 @@
 // Until the promotion step existed, statement_rows was a write-only table: bank
 // data was stored and then excluded from every money total in the app.
 
-import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { getSupabaseClient } from "./supabase-client.js";
 import { getCurrentSession } from "./auth.js";
 import { classifyImportColumns } from "../../lib/agent-core.mjs";
@@ -30,7 +29,41 @@ import {
   setStatementImportStatus,
 } from "./supabase-data.js";
 
+// SheetJS used to be a STATIC top-level import from esm.sh. src/pages/money.js
+// imports this module transitively, so whenever that CDN was slow, blocked or the
+// phone was offline, the import rejected and the ENTIRE money page module graph
+// died with it: no period bar, no ledger, no budgets, no insights, no bottom nav.
+// The service worker explicitly refuses to cache esm.sh (sw.js), so it was
+// re-fetched over the network on every single money page load.
+//
+// This is the same failure that was already diagnosed and fixed for supabase-js.
+// XLSX got left behind. Now vendored same-origin and loaded at CALL time, so the
+// 425KB parser is fetched only when a file is actually dropped, and a failure to
+// load it costs you statement import - not the whole page.
+const VENDORED_XLSX = "../../vendor/xlsx/xlsx@0.18.5/index.mjs";
+const CDN_XLSX = "https://esm.sh/xlsx@0.18.5"; // rescue path for a partial deploy
+
+let xlsxPromise = null;
+async function loadXlsx() {
+  if (xlsxPromise) return xlsxPromise;
+  xlsxPromise = (async () => {
+    const failures = [];
+    for (const specifier of [VENDORED_XLSX, CDN_XLSX]) {
+      try {
+        return await import(/* @vite-ignore */ specifier);
+      } catch (err) {
+        failures.push(`${specifier}: ${err?.message || err}`);
+      }
+    }
+    // Name what failed. A spreadsheet parser that cannot load must not read as
+    // "your file was empty".
+    throw new Error(`Could not load the spreadsheet parser. ${failures.join(" | ")}`);
+  })();
+  return xlsxPromise;
+}
+
 export async function parseStatementFile(file) {
+  const XLSX = await loadXlsx();
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: "array", cellDates: true });
   const sheetName = wb.SheetNames[0];

@@ -3,6 +3,7 @@
 // app should never feel empty.
 
 import { computeBudgetAlerts } from "../domain/money/budget-alerts.js";
+import { activeProteinTarget } from "../domain/goals.js";
 
 function fmtRupees(n) {
   return `₹${Math.round(n).toLocaleString("en-IN")}`;
@@ -34,9 +35,15 @@ export function composeInsights({ aggregates, budgets = [], subscriptions = [], 
     out.push({ kind: "money", severity: deltas.mom_spend > 0.1 ? "warning" : "info", text: `MoM spend ${deltas.mom_spend >= 0 ? "up" : "down"} ${pct(Math.abs(deltas.mom_spend))} (${fmtRupees(month.spend)} vs ${fmtRupees(pm.spend)}).` });
   }
 
-  // Diet
-  if (t.protein < 90 && t.mealCount >= 2) {
-    out.push({ kind: "diet", severity: "warning", text: `Protein at ${t.protein}g - gap to 162g target.` });
+  // Diet. The target used to be the literal string "162g" regardless of what the
+  // user had actually set, so the line contradicted the goal on the Diet page.
+  // mealCount >= 2 also keeps this off a day with no food logged, where
+  // t.protein is null rather than a measured 0.
+  if (t.mealCount >= 2 && t.protein !== null && t.protein !== undefined) {
+    const target = activeProteinTarget(budgets);
+    if (target && t.protein < target * 0.55) {
+      out.push({ kind: "diet", severity: "warning", text: `Protein at ${t.protein}g - gap to ${Math.round(target)}g target.` });
+    }
   }
   if (deltas?.dod_calories > 0.25 && yesterday?.calories > 0) {
     out.push({ kind: "diet", severity: "info", text: `Calorie pace higher than yesterday.` });

@@ -31,22 +31,31 @@ export function renderBudgetInputs(state) {
     if (kind === "daily_calories") v = dt.calories;
     else if (kind === "daily_protein") v = dt.protein_g;
     else if (kind === "weekly_calories") v = goalValue(budgets, kind) ?? Math.round(dt.calories * 7);
-    else if (isUnsetMoneyCap(budgets, kind)) {
-      // An unsaved money cap is in effect NOWHERE - the brief, the trajectory
-      // table and the insight rules all read the budgets row, not the seed. So
-      // show the seed as a placeholder (visibly unset) instead of a value that
-      // claims a cap the app isn't enforcing.
+    else if (isUnsetGoal(budgets, kind)) {
+      // An unsaved goal is in effect NOWHERE - the brief, the trajectory table
+      // and the insight rules all read the budgets row, not the seed. So show the
+      // seed as a placeholder (visibly unset) instead of a value that claims a
+      // target the app isn't enforcing.
+      //
+      // This used to cover money caps only, so the gym box rendered a filled-in
+      // "4" that was indistinguishable from a saved value while the budgets table
+      // held no weekly_workouts row at all. The two consumers then disagreed: the
+      // Gym page fell back to 4 and showed "/4", while the Analytics gym card read
+      // the same missing row as null and dropped the target entirely.
       const def = goalDef(kind);
       input.value = "";
-      input.placeholder = def?.default != null ? `Not set (suggested ${def.default})` : "Not set";
+      input.placeholder = def?.default != null ? `Not set (using ${def.default})` : "Not set";
       return;
     } else v = goalDisplayValue(budgets, kind);
     if (v != null) input.value = v;
   });
 }
 
-function isUnsetMoneyCap(budgets, kind) {
-  return goalDef(kind)?.domain === "money" && goalValue(budgets, kind) == null;
+// Any goal with no saved row. Diet targets are excluded because the branches
+// above resolve them from the diet scaffold, which IS what the app enforces when
+// nothing is set - so for those the seed is the honest answer, not a claim.
+function isUnsetGoal(budgets, kind) {
+  return goalValue(budgets, kind) == null;
 }
 
 export function bindBudgetInputs(statusId) {

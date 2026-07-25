@@ -17,7 +17,14 @@ export function renderMetrics(state) {
   // Diet-page metric cards (no-op on pages that lack these ids).
   setText("#caloriesLeft", String(caloriesLeft), caloriesTarget ? `Target ${caloriesTarget.toLocaleString("en-IN")}` : "Calories left");
   setText("#proteinMetric", `${protein}g`, proteinTarget ? `Target ${proteinTarget}g` : "Protein");
-  setText("#adherenceMetric", String(m.adherence ?? 0), "Photo + voice evidence");
+  // Days logged, not "adherence". The old card claimed a hard 0 forever because
+  // nothing on this page ever computed the value. A metric with no source must
+  // read "-", never a confident number.
+  setText(
+    "#adherenceMetric",
+    m.loggedDays7 == null ? "-" : `${m.loggedDays7}/7`,
+    "Days logged this week",
+  );
 
   // Diet-page summary rail tiles (all from the same numbers as above).
   setText("#summaryCaloriesLeft", String(caloriesLeft));
