@@ -86,6 +86,23 @@ function isHtml(req) {
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
+
+  // WEB SHARE TARGET. manifest.webmanifest declares share_target with
+  // method:"POST", enctype:"multipart/form-data" - so when you share a payment
+  // screenshot or a receipt into Trackerz, Android POSTs it to
+  // ./share-target.html. This handler did not exist, so the POST fell straight
+  // through to GitHub Pages, which is a static host and answers 405. Sharing
+  // anything into the app was dead, and src/pages/share-target.js was written
+  // expecting exactly this handler to have stashed the payload for it.
+  //
+  // A POST body cannot be read by the destination page, so the payload goes into
+  // the same IndexedDB queue the offline capture path uses, and we redirect to
+  // the receiving page with a GET.
+  if (req.method === "POST" && new URL(req.url).pathname.endsWith("/share-target.html")) {
+    event.respondWith(handleShareTarget(req));
+    return;
+  }
+
   if (req.method !== "GET") return; // never cache POST/PUT/DELETE
   const url = new URL(req.url);
 
@@ -106,6 +123,63 @@ self.addEventListener("fetch", (event) => {
   // "ghost version" problem where a stale cached bundle kept showing after deploy.
   event.respondWith(networkFirst(req));
 });
+
+// Store the shared payload, then redirect to the receiving page.
+//
+// The IndexedDB name/store/record shape MUST match src/services/offline-queue.js
+// (trackerz_offline / captures / {text, files:[{name,type,blob}], captureType,
+// queuedAt, ingestionId}) - that is the queue share-target.js reads back.
+// Redirect happens even on a storage failure, with ?shareerror set, so the user
+// lands on a page that can explain itself instead of a browser error.
+async function handleShareTarget(req) {
+  const dest = new URL("./share-target.html", req.url);
+  try {
+    const form = await req.formData();
+    const text = [form.get("title"), form.get("text"), form.get("url")]
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .filter(Boolean)
+      .join(" ");
+    const files = form.getAll("media").filter((f) => f && typeof f === "object" && "size" in f && f.size > 0);
+
+    if (text || files.length) {
+      await idbAddCapture({
+        text,
+        files: files.map((f) => ({ name: f.name || "shared", type: f.type || "application/octet-stream", blob: f })),
+        captureType: "auto",
+        queuedAt: Date.now(),
+        ingestionId: null,
+      });
+    }
+    return Response.redirect(dest.href, 303);
+  } catch (err) {
+    dest.searchParams.set("shareerror", String(err?.message || err).slice(0, 200));
+    return Response.redirect(dest.href, 303);
+  }
+}
+
+// Minimal IndexedDB write. The SW cannot import src/ modules, so the schema is
+// duplicated here on purpose; tests/share-target.test.mjs asserts the two stay
+// in agreement.
+function idbAddCapture(record) {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open("trackerz_offline", 1);
+    open.onupgradeneeded = () => {
+      const db = open.result;
+      if (!db.objectStoreNames.contains("captures")) {
+        db.createObjectStore("captures", { keyPath: "id", autoIncrement: true });
+      }
+    };
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction("captures", "readwrite");
+      const add = tx.objectStore("captures").add(record);
+      add.onerror = () => reject(add.error);
+      tx.oncomplete = () => { db.close(); resolve(add.result); };
+      tx.onerror = () => reject(tx.error);
+    };
+  });
+}
 
 async function networkFirst(req) {
   try {

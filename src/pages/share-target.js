@@ -24,6 +24,13 @@ bootWithAuth(async () => {
   const qsTitle = url.searchParams.get("title") || "";
   const qsUrl = url.searchParams.get("url") || "";
 
+  // The service worker sets this when it could not stash the shared payload.
+  // Without it a storage failure looked identical to "you shared nothing".
+  const shareError = url.searchParams.get("shareerror");
+  if (shareError) {
+    addItem(`Could not read what you shared: ${shareError}`);
+  }
+
   const offlineRows = await listOfflineQueue();
   if (offlineRows.length) {
     addItem(`${offlineRows.length} queued capture(s) waiting from share sheet.`);
@@ -40,9 +47,11 @@ bootWithAuth(async () => {
     return;
   }
 
-  statusEl.textContent = "Ready to process. Tap below to send to AI.";
-  processBtn.disabled = false;
-  processBtn.addEventListener("click", async () => {
+  // Process immediately instead of asking for a confirm tap. You already chose
+  // this app from the share sheet - that WAS the confirmation - and the Home
+  // additions feed is the undo, so the extra tap bought nothing. The button
+  // stays as a retry after a failure.
+  const run = async () => {
     processBtn.disabled = true;
     statusEl.textContent = "Processing...";
     try {
@@ -53,8 +62,13 @@ bootWithAuth(async () => {
       statusEl.textContent = "Done. Opening capture page.";
       setTimeout(() => globalThis.location.assign("./index.html"), 600);
     } catch (err) {
-      statusEl.textContent = `Error: ${err.message || err}`;
+      statusEl.textContent = `Error: ${err.message || err}. Tap to retry.`;
       processBtn.disabled = false;
+      processBtn.textContent = "Retry";
     }
-  });
+  };
+
+  processBtn.addEventListener("click", run);
+  statusEl.textContent = "Processing what you shared...";
+  await run();
 });
