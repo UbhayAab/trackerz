@@ -86,3 +86,13 @@
   .meal-chip { transition: none; }
   .meal-chip:active:not([disabled]) { transform: none; }
 }
+
+/* Spend chips carry money, so they read as money and show their evidence. */
+.spend-chip .meal-chip-name {
+  font-variant-numeric: tabular-nums;
+}
+.chips-foot {
+  margin: 4px 2px 0;
+  font-size: 0.72rem;
+  color: var(--muted, #7d8c84);
+}

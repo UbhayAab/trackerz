@@ -7,6 +7,7 @@ import { getState, subscribe } from "../state/app-state.js";
 import { bootWithAuth } from "./bootstrap.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { bindStatementImporter } from "../ui/statement-importer.js";
+import { bindSpendChips } from "../ui/spend-chips.js";
 import { fetchLedger, fetchOpenImports, fetchBudgets, fetchOpenAiActions } from "../services/supabase-data.js";
 import { isLocalSession } from "../services/auth.js";
 import { inr } from "../utils/formatters.js";
@@ -51,6 +52,10 @@ bootWithAuth(async () => {
   bindBudgetInputs("moneyBudgetStatus");
   bindStatementImporter();
   bindPeriodBar();
+  // The recurring spends this app already learned, as standing one-tap buttons.
+  // The engine existed but was only reachable for a few seconds after a capture,
+  // on the Home page - this page had no way to log a spend at all.
+  bindSpendChips();
 
   await hydrateStateFromSupabase();
   loaded = true;
