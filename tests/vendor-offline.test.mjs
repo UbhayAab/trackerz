@@ -8,15 +8,28 @@ import { posix } from "node:path";
 
 const VENDOR_ROOT = "vendor/supabase-js";
 const ENTRY = `${VENDOR_ROOT}/@supabase/supabase-js@2.74.0/index.mjs`;
+const XLSX_ROOT = "vendor/xlsx";
+const XLSX_ENTRY = `${XLSX_ROOT}/xlsx@0.18.5/index.mjs`;
 
-const vendorFiles = readdirSync(VENDOR_ROOT, { recursive: true })
-  .map((f) => String(f).replaceAll("\\", "/"))
-  .filter((f) => f.endsWith(".mjs") || f.endsWith(".js"))
-  .map((f) => `${VENDOR_ROOT}/${f}`)
-  .sort();
+// Every shipped chunk under vendor/, whichever package it belongs to.
+// fetch-vendor.mjs is the crawler that PRODUCES this directory - a dev tool that
+// is never imported by the app, so it must not be precached.
+const CRAWLER = "vendor/fetch-vendor.mjs";
+function chunksUnder(root) {
+  return readdirSync(root, { recursive: true })
+    .map((f) => String(f).replaceAll("\\", "/"))
+    .filter((f) => f.endsWith(".mjs") || f.endsWith(".js"))
+    .map((f) => `${root}/${f}`)
+    .sort();
+}
 
-assert.ok(vendorFiles.length >= 10, `vendored graph looks truncated: ${vendorFiles.length} files`);
+const supabaseFiles = chunksUnder(VENDOR_ROOT);
+const xlsxFiles = chunksUnder(XLSX_ROOT);
+const vendorFiles = [...supabaseFiles, ...xlsxFiles].filter((f) => f !== CRAWLER).sort();
+
+assert.ok(supabaseFiles.length >= 10, `vendored supabase graph looks truncated: ${supabaseFiles.length} files`);
 assert.ok(existsSync(ENTRY), `missing vendored entry ${ENTRY}`);
+assert.ok(existsSync(XLSX_ENTRY), `missing vendored entry ${XLSX_ENTRY}`);
 
 // --- the vendored copy is the real library, not an esm.sh redirect stub ------
 const mod = await import(pathToFileURL(ENTRY).href);
@@ -68,4 +81,33 @@ const resolved = posix.normalize(posix.join("src/services", vendoredConst[1]));
 assert.equal(resolved, ENTRY, `VENDORED points at ${resolved}, which is not the vendored entry`);
 assert.ok(/await import\(/.test(clientSrc), "the library import must be dynamic");
 
-console.log(`vendor-offline tests passed: ${vendorFiles.length} chunks vendored + precached`);
+// --- same guarantee for the spreadsheet parser ------------------------------
+// src/pages/money.js pulls statement-import.js in transitively, so a STATIC
+// esm.sh import here killed the whole money page whenever that CDN was slow,
+// blocked or unreachable - the identical failure supabase-js was already fixed
+// for. sw.js explicitly refuses to cache esm.sh, so it was re-fetched over the
+// network on every money page load.
+const importSrc = readFileSync("src/services/statement-import.js", "utf8");
+assert.ok(
+  !/^\s*import\s[^\n]*esm\.sh/m.test(importSrc),
+  "statement-import.js still has a static esm.sh import - one CDN hiccup blanks the whole money page"
+);
+const xlsxConst = importSrc.match(/const VENDORED_XLSX = "([^"]+)"/);
+assert.ok(xlsxConst, "statement-import.js does not declare VENDORED_XLSX");
+const xlsxResolved = posix.normalize(posix.join("src/services", xlsxConst[1]));
+assert.equal(xlsxResolved, XLSX_ENTRY, `VENDORED_XLSX points at ${xlsxResolved}, not the vendored entry`);
+assert.ok(/await import\(/.test(importSrc), "the parser import must be dynamic");
+
+// It must load lazily, not at module scope: the 425KB parser is only needed when
+// a file is actually dropped.
+assert.ok(
+  /async function loadXlsx\(\)/.test(importSrc),
+  "the parser should load behind a call-time loader, not at import time"
+);
+
+// The vendored parser really is SheetJS, not an esm.sh redirect stub.
+const xlsxMod = await import(pathToFileURL(XLSX_ENTRY).href);
+assert.equal(typeof xlsxMod.read, "function", "vendored xlsx entry has no read export");
+assert.equal(typeof xlsxMod.utils?.sheet_to_json, "function", "vendored xlsx entry has no utils.sheet_to_json");
+
+console.log(`vendor-offline tests passed: ${vendorFiles.length} chunks vendored + precached (supabase-js + xlsx)`);

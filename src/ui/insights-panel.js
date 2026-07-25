@@ -1,4 +1,5 @@
-import { $ } from "../utils/dom.js";
+import { hydrateStateFromSupabase } from "../state/sync.js";
+import { showToast } from "./toast.js";
 
 function escapeHtml(value) {
   return String(value || "").replace(/[&<>"']/g, (c) => (
@@ -33,10 +34,29 @@ export function renderInsights(state) {
     : `<li class="insight insight-empty">No insights yet - add your first capture and the AI summary appears here.</li>`;
 }
 
+// The Refresh button used to grab the first insight line and prepend the literal
+// word "Refreshed: " to it. No fetch, no recompute. Tapping it three times gave
+// you "Refreshed: Refreshed: Refreshed: <insight>". It now does the thing it says.
 export function bindInsights() {
-  if (!document.querySelector("#refreshInsights")) return;
-  $("#refreshInsights").addEventListener("click", () => {
-    const first = document.querySelector("#insightList .insight-text");
-    if (first) first.textContent = `Refreshed: ${first.textContent}`;
+  const btn = document.querySelector("#refreshInsights");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    if (btn.disabled) return;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Refreshing…";
+    try {
+      // hydrateStateFromSupabase reports partial failures by RETURNING a status
+      // rather than throwing, so checking the result is the only way to know.
+      const status = await hydrateStateFromSupabase();
+      if (status && status.ok === false) {
+        showToast(`Refreshed, but some reads failed: ${status.failed?.[0] || "sync error"}`, { kind: "error", duration: 5000 });
+      }
+    } catch (err) {
+      showToast(`Couldn't refresh: ${err?.message || err}`, { kind: "error", duration: 5000 });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
   });
 }

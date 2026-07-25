@@ -81,8 +81,13 @@ function summarize({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics 
     range,
     spend: Math.round(spend),
     income: Math.round(income),
-    calories: Math.round(calories),
-    protein: Math.round(protein),
+    // Same rule as steps and sleep below: with no meals logged there is nothing
+    // measured, so this is null, not a confident 0. Rendering it as 0 made the
+    // Today tiles read "PROTEIN 0g v 100%" on a day with no food logged yet,
+    // while the charts three inches down the same page correctly showed a gap.
+    // A 100% drop against yesterday is a claim about a day that has not happened.
+    calories: mealCount ? Math.round(calories) : null,
+    protein: mealCount ? Math.round(protein) : null,
     mealCount,
     // null, not 0, when nothing was measured. Steps and sleep have no manual
     // entry path yet (they come from the watch), so 0 always meant "no data" -
@@ -94,6 +99,10 @@ function summarize({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics 
 }
 
 function pctDelta(curr, prev) {
+  // An unmeasured side has no percentage. Comparing null against yesterday used
+  // to produce a confident "-100%" for a day nothing had been logged on yet.
+  // null propagates and fmtDelta renders nothing at all.
+  if (curr === null || curr === undefined || prev === null || prev === undefined) return null;
   if (!prev) return curr ? 1 : 0;
   return Number(((curr - prev) / prev).toFixed(3));
 }

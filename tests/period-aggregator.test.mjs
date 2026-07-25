@@ -72,4 +72,38 @@ const aggLow = aggregatePeriods({ ledger, foodLogs: lowProtein, wellnessLogs, bo
 const insightsLow = composeInsights({ aggregates: aggLow, ledger, today });
 ok(insightsLow.some((i) => i.kind === "diet"));
 
+// ---- absent is not zero -----------------------------------------------------
+//
+// The Today tiles used to read "PROTEIN 0g v 100%" and "CALORIES 0 v 89%" on a
+// day with no food logged yet, while the line charts three inches below on the
+// same page correctly drew a gap. A 100% drop is a claim about a day that has
+// not happened. steps and sleepHoursAvg already had this guard; calories,
+// protein and their deltas were left out of it.
+{
+  const yesterdayFood = [
+    { calories_estimate: 900, protein_g: 44.8, occurred_at: isoLocal(2026, 5, 21, 13, 0) },
+  ];
+  const a = aggregatePeriods({ ledger: [], foodLogs: yesterdayFood, wellnessLogs: [], bodyMetrics: [], today });
+  eq(a.today.mealCount, 0, "no meals today");
+  eq(a.today.protein, null, "protein is null, not a measured 0, when nothing was logged");
+  eq(a.today.calories, null, "calories is null, not a measured 0, when nothing was logged");
+  eq(a.deltas.dod_protein, null, "no percentage against an unmeasured day");
+  eq(a.deltas.dod_calories, null, "no percentage against an unmeasured day");
+  // A no-spend day IS a measured fact - you were there and you spent nothing.
+  eq(a.today.spend, 0, "spend stays a real 0");
+
+  // With meals logged, real numbers come back.
+  const bothDays = yesterdayFood.concat([
+    { calories_estimate: 400, protein_g: 30, occurred_at: isoLocal(2026, 5, 22, 9, 0) },
+  ]);
+  const b = aggregatePeriods({ ledger: [], foodLogs: bothDays, wellnessLogs: [], bodyMetrics: [], today });
+  eq(b.today.protein, 30, "a logged day reports its real protein");
+  eq(b.today.calories, 400);
+  ok(typeof b.deltas.dod_protein === "number", "a real comparison still produces a number");
+
+  // The protein warning must not fire on a day with nothing logged.
+  const noFood = composeInsights({ aggregates: a, budgets: [], ledger: [], today });
+  ok(!noFood.some((i) => i.kind === "diet" && /Protein at/.test(i.text)), "no protein claim without food rows");
+}
+
 console.log(`period-aggregator tests passed: ${n} assertions`);

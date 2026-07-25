@@ -222,6 +222,12 @@ export async function hydrateStateFromSupabase() {
       state.metrics.caloriesTarget = dietTargets.calories;
       state.metrics.caloriesLeft = Math.max(0, Math.round(dietTargets.calories - caloriesToday));
       state.metrics.mealsToday = foods.filter((r) => isSameLocalDay(r.occurred_at)).length;
+      // Days out of the last 7 with at least one food row. This card previously
+      // rendered a hard 0 forever: state.metrics.adherence was initialised to 0
+      // and mutated in exactly one place (agent-runner, during a capture), which
+      // the Diet page never imports - so it asserted 0 no matter how much had
+      // been logged. Nothing computed it, so it could only ever be wrong.
+      state.metrics.loggedDays7 = countLoggedDays(foods, 7);
       // Partial failure is still failure - say which parts, so an empty panel
       // is never mistaken for an empty day.
       state.syncError = failed.length
@@ -267,6 +273,21 @@ function isSameLocalDay(iso, now = new Date()) {
   if (!iso) return false;
   const d = new Date(iso);
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+// Distinct LOCAL days in the trailing window that have at least one row. Days,
+// not rows: five meals on one day is one day logged.
+function countLoggedDays(rows, days = 7, now = new Date()) {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  start.setDate(start.getDate() - (days - 1));
+  const seen = new Set();
+  for (const r of rows || []) {
+    if (!r?.occurred_at) continue;
+    const d = new Date(r.occurred_at);
+    if (Number.isNaN(d.getTime()) || d < start) continue;
+    seen.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+  }
+  return seen.size;
 }
 
 // Spend-to-date + period length for a budget's pace/forecast, matching its
