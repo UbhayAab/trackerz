@@ -1,7 +1,7 @@
 // Verifies the double-work fixes in the REAL signed-in app, on a phone viewport:
 //   - the repeat-meal chips render from the user's own history and are tappable
 //   - water has exactly ONE entry control per page (the old bug was two)
-//   - the diet page can log water at all (it previously could not)
+//   - the home day-plan can log water at all (it previously could not)
 //
 // Usage: node scripts/smoke-repeat.mjs [baseUrl]
 import { chromium } from "playwright";
@@ -74,7 +74,6 @@ async function inspect(url, label) {
 }
 
 const home = await inspect(`${BASE}/index.html`, "HOME");
-const diet = await inspect(`${BASE}/pages/diet.html`, "DIET");
 const settings = await inspect(`${BASE}/pages/settings.html`, "SETTINGS");
 
 // Tap the first chip and confirm it logs without a model call.
@@ -100,10 +99,10 @@ if (wantTap && home.chips.length) {
 console.log("\n=== VERDICT ===");
 const problems = [];
 if (home.waterAdders.length !== 3) problems.push(`home has ${home.waterAdders.length} water buttons, expected the 3 steppers`);
-if (diet.waterAdders.length !== 3) problems.push(`diet has ${diet.waterAdders.length} water buttons, expected the 3 steppers`);
+if (home.waterAdders.length !== 3) problems.push(`home has ${home.waterAdders.length} water buttons, expected the 3 steppers`);
 if (home.waterCheckboxes) problems.push(`home still renders ${home.waterCheckboxes} water checklist slots`);
-if (diet.waterCheckboxes) problems.push(`diet still renders ${diet.waterCheckboxes} water checklist slots`);
-if (home.horizontalOverflow || diet.horizontalOverflow) problems.push("horizontal overflow on a phone width");
+if (home.waterCheckboxes) problems.push(`home still renders ${home.waterCheckboxes} water checklist slots`);
+if (home.horizontalOverflow) problems.push("horizontal overflow on a phone width");
 // The two browser-impossible features must offer a way to get the app that can do them.
 if (settings.apkLinks.length < 2) {
   problems.push(`settings shows ${settings.apkLinks.length} APK download links, expected 2 (spend capture + health)`);

@@ -7,7 +7,7 @@ import { chromium } from "playwright";
 
 const BASE = process.argv[2] || "http://127.0.0.1:4173/";
 const PAGES = [
-  "index.html", "pages/money.html", "pages/diet.html", "pages/gym.html",
+  "index.html", "pages/money.html", "pages/gym.html",
   "pages/analytics.html", "pages/settings.html", "pages/diagnostics.html", "pages/audit.html",
 ];
 
@@ -67,10 +67,10 @@ await noJs.close();
 const ctx3 = await browser.newContext({ viewport: { width: 414, height: 780 } });
 const page3 = await ctx3.newPage();
 await page3.goto(BASE + "pages/money.html", { waitUntil: "domcontentloaded" });
-await page3.click('#bottomNav a.nav-item:has-text("Diet")');
+await page3.click('#bottomNav a.nav-item:has-text("Gym")');
 await page3.waitForLoadState("domcontentloaded");
-const landed = new URL(page3.url()).pathname.endsWith("/pages/diet.html");
-console.log(`\n${landed ? "PASS" : "FAIL"}  tapping Diet from Money navigates -> ${page3.url()}`);
+const landed = new URL(page3.url()).pathname.endsWith("/pages/gym.html");
+console.log(`\n${landed ? "PASS" : "FAIL"}  tapping Gym from Money navigates -> ${page3.url()}`);
 if (!landed) failures += 1;
 await ctx3.close();
 

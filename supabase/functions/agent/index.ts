@@ -1032,11 +1032,63 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
     });
   }
 
+  // 3d. A note must never restate a row we just wrote. Mirror of
+  //     dropRestatingNotes() in lib/fan-out-expander.mjs.
+  out = dropRestatingNotes(out, ev);
+
   // 4. Once anything real was captured, drop the now-stale review request (unless
   //    it's a genuine safety flag). This is what clears "needs a look".
   const hasWrite = out.some((tc) => typeof tc?.name === "string" && tc.name.startsWith("create_"));
   if (hasWrite) out = out.filter((tc) => tc?.name !== "request_user_review" || isSafetyReview(tc));
   return out;
+}
+
+// -------- note de-duplication (mirror of lib/fan-out-expander.mjs) --------
+// `create_note_candidate` is the model's fallback for "this is prose, not an
+// event". When salvage turns the SAME sentence into a real domain row, keeping
+// the note files one event in two places. Every note in the live database was
+// exactly this - a gym statement or a food manifest that also became a
+// workout_log / food_log one second later.
+const DOMAIN_WRITES = new Set([
+  "create_food_log_candidate", "create_expense_candidate", "create_workout_log_candidate",
+  "create_sleep_candidate", "create_hydration_candidate", "create_body_metric_candidate",
+  "create_wellness_note_candidate",
+]);
+const NOTE_FILLER = new Set([
+  "a", "an", "and", "the", "to", "too", "of", "for", "in", "on", "at", "is", "was", "am", "i",
+  "my", "me", "it", "so", "will", "did", "do", "today", "also", "just", "some", "bro", "yeah",
+]);
+const RESTATES_CAPTURE = 0.8;
+const CARRIES_OWN_CONTENT = 0.3;
+
+function noteWordBag(s: string): Set<string> {
+  return new Set(
+    String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/)
+      .filter((w) => w && !NOTE_FILLER.has(w)),
+  );
+}
+
+function dropRestatingNotes(toolCalls: ToolCall[], evidence: string): ToolCall[] {
+  const calls = [...toolCalls];
+  if (!calls.some((tc) => DOMAIN_WRITES.has(tc?.name))) return calls;
+  const evBag = noteWordBag(evidence);
+  if (!evBag.size) return calls;
+
+  return calls.filter((tc) => {
+    if (tc?.name !== "create_note_candidate") return true;
+    const noteBag = noteWordBag((tc.arguments as any)?.body);
+    if (!noteBag.size) return false;
+
+    let shared = 0;
+    for (const w of evBag) if (noteBag.has(w)) shared += 1;
+    const coverage = shared / evBag.size;
+
+    let novel = 0;
+    for (const w of noteBag) if (!evBag.has(w)) novel += 1;
+    const ownContent = novel / noteBag.size;
+
+    return !(coverage >= RESTATES_CAPTURE && ownContent <= CARRIES_OWN_CONTENT);
+  });
 }
 
 

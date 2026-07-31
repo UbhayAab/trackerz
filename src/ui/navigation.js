@@ -12,12 +12,18 @@ import { APP_VERSION } from "../version.js";
 // page where a module failed to load - pages/money.html still pulls XLSX from
 // esm.sh at import time - the bottom bar simply never showed up. Chrome you
 // navigate with must not depend on data code succeeding.
+// Five tabs. There was a sixth, Diet, and it was the same screen as Home: both
+// mounted #quickActions, #mealChips, #dietPlan and #insightList from the same
+// modules, so the day plan, the water/gym/sleep row and the repeat-a-meal chips
+// rendered identically on each. Home is the capture entry point and the PWA
+// start_url, so Diet is the one that went; its two genuinely distinct panels
+// moved to where they belong (macro intelligence -> Stats, calorie and protein
+// targets -> Settings, next to every other budget).
 export const NAV_TABS = [
   { id: "home", label: "Home", href: "index.html" },
   { id: "money", label: "Money", href: "pages/money.html" },
-  { id: "diet", label: "Diet", href: "pages/diet.html" },
   { id: "gym", label: "Gym", href: "pages/gym.html" },
-  // "Stats" not "Analytics": six tabs have to fit a 320px phone without wrapping.
+  // "Stats" not "Analytics": the tabs have to fit a 320px phone without wrapping.
   { id: "analytics", label: "Stats", href: "pages/analytics.html" },
   { id: "settings", label: "Settings", href: "pages/settings.html" },
 ];

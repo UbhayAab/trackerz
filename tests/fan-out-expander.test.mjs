@@ -337,4 +337,61 @@ for (const w of ["coke", "cola", "chips", "biscuit", "bread", "cheese", "whey", 
   assert.ok(!looksLikePurchase(order));
 }
 
+// ---------------------------------------------------------------------------
+// A note must never restate a row we just wrote.
+//
+// Every single note in the live database was a duplicate of a domain row built
+// from the same sentence. The 2026-07-23 trace is the cleanest example:
+//   05:26:18  create_note_candidate        {"body":"In gym, doing back, will do let press too"}
+//   05:26:19  create_workout_log_candidate {"status":"done", ...same text..., _auto_expanded}
+// The model emitted only a note, salvage correctly synthesized the workout, and
+// nobody dropped the note - so one training session was filed in two tables.
+// ---------------------------------------------------------------------------
+{
+  const noteOf = (body) => ({ name: "create_note_candidate", arguments: { body, kind: "note", domain: "gym" } });
+
+  // 1. The real trace. Salvage makes the workout; the note must not survive.
+  {
+    const ev = "In gym, doing back, will do let press too";
+    const r = expandToolCalls([noteOf(ev)], { evidence: ev, now: NOW });
+    assert.equal(has(r, "create_workout_log_candidate").length, 1, "salvage still logs the workout");
+    assert.equal(has(r, "create_note_candidate").length, 0, "the restating note is dropped");
+  }
+
+  // 2. A denial: skipped workout row, no note twin.
+  for (const ev of ["No gym today", "Did not go to gym today", "Did not go to gym bro"]) {
+    const r = expandToolCalls([noteOf(ev)], { evidence: ev, now: NOW });
+    const w = has(r, "create_workout_log_candidate");
+    assert.equal(w.length, 1, `"${ev}" records the skip`);
+    assert.equal(w[0].arguments.status, "skipped", `"${ev}" is a skip, not a workout`);
+    assert.equal(has(r, "create_note_candidate").length, 0, `"${ev}" leaves no note twin`);
+  }
+
+  // 3. The food manifest: food row, no note twin.
+  {
+    const ev = "Coca Cola Zero Sugar Soft Drink Can (300 ml) × 3";
+    const r = expandToolCalls([{ ...noteOf(ev), arguments: { body: ev, kind: "note", domain: "diet" } }], { evidence: ev, now: NOW });
+    assert.equal(has(r, "create_food_log_candidate").length, 1);
+    assert.equal(has(r, "create_note_candidate").length, 0, "the manifest note is dropped");
+  }
+
+  // 4. A note carrying its OWN content survives alongside the row it accompanies.
+  {
+    const ev = "Ate 6 boiled eggs. Also cancel the trainer session on Friday and renew the locker.";
+    const r = expandToolCalls([
+      { name: "create_food_log_candidate", arguments: { description: "6 boiled eggs", occurred_at: NOW } },
+      { name: "create_note_candidate", arguments: { body: "Cancel trainer session Friday, renew locker", kind: "todo", domain: "gym" } },
+    ], { evidence: ev, now: NOW });
+    assert.equal(has(r, "create_food_log_candidate").length, 1);
+    assert.equal(has(r, "create_note_candidate").length, 1, "a note with its own content is kept");
+  }
+
+  // 5. With no domain row at all, a note is the only record - never drop it.
+  {
+    const ev = "Remember the flat inspection is on the 14th";
+    const r = expandToolCalls([noteOf(ev)], { evidence: ev, now: NOW });
+    assert.equal(has(r, "create_note_candidate").length, 1, "a standalone note survives");
+  }
+}
+
 console.log("fan-out-expander tests passed");

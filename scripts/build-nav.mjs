@@ -17,7 +17,6 @@ import { navMarkup, activeIdForPath } from "../src/ui/navigation.js";
 export const NAV_PAGES = [
   { file: "index.html", base: "./" },
   { file: "pages/money.html", base: "../" },
-  { file: "pages/diet.html", base: "../" },
   { file: "pages/gym.html", base: "../" },
   { file: "pages/analytics.html", base: "../" },
   { file: "pages/settings.html", base: "../" },

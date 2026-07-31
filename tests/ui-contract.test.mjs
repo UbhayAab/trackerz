@@ -5,7 +5,6 @@ import { join } from "node:path";
 const html = readFileSync("index.html", "utf8");
 const pageHtml = [
   "pages/money.html",
-  "pages/diet.html",
   "pages/gym.html",
   "pages/analytics.html",
   "pages/settings.html",
@@ -81,7 +80,6 @@ assert.ok(srcFiles.length >= 12, `expected modular src scaffold, got ${srcFiles.
 for (const file of [
   "pages/capture.js",
   "pages/money.js",
-  "pages/diet.js",
   "pages/gym.js",
   "pages/analytics.js",
   "pages/settings.js",

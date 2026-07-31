@@ -156,12 +156,16 @@ export function renderWorkoutPanel(appState) {
   const weeklyTarget = goalDisplayValue(_state.budgets, "weekly_workouts");
   const weeklyDone = weeklyWorkoutCount(_state.workoutLogs);
 
+  // No day/name heading and no weekly-goal line here any more: this panel now
+  // sits inside the collapsed "Log exercise by exercise" section on the Gym
+  // page, directly under #gymToday, which already states the weekday, the
+  // prescribed workout and the weekly count. Repeating them read as two panels
+  // disagreeing about the same day.
   host.innerHTML = `
     <div class="panel-title-row">
-      <div><p class="eyebrow">Today · ${esc(plan.weekdayName)}</p><h2>${esc(plan.workout.name)}</h2></div>
+      <div><p class="eyebrow">${esc(plan.workout.name)}</p><h2>Per-exercise log</h2></div>
       <span class="metric-badge">${total ? `${doneCount}/${total} done` : plan.workout.kind}</span>
     </div>
-    ${weeklyTarget ? `<p class="muted small wl-weekly-goal">${weeklyDone} / ${weeklyTarget} workouts this week (last 7 days)</p>` : ""}
     <p class="muted small">${esc(plan.workout.rules || "")} · nudge the weight, tap ✓ to log.</p>
     <div class="wl-exercises">
       ${exercises.map((ex) => (ex.loggable ? exerciseCard(ex, view[ex.key], _state.workoutLogs) : noteCard(ex, view[ex.key]))).join("")}
