@@ -21,26 +21,28 @@
       </header>
 
       <main>
-        <section class="command-panel" id="workoutLog" aria-label="Workout log">
-          <div class="panel-title-row"><div><p class="eyebrow">Today</p><h2>Workout</h2></div></div>
-          <p class="muted small">Per-exercise sets/reps/weight logging lands here (P3).</p>
+        <!-- The two moves the owner actually makes: one tap for went/skipped,
+             and one line of text or voice for what was trained. -->
+        <section class="command-panel" id="gymToday" aria-label="Log today's training">
+          <p class="muted small">Loading today…</p>
         </section>
-        <section class="command-panel">
-          <div class="panel-title-row">
-            <div>
-              <p class="eyebrow">Goal</p>
-              <h2>Weekly workout target</h2>
-            </div>
-            <span class="status-pill muted">editable scaffold</span>
+
+        <!-- The nine-exercise checklist. Opt-in, not the front door: in a month
+             of real use it produced zero logged sets, because logging a session
+             through it is nine taps and a weight nudged up from 0 kg. -->
+        <details class="command-panel gym-detail" id="workoutLogWrap">
+          <summary>
+            <span class="gym-detail-title">Log exercise by exercise</span>
+            <span class="muted small">prescribed sets, reps and weights</span>
+          </summary>
+          <div id="workoutLog" aria-label="Workout log">
+            <p class="muted small">Loading the prescribed session…</p>
           </div>
-          <div class="budget-grid">
-            <label class="settings-row"><span>Workouts per week</span><input id="weeklyWorkoutsBudget" data-budget-kind="weekly_workouts" type="number" inputmode="numeric" /></label>
-          </div>
-          <p id="gymBudgetStatus" class="agent-detail">Counted over the trailing 7 days, not a calendar week.</p>
-        </section>
+        </details>
+
         <section class="command-panel" id="bodyComposition" aria-label="Body composition">
           <div class="panel-title-row"><div><p class="eyebrow">Body</p><h2>Composition</h2></div></div>
-          <p class="muted small">Weight, body-fat and circumference tracking lands here (P3).</p>
+          <p class="muted small">Loading…</p>
         </section>
         <section class="command-panel" id="gymInsights" aria-label="Gym intelligence">
           <div class="panel-title-row"><div><p class="eyebrow">Training</p><h2>Gym intelligence</h2></div></div>
@@ -48,7 +50,7 @@
         </section>
       </main>
 
-      <nav id="bottomNav" class="bottom-nav" aria-label="Main navigation"><a class="nav-item" href="../index.html">Home</a><a class="nav-item" href="../pages/money.html">Money</a><a class="nav-item" href="../pages/diet.html">Diet</a><a class="nav-item active" href="../pages/gym.html" aria-current="page">Gym</a><a class="nav-item" href="../pages/analytics.html">Stats</a><a class="nav-item" href="../pages/settings.html">Settings</a></nav>
+      <nav id="bottomNav" class="bottom-nav" aria-label="Main navigation"><a class="nav-item" href="../index.html">Home</a><a class="nav-item" href="../pages/money.html">Money</a><a class="nav-item active" href="../pages/gym.html" aria-current="page">Gym</a><a class="nav-item" href="../pages/analytics.html">Stats</a><a class="nav-item" href="../pages/settings.html">Settings</a></nav>
     </div>
 
     <script type="module" src="../src/pages/gym.js"></script>

@@ -3,6 +3,7 @@ import { renderNav } from "../ui/navigation.js";
 import { renderInsights } from "../ui/insights-panel.js";
 import { renderDashboards } from "../ui/dashboard-views.js";
 import { renderInsightCards } from "../ui/insight-cards.js";
+import { renderDietInsights } from "../ui/diet-insights-panel.js";
 import { subscribe } from "../state/app-state.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 
@@ -33,6 +34,8 @@ bootWithAuth(async () => {
       today: new Date(),
     });
     renderInsights(state);
+    // Inherited from the deleted Diet page - see NAV_TABS in ui/navigation.js.
+    renderDietInsights(state);
   });
   await hydrateStateFromSupabase();
 });

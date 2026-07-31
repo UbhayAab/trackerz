@@ -20,7 +20,6 @@ const APP_SHELL = [
   "./styles.css",
   "./manifest.webmanifest",
   "./pages/money.html",
-  "./pages/diet.html",
   "./pages/gym.html",
   "./pages/analytics.html",
   "./pages/settings.html",

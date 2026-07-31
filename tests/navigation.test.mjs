@@ -3,10 +3,17 @@ import { readFileSync } from "node:fs";
 import { navHtml, navMarkup, activeIdForPath, NAV_TABS } from "../src/ui/navigation.js";
 import { NAV_PAGES, expectedNavFor } from "../scripts/build-nav.mjs";
 
-// The six-tab bottom nav. Settings is a tab because it is where Health Connect
+// The five-tab bottom nav. Settings is a tab because it is where Health Connect
 // and notifications live, and it was previously reachable only via a small gear.
-assert.equal(NAV_TABS.length, 6);
-assert.deepEqual(NAV_TABS.map((t) => t.id), ["home", "money", "diet", "gym", "analytics", "settings"]);
+//
+// There used to be a sixth, Diet, and it rendered the same screen as Home: both
+// mounted #quickActions, #mealChips, #dietPlan and #insightList from the same
+// modules. Home is the capture entry point and the PWA start_url, so Diet went;
+// its distinct panels moved to Stats (macro intelligence) and Settings (calorie
+// and protein targets).
+assert.equal(NAV_TABS.length, 5);
+assert.deepEqual(NAV_TABS.map((t) => t.id), ["home", "money", "gym", "analytics", "settings"]);
+assert.ok(!NAV_TABS.some((t) => t.href.includes("diet")), "the Diet tab is gone");
 
 // From the site root, hrefs are "./…".
 const root = navHtml("home", "./");
@@ -20,6 +27,12 @@ const fromPages = navHtml("money", "../");
 assert.ok(fromPages.includes('href="../index.html"'), "pages home href -> root");
 assert.ok(fromPages.includes('href="../pages/money.html"'), "pages money href");
 assert.ok(/class="nav-item active"[^>]*>Money</.test(fromPages), "money is active in pages");
+
+// The deleted page must not linger in any page's static markup.
+for (const page of NAV_PAGES) {
+  assert.ok(!readFileSync(page.file, "utf8").includes("pages/diet.html"),
+    `${page.file} still links to the deleted Diet page`);
+}
 
 // Exactly one active tab, and the active one carries aria-current.
 assert.equal((fromPages.match(/nav-item active/g) || []).length, 1, "exactly one active");

@@ -7,7 +7,6 @@ const pages = [
   "/",
   "/pages/dashboard.html",
   "/pages/money.html",
-  "/pages/diet.html",
   "/pages/insights.html",
   "/pages/settings.html",
   "/share-target.html",

@@ -223,7 +223,9 @@ jobs:
             --title "Trackerz Android APK (latest)" \
             --notes "Build ${{ github.run_number }} (versionCode ${{ github.run_number }}) from ${{ github.sha }} on $(date -u +%Y-%m-%d).
 
-          Release-signed with the fixed Trackerz sideload key, so this installs straight over any build numbered 31 or higher. If you still have an APK from before build 31 on the phone, uninstall Trackerz once first - those were each signed with a different throwaway key and Android will refuse to replace them.
+          Release-signed with the fixed Trackerz sideload key (SHA-256 d4e36fdc...186a1a), so it installs straight over any other build carrying that key.
+
+          FIRST TIME ONLY: if a Trackerz built before 2026-07-31 is still on the phone, uninstall it before installing this one. Every build before then was signed with a different throwaway key and Android refuses to replace an app whose signature does not match. After this one, updates just work.
 
           After installing: Settings -> grant Health Connect, notification access and SMS. See docs/ANDROID-APK.md." \
             --latest

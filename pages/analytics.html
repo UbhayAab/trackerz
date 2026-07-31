@@ -31,13 +31,21 @@
           <div id="insightCards" class="insight-cards"></div>
         </section>
 
+        <!-- Moved here when the Diet page was deleted: that page was the
+             same screen as Home apart from this panel and the budget inputs
+             (which went to Settings). Macro intelligence is analysis, so Stats
+             is where it belongs. -->
+        <section id="dietInsights" aria-label="Diet coaching and macro intelligence">
+          <p class="muted small">Loading diet coach…</p>
+        </section>
+
         <section class="ai-panel" aria-labelledby="analytics-ai-title">
           <div class="panel-title-row"><div><p class="eyebrow">AI</p><h2 id="analytics-ai-title">Smart analysis</h2></div></div>
           <ul id="insightList" class="insight-list"></ul>
         </section>
       </main>
 
-      <nav id="bottomNav" class="bottom-nav" aria-label="Main navigation"><a class="nav-item" href="../index.html">Home</a><a class="nav-item" href="../pages/money.html">Money</a><a class="nav-item" href="../pages/diet.html">Diet</a><a class="nav-item" href="../pages/gym.html">Gym</a><a class="nav-item active" href="../pages/analytics.html" aria-current="page">Stats</a><a class="nav-item" href="../pages/settings.html">Settings</a></nav>
+      <nav id="bottomNav" class="bottom-nav" aria-label="Main navigation"><a class="nav-item" href="../index.html">Home</a><a class="nav-item" href="../pages/money.html">Money</a><a class="nav-item" href="../pages/gym.html">Gym</a><a class="nav-item active" href="../pages/analytics.html" aria-current="page">Stats</a><a class="nav-item" href="../pages/settings.html">Settings</a></nav>
     </div>
 
     <script type="module" src="../src/pages/analytics.js"></script>

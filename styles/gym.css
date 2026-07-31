@@ -101,3 +101,113 @@
 .wl-field { display: inline-flex; align-items: center; gap: 5px; }
 #bodyComposition .body-form input { flex: 1 1 90px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--panel-2); font: inherit; }
 #bodyComposition .body-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---------------------------------------------------------------------------
+   Gym page, top panel (#gymToday). Leads with the two moves that actually get
+   made: went/skipped, and one line of free text or voice. The nine-exercise
+   checklist below it is collapsed by default.
+   --------------------------------------------------------------------------- */
+
+.gt-answer {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0 6px;
+}
+
+.gt-btn {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.32));
+  background: var(--surface-2, rgba(125, 140, 132, 0.08));
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-base, 160ms) var(--ease-standard, ease),
+              border-color var(--dur-base, 160ms) var(--ease-standard, ease),
+              transform var(--dur-fast, 90ms) var(--ease-standard, ease);
+}
+.gt-btn:hover:not([disabled]) { border-color: var(--accent, #138a5b); }
+.gt-btn:active:not([disabled]) { transform: scale(0.98); }
+.gt-btn[disabled] { opacity: 0.45; cursor: default; }
+.gt-btn:focus-visible { outline: 2px solid var(--accent, #138a5b); outline-offset: 2px; }
+
+.gt-glyph { font-size: 1.05rem; line-height: 1; }
+
+/* Active = today's recorded answer, matching the Home quick-action row. */
+.gt-btn.is-active {
+  background: var(--accent, #138a5b);
+  border-color: var(--accent, #138a5b);
+  color: #fff;
+}
+.gt-btn.gt-no.is-active {
+  background: var(--muted, #7c8a82);
+  border-color: var(--muted, #7c8a82);
+}
+
+.gt-state { margin: 0 0 14px; }
+
+.gt-freetext textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.32));
+  background: var(--surface, transparent);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+.gt-freetext textarea:focus-visible {
+  outline: 2px solid var(--accent, #138a5b);
+  outline-offset: 1px;
+}
+
+.gt-actions {
+  display: flex;
+  gap: 10px;
+  margin: 10px 0 6px;
+}
+.gt-actions > button { flex: 1 1 auto; min-height: 44px; }
+.gt-voice.is-active {
+  background: var(--accent, #138a5b);
+  border-color: var(--accent, #138a5b);
+  color: #fff;
+}
+
+/* The collapsed per-exercise section. */
+.gym-detail > summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  list-style: none;
+  min-height: 44px;
+  justify-content: center;
+}
+.gym-detail > summary::-webkit-details-marker { display: none; }
+.gym-detail > summary::after {
+  content: "›";
+  position: absolute;
+  right: 20px;
+  font-size: 1.4rem;
+  line-height: 1;
+  opacity: 0.5;
+  transition: transform var(--dur-base, 160ms) var(--ease-standard, ease);
+}
+.gym-detail { position: relative; }
+.gym-detail[open] > summary::after { transform: rotate(90deg); }
+.gym-detail-title { font-weight: 600; }
+.gym-detail > summary:focus-visible { outline: 2px solid var(--accent, #138a5b); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gt-btn, .gym-detail > summary::after { transition: none; }
+  .gt-btn:active:not([disabled]) { transform: none; }
+}

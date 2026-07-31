@@ -72,7 +72,16 @@
               <h2>One place each - they sync everywhere</h2>
             </div>
           </div>
-          <p class="agent-detail">Spend caps live on the <a href="./money.html">Money</a> page; calorie &amp; protein goals live on the <a href="./diet.html">Diet</a> page. Each budget is a single value - edit it once and every screen (Home, trajectory, diet gauges, insights) updates. No duplicate copies to keep in sync.</p>
+          <!-- Calorie + protein targets moved here from the deleted Diet page.
+               They belong next to the other budgets rather than on a screen that
+               duplicated Home. -->
+          <div class="budget-grid">
+            <label class="settings-row"><span>Daily calories</span><input id="dailyCaloriesBudget" data-budget-kind="daily_calories" type="number" inputmode="numeric" /></label>
+            <label class="settings-row"><span>Daily protein (g)</span><input id="dailyProteinBudget" data-budget-kind="daily_protein" type="number" inputmode="numeric" /></label>
+            <label class="settings-row"><span>Weekly calorie budget</span><input id="weeklyCaloriesBudget" data-budget-kind="weekly_calories" type="number" inputmode="numeric" /></label>
+            <label class="settings-row"><span>Workouts per week</span><input id="weeklyWorkoutsBudget" data-budget-kind="weekly_workouts" type="number" inputmode="numeric" /></label>
+          </div>
+          <p class="agent-detail">Spend caps live on the <a href="./money.html">Money</a> page. Each budget is a single value - edit it once and every screen (Home's day plan, trajectory, Stats, insights) updates. No duplicate copies to keep in sync.</p>
         </section>
 
         <section class="command-panel">
@@ -136,7 +145,7 @@
         </section>
       </main>
 
-      <nav id="bottomNav" class="bottom-nav" aria-label="Main navigation"><a class="nav-item" href="../index.html">Home</a><a class="nav-item" href="../pages/money.html">Money</a><a class="nav-item" href="../pages/diet.html">Diet</a><a class="nav-item" href="../pages/gym.html">Gym</a><a class="nav-item" href="../pages/analytics.html">Stats</a><a class="nav-item active" href="../pages/settings.html" aria-current="page">Settings</a></nav>
+      <nav id="bottomNav" class="bottom-nav" aria-label="Main navigation"><a class="nav-item" href="../index.html">Home</a><a class="nav-item" href="../pages/money.html">Money</a><a class="nav-item" href="../pages/gym.html">Gym</a><a class="nav-item" href="../pages/analytics.html">Stats</a><a class="nav-item active" href="../pages/settings.html" aria-current="page">Settings</a></nav>
     </div>
 
     <script type="module" src="../src/pages/settings.js"></script>
