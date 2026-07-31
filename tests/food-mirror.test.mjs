@@ -76,6 +76,11 @@ for (const text of CORPUS) {
     `ITEM DRIFT on ${label}`,
   );
   assert.deepEqual([...b.unknown].sort(), [...a.unknown].sort(), `UNKNOWN DRIFT on ${label}`);
+  // recognized is what decides whether the table OVERRIDES the model, so the
+  // two copies disagreeing on it is as bad as disagreeing on a number.
+  assert.equal(b.recognized, a.recognized, `RECOGNIZED DRIFT on ${label}`);
+  assert.deepEqual([...(b.unscaled || [])].sort(), [...(a.unscaled || [])].sort(),
+    `UNSCALED DRIFT on ${label}`);
 }
 
 // Every alias in one table must exist in the other - a food added to lib but not
@@ -89,6 +94,27 @@ for (const text of CORPUS) {
   const extra = [...edgeAliases].filter((x) => !libAliases.has(x));
   assert.deepEqual({ missing, extra }, { missing: [], extra: [] },
     "FOOD_TABLE alias drift between lib/food-nutrition.mjs and the agent edge fn");
+}
+
+// Serving sizes must be mirrored too. gramsPerUnit/mlPerUnit is what turns
+// "500ml curd" into 300 kcal instead of a single 150g katori; a value present in
+// lib but missing from the edge would price the same meal two different ways
+// depending on whether the browser or the server did the arithmetic.
+{
+  const servingsOf = (text) => {
+    const out = {};
+    for (const m of text.matchAll(/\{ key: "([^"]+)",[^}]*?\}/g)) {
+      const g = /gramsPerUnit:\s*(\d+)/.exec(m[0]);
+      const ml = /mlPerUnit:\s*(\d+)/.exec(m[0]);
+      if (g || ml) out[m[1]] = `${g ? g[1] : "-"}/${ml ? ml[1] : "-"}`;
+    }
+    return out;
+  };
+  const libServ = servingsOf(readFileSync("lib/food-nutrition.mjs", "utf8"));
+  const edgeServ = servingsOf(block);
+  assert.deepEqual(edgeServ, libServ,
+    "gramsPerUnit/mlPerUnit drift between lib/food-nutrition.mjs and the agent edge fn");
+  assert.ok(libServ.curd, "curd must carry a serving size - a stated volume was being dropped");
 }
 
 rmSync(dir, { recursive: true, force: true });

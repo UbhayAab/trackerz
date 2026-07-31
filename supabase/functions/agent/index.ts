@@ -710,7 +710,7 @@ function parseToolCalls(raw: string) {
 // expense also yields a food_log at the same time when the model didn't emit one,
 // so "paid 240 zomato lunch" lands in BOTH money and diet.
 const FOOD_MERCHANTS = ["zomato", "swiggy", "blinkit", "zepto", "instamart", "dominos", "domino", "mcdonald", "kfc", "starbucks", "subway", "pizza", "burger", "cafe", "coffee", "restaurant", "dhaba", "bakery", "biryani", "faasos", "eatfit", "box8", "behrouz", "wow momo", "chaayos", "haldiram", "barbeque", "burger king", "pizza hut", "dunkin", "baskin", "chai point", "theobroma", "la pino", "eatsure", "freshmenu", "ovenstory", "taco bell", "third wave", "blue tokai", "keventers", "bikanervala", "nandos", "sweet truth"];
-const FOOD_WORDS = ["aam","almond","almonds","aloo","aloo gobi","aloo paratha","aloo parathas","aloo tikki burger","americano","amrood","anda","anda curry","ande","apple","apples","ate","badam","baked chips","banana","bananas","bhaat","bhaji","bhindi","bhujia","biryani","biscuit","biscuits","black coffee","black tea","boiled egg","boiled eggs","boiled rice","bread","bread slice","bread slices","breakfast","burger","butter","butter chicken","buttermilk","cafe latte","cake","cappuccino","chaas","chaat","chai","chana","chana masala","chapathi","chapati","chapatis","chawal","cheese","cheese slice","cheese slices","chhaas","chhole","chia","chia seeds","chicken","chicken 100g","chicken biryani","chicken breast","chicken burger","chicken curry","chicken gravy","chicken patty burger","chickpea curry","chips","choc chip cookie","choc chip cookies","choco bar","choco chip cookie","choco chip cookies","chocolate","chocolate bar","chocolate chip cookie","chocolate chip cookies","chole","coca cola zero","coffee","coke","coke zero","cola","cookie","cookies","cottage cheese","cream biscuit","curd","curry","daal","dahi","dairy milk","dal","dal bowl","dal fry","diet coke","diet pepsi","diet soda","diet soft drink","dinner","doodh","doodh chai","dosa","dosas","dumpling","dumplings","eaten","egg","egg curry","egg masala","egg white","egg whites","eggs","espresso","filter coffee","fish","fish curry","flax seeds","food","fruit","fruit chaat","fruit juice","fruit salad","fulka","granola","greek yoghurt","greek yogurt","green salad","green tea","grilled chicken","grilled sandwich","groundnut","guava","halwa","hung curd","idli","idlis","idly","instant noodles","jalebi","jam","jeera rice","juice","kebab","kela","kheer","khichdi","kidney beans","kulcha","lamb curry","lassi","latte","lays","lemon tea","lentils","lunch","macaroni","maggi","makhan","mango","mango juice","mangoes","marmalade","masala chai","masala dosa","masala dosas","mass gainer shake","mcchicken","meal","milk","milk coffee","milk tea","millet chip","millet chips","mixed veg","mixture","momo","momos","moongphali","muesli","mutton","mutton curry","naan","namkeen","noodles","oatmeal","oats","omelet","omelette","orange","orange juice","oranges","pakoda","pakora","palak","paneer","pao bhaji","parantha","paratha","parathas","pasta","pav bhaji","peanut butter","peanuts","pepsi","pepsi black","pepsi zero","phulka","phulkas","pizza","pizza slice","pizza slices","plain dosa","poha","poori","porridge","potato chips","potato paratha","prawns","protein milk shake","protein scoop","protein shake","pulao","pumpkin seeds","puri","ragi chip","ragi chips","rajma","ramen","rice","rice bowl","roasted peanuts","roti","rotis","rusk","sabji","sabzi","salad","salad bowl","sambar","sambhar","samosa","samosas","sandwich","santra","scoop of whey","scoop whey","seb","seed mix","seeds","sev","shake","shawarma","slice of bread","smoothie","snack","soda","soft drink","soup","south indian coffee","soya","soya beans","soya chunks","soyabean","soyabeans","soybean","soybeans","sprite","sprite zero","sprouts","steamed rice","sugar free cola","sunflower seeds","sweet lassi","tadka dal","tea","thali","thums up","thums up zero","tikka","toast","toast biscuit","tofu","toned milk","upma","uttapam","vada","vada pao","vada pav","veg biryani","veg burger","veg curry","veg salad","veg sandwich","vegetable biryani","wafers","whey","whey scoop","white rice","white sauce pasta","whites","whole egg","whole eggs","yoghurt","yogurt","zero sugar cola"];
+const FOOD_WORDS = ["aam","almond","almonds","aloo","aloo gobi","aloo paratha","aloo parathas","aloo tikki burger","americano","amrood","anda","anda curry","ande","apple","apples","ate","badam","baked chips","banana","bananas","bhaat","bhaji","bhindi","bhujia","biryani","biscuit","biscuits","black coffee","black tea","blueberries","blueberry","boiled egg","boiled eggs","boiled rice","bread","bread slice","bread slices","breakfast","burger","butter","butter chicken","buttermilk","cafe latte","cake","cappuccino","chaas","chaat","chai","chana","chana masala","chapathi","chapati","chapatis","chawal","cheese","cheese slice","cheese slices","chhaas","chhole","chia","chia seeds","chicken","chicken 100g","chicken biryani","chicken breast","chicken burger","chicken curry","chicken gravy","chicken patty burger","chickpea curry","chips","choc chip cookie","choc chip cookies","choco bar","choco chip cookie","choco chip cookies","chocolate","chocolate bar","chocolate chip cookie","chocolate chip cookies","chole","coca cola zero","coffee","coke","coke zero","cola","cookie","cookies","cottage cheese","cream biscuit","curd","curry","daal","dahi","dairy milk","dal","dal bowl","dal fry","diet coke","diet pepsi","diet soda","diet soft drink","dinner","doodh","doodh chai","dosa","dosas","dumpling","dumplings","eaten","egg","egg curry","egg masala","egg white","egg whites","eggs","espresso","filter coffee","fish","fish curry","flax seeds","food","fruit","fruit chaat","fruit juice","fruit salad","fulka","granola","greek yoghurt","greek yogurt","green salad","green tea","grilled chicken","grilled sandwich","groundnut","guava","halwa","hung curd","idli","idlis","idly","instant noodles","jalebi","jam","jeera rice","juice","kebab","kela","kheer","khichdi","kidney beans","kulcha","lamb curry","lassi","latte","lays","lemon tea","lentils","lunch","macaroni","maggi","makhan","mango","mango juice","mangoes","marmalade","masala chai","masala dosa","masala dosas","mass gainer shake","mcchicken","meal","milk","milk coffee","milk tea","millet chip","millet chips","mixed veg","mixture","momo","momos","moongphali","muesli","mutton","mutton curry","naan","namkeen","noodles","oatmeal","oats","omelet","omelette","orange","orange juice","oranges","pakoda","pakora","palak","paneer","pao bhaji","parantha","paratha","parathas","pasta","pav bhaji","peanut butter","peanuts","pepsi","pepsi black","pepsi zero","phulka","phulkas","pizza","pizza slice","pizza slices","plain dosa","poha","poori","porridge","potato chips","potato paratha","prawns","protein milk shake","protein scoop","protein shake","pulao","pumpkin seeds","puri","ragi chip","ragi chips","rajma","ramen","rice","rice bowl","roasted peanuts","roti","rotis","rusk","sabji","sabzi","salad","salad bowl","sambar","sambhar","samosa","samosas","sandwich","santra","scoop of whey","scoop whey","seb","seed mix","seeds","sev","shake","shawarma","slice of bread","smoothie","snack","soda","soft drink","soup","south indian coffee","soya","soya beans","soya chunks","soyabean","soyabeans","soybean","soybeans","sprite","sprite zero","sprouts","steamed rice","sugar free cola","sunflower seeds","sweet lassi","tadka dal","tea","thali","thums up","thums up zero","tikka","toast","toast biscuit","tofu","toned milk","upma","uttapam","vada","vada pao","vada pav","veg biryani","veg burger","veg curry","veg salad","veg sandwich","vegetable biryani","wafers","whey","whey scoop","white rice","white sauce pasta","whites","whole egg","whole eggs","yoghurt","yogurt","zero sugar cola"];
 // Words that name WHEN you ate, not WHAT - matching only these means no dish was
 // named, so no macros can ever be derived.
 const MEAL_SLOT_WORDS = new Set(["lunch", "dinner", "breakfast", "snack", "meal", "food", "ate", "eaten"]);
@@ -1722,12 +1722,12 @@ const FOOD_TABLE: any[] = [
   { key: "paratha", kind: "count", aliases: ["paratha", "parathas", "parantha"], calories: 240, protein_g: 5, carbs_g: 30, fat_g: 10 },
   { key: "aloo paratha", kind: "count", aliases: ["aloo paratha", "aloo parathas", "potato paratha"], calories: 320, protein_g: 6, carbs_g: 38, fat_g: 14 },
   { key: "rice", kind: "count", gramsPerUnit: 150, aliases: ["rice", "rice bowl", "steamed rice", "jeera rice", "white rice", "boiled rice", "chawal", "bhaat"], calories: 210, protein_g: 4, carbs_g: 45, fat_g: 0.5 },
-  { key: "dal", kind: "count", aliases: ["dal", "daal", "dal bowl", "lentils", "tadka dal", "dal fry"], calories: 150, protein_g: 9, carbs_g: 20, fat_g: 3 },
-  { key: "sabzi", kind: "count", aliases: ["sabzi", "sabji", "mixed veg", "veg curry", "bhindi", "aloo gobi"], calories: 130, protein_g: 4, carbs_g: 12, fat_g: 7 },
-  { key: "rajma", kind: "count", aliases: ["rajma", "kidney beans"], calories: 200, protein_g: 12, carbs_g: 30, fat_g: 4 },
-  { key: "chole", kind: "count", aliases: ["chole", "chana", "chickpea curry", "chana masala", "chhole"], calories: 220, protein_g: 11, carbs_g: 28, fat_g: 7 },
-  { key: "sambar", kind: "count", aliases: ["sambar", "sambhar"], calories: 140, protein_g: 6, carbs_g: 18, fat_g: 4 },
-  { key: "curd", kind: "count", aliases: ["curd", "dahi", "yogurt", "yoghurt"], calories: 90, protein_g: 5, carbs_g: 6, fat_g: 5 },
+  { key: "dal", kind: "count", gramsPerUnit: 150, aliases: ["dal", "daal", "dal bowl", "lentils", "tadka dal", "dal fry"], calories: 150, protein_g: 9, carbs_g: 20, fat_g: 3 },
+  { key: "sabzi", kind: "count", gramsPerUnit: 150, aliases: ["sabzi", "sabji", "mixed veg", "veg curry", "bhindi", "aloo gobi"], calories: 130, protein_g: 4, carbs_g: 12, fat_g: 7 },
+  { key: "rajma", kind: "count", gramsPerUnit: 150, aliases: ["rajma", "kidney beans"], calories: 200, protein_g: 12, carbs_g: 30, fat_g: 4 },
+  { key: "chole", kind: "count", gramsPerUnit: 150, aliases: ["chole", "chana", "chickpea curry", "chana masala", "chhole"], calories: 220, protein_g: 11, carbs_g: 28, fat_g: 7 },
+  { key: "sambar", kind: "count", gramsPerUnit: 150, aliases: ["sambar", "sambhar"], calories: 140, protein_g: 6, carbs_g: 18, fat_g: 4 },
+  { key: "curd", kind: "count", gramsPerUnit: 150, mlPerUnit: 150, aliases: ["curd", "dahi", "yogurt", "yoghurt"], calories: 90, protein_g: 5, carbs_g: 6, fat_g: 5 },
   { key: "greek yogurt", kind: "gram", per: 100, aliases: ["greek yogurt", "greek yoghurt", "hung curd"], calories: 60, protein_g: 10, carbs_g: 4, fat_g: 0.4 },
   { key: "paneer", kind: "gram", per: 100, aliases: ["paneer", "cottage cheese"], calories: 265, protein_g: 18, carbs_g: 4, fat_g: 20 },
   { key: "soybean", kind: "gram", per: 100, aliases: ["soybean", "soybeans", "soya", "soya beans", "soya chunks", "soyabean", "soyabeans"], calories: 172, protein_g: 18, carbs_g: 10, fat_g: 9 },
@@ -1735,36 +1735,37 @@ const FOOD_TABLE: any[] = [
   { key: "idli", kind: "count", aliases: ["idli", "idlis", "idly"], calories: 50, protein_g: 1.5, carbs_g: 10, fat_g: 0.3 },
   { key: "dosa", kind: "count", aliases: ["dosa", "dosas", "plain dosa"], calories: 170, protein_g: 4, carbs_g: 28, fat_g: 4 },
   { key: "masala dosa", kind: "count", aliases: ["masala dosa", "masala dosas"], calories: 260, protein_g: 5, carbs_g: 36, fat_g: 10 },
-  { key: "poha", kind: "count", aliases: ["poha"], calories: 250, protein_g: 5, carbs_g: 40, fat_g: 7 },
-  { key: "upma", kind: "count", aliases: ["upma"], calories: 230, protein_g: 5, carbs_g: 35, fat_g: 8 },
-  { key: "khichdi", kind: "count", aliases: ["khichdi"], calories: 290, protein_g: 11, carbs_g: 45, fat_g: 6 },
+  { key: "poha", kind: "count", gramsPerUnit: 150, aliases: ["poha"], calories: 250, protein_g: 5, carbs_g: 40, fat_g: 7 },
+  { key: "upma", kind: "count", gramsPerUnit: 150, aliases: ["upma"], calories: 230, protein_g: 5, carbs_g: 35, fat_g: 8 },
+  { key: "khichdi", kind: "count", gramsPerUnit: 250, aliases: ["khichdi"], calories: 290, protein_g: 11, carbs_g: 45, fat_g: 6 },
   { key: "biryani veg", kind: "count", aliases: ["veg biryani", "vegetable biryani"], calories: 480, protein_g: 12, carbs_g: 70, fat_g: 16 },
   { key: "biryani chicken", kind: "count", aliases: ["chicken biryani", "biryani"], calories: 600, protein_g: 28, carbs_g: 70, fat_g: 22 },
-  { key: "chicken curry", kind: "count", aliases: ["chicken curry", "chicken gravy", "butter chicken"], calories: 280, protein_g: 22, carbs_g: 6, fat_g: 18 },
+  { key: "chicken curry", kind: "count", gramsPerUnit: 150, aliases: ["chicken curry", "chicken gravy", "butter chicken"], calories: 280, protein_g: 22, carbs_g: 6, fat_g: 18 },
   { key: "chicken breast", kind: "gram", per: 100, aliases: ["chicken breast", "grilled chicken", "chicken 100g", "chicken"], calories: 165, protein_g: 31, carbs_g: 0, fat_g: 3.6 },
-  { key: "fish curry", kind: "count", aliases: ["fish curry", "fish"], calories: 230, protein_g: 20, carbs_g: 5, fat_g: 14 },
-  { key: "mutton curry", kind: "count", aliases: ["mutton curry", "mutton", "lamb curry"], calories: 300, protein_g: 22, carbs_g: 5, fat_g: 22 },
-  { key: "egg curry", kind: "count", aliases: ["egg curry", "anda curry", "egg masala"], calories: 230, protein_g: 14, carbs_g: 6, fat_g: 16 },
+  { key: "fish curry", kind: "count", gramsPerUnit: 150, aliases: ["fish curry", "fish"], calories: 230, protein_g: 20, carbs_g: 5, fat_g: 14 },
+  { key: "mutton curry", kind: "count", gramsPerUnit: 150, aliases: ["mutton curry", "mutton", "lamb curry"], calories: 300, protein_g: 22, carbs_g: 5, fat_g: 22 },
+  { key: "egg curry", kind: "count", gramsPerUnit: 150, aliases: ["egg curry", "anda curry", "egg masala"], calories: 230, protein_g: 14, carbs_g: 6, fat_g: 16 },
   { key: "samosa", kind: "count", aliases: ["samosa", "samosas"], calories: 130, protein_g: 3, carbs_g: 16, fat_g: 7 },
   { key: "pakora", kind: "count", aliases: ["pakora", "pakoda", "bhaji"], calories: 60, protein_g: 1.5, carbs_g: 5, fat_g: 4 },
   { key: "vada pav", kind: "count", aliases: ["vada pav", "vada pao"], calories: 290, protein_g: 7, carbs_g: 42, fat_g: 11 },
   { key: "pav bhaji", kind: "count", aliases: ["pav bhaji", "pao bhaji"], calories: 400, protein_g: 9, carbs_g: 48, fat_g: 18 },
-  { key: "salad", kind: "count", aliases: ["salad", "salad bowl", "veg salad", "green salad"], calories: 150, protein_g: 5, carbs_g: 15, fat_g: 7 },
-  { key: "fruit chaat", kind: "count", aliases: ["fruit chaat", "fruit salad"], calories: 110, protein_g: 1.5, carbs_g: 26, fat_g: 0.5 },
-  { key: "chai", kind: "count", aliases: ["chai", "tea", "masala chai", "milk tea", "doodh chai"], calories: 70, protein_g: 2, carbs_g: 8, fat_g: 3 },
-  { key: "black tea", kind: "count", aliases: ["black tea", "green tea", "lemon tea"], calories: 5, protein_g: 0, carbs_g: 1, fat_g: 0 },
-  { key: "coffee", kind: "count", aliases: ["coffee", "milk coffee", "cappuccino", "latte", "cafe latte"], calories: 60, protein_g: 2, carbs_g: 7, fat_g: 3 },
-  { key: "black coffee", kind: "count", aliases: ["black coffee", "americano", "espresso"], calories: 5, protein_g: 0.3, carbs_g: 1, fat_g: 0 },
-  { key: "filter coffee", kind: "count", aliases: ["filter coffee", "south indian coffee"], calories: 90, protein_g: 3, carbs_g: 9, fat_g: 4 },
+  { key: "salad", kind: "count", gramsPerUnit: 250, aliases: ["salad", "salad bowl", "veg salad", "green salad"], calories: 150, protein_g: 5, carbs_g: 15, fat_g: 7 },
+  { key: "fruit chaat", kind: "count", gramsPerUnit: 150, aliases: ["fruit chaat", "fruit salad"], calories: 110, protein_g: 1.5, carbs_g: 26, fat_g: 0.5 },
+  { key: "chai", kind: "count", mlPerUnit: 150, aliases: ["chai", "tea", "masala chai", "milk tea", "doodh chai"], calories: 70, protein_g: 2, carbs_g: 8, fat_g: 3 },
+  { key: "black tea", kind: "count", mlPerUnit: 150, aliases: ["black tea", "green tea", "lemon tea"], calories: 5, protein_g: 0, carbs_g: 1, fat_g: 0 },
+  { key: "coffee", kind: "count", mlPerUnit: 150, aliases: ["coffee", "milk coffee", "cappuccino", "latte", "cafe latte"], calories: 60, protein_g: 2, carbs_g: 7, fat_g: 3 },
+  { key: "black coffee", kind: "count", mlPerUnit: 150, aliases: ["black coffee", "americano", "espresso"], calories: 5, protein_g: 0.3, carbs_g: 1, fat_g: 0 },
+  { key: "filter coffee", kind: "count", mlPerUnit: 150, aliases: ["filter coffee", "south indian coffee"], calories: 90, protein_g: 3, carbs_g: 9, fat_g: 4 },
   { key: "milk", kind: "ml", per: 250, aliases: ["milk", "toned milk", "doodh"], calories: 140, protein_g: 8, carbs_g: 12, fat_g: 5 },
-  { key: "lassi", kind: "count", aliases: ["lassi", "sweet lassi"], calories: 220, protein_g: 7, carbs_g: 28, fat_g: 8 },
-  { key: "buttermilk", kind: "count", aliases: ["buttermilk", "chaas", "chhaas"], calories: 60, protein_g: 3, carbs_g: 6, fat_g: 2 },
-  { key: "juice", kind: "count", aliases: ["juice", "orange juice", "fruit juice", "mango juice"], calories: 130, protein_g: 1, carbs_g: 32, fat_g: 0.3 },
+  { key: "lassi", kind: "count", mlPerUnit: 250, aliases: ["lassi", "sweet lassi"], calories: 220, protein_g: 7, carbs_g: 28, fat_g: 8 },
+  { key: "buttermilk", kind: "count", mlPerUnit: 250, aliases: ["buttermilk", "chaas", "chhaas"], calories: 60, protein_g: 3, carbs_g: 6, fat_g: 2 },
+  { key: "juice", kind: "count", mlPerUnit: 250, aliases: ["juice", "orange juice", "fruit juice", "mango juice"], calories: 130, protein_g: 1, carbs_g: 32, fat_g: 0.3 },
   { key: "soft drink", kind: "count", aliases: ["coke", "pepsi", "soft drink", "cola", "soda", "sprite", "thums up"], calories: 140, protein_g: 0, carbs_g: 39, fat_g: 0 },
   { key: "diet soft drink", kind: "count", aliases: ["diet coke", "coke zero", "coca cola zero", "diet pepsi", "pepsi black", "pepsi zero", "sprite zero", "thums up zero", "zero sugar cola", "sugar free cola", "diet soda", "diet soft drink"], calories: 2, protein_g: 0, carbs_g: 0.5, fat_g: 0 },
-  { key: "protein shake", kind: "count", aliases: ["protein shake", "protein milk shake", "mass gainer shake"], calories: 250, protein_g: 35, carbs_g: 12, fat_g: 5 },
+  { key: "protein shake", kind: "count", mlPerUnit: 300, aliases: ["protein shake", "protein milk shake", "mass gainer shake"], calories: 250, protein_g: 35, carbs_g: 12, fat_g: 5 },
   { key: "whey scoop", kind: "count", aliases: ["whey", "whey scoop", "protein scoop", "scoop whey", "scoop of whey"], calories: 120, protein_g: 24, carbs_g: 3, fat_g: 1.5 },
   { key: "banana", kind: "count", aliases: ["banana", "bananas", "kela"], calories: 105, protein_g: 1.3, carbs_g: 27, fat_g: 0.3 },
+  { key: "blueberry", kind: "gram", per: 100, aliases: ["blueberry", "blueberries"], calories: 57, protein_g: 0.7, carbs_g: 14, fat_g: 0.3 },
   { key: "apple", kind: "count", aliases: ["apple", "apples", "seb"], calories: 95, protein_g: 0.5, carbs_g: 25, fat_g: 0.3 },
   { key: "guava", kind: "gram", per: 100, aliases: ["guava", "amrood"], calories: 68, protein_g: 2.6, carbs_g: 14, fat_g: 1 },
   { key: "orange", kind: "count", aliases: ["orange", "oranges", "santra"], calories: 62, protein_g: 1.2, carbs_g: 15, fat_g: 0.2 },
@@ -1892,6 +1893,17 @@ function foodMultiplier(item: any): number {
   if (item.ml != null) return e.mlPerUnit ? item.ml / e.mlPerUnit : 1;
   return item.qty || 1;
 }
+// Did we quietly throw away a stated weight or volume? Mirror of
+// unscaledQuantity() in lib/food-nutrition.mjs. A count food with no serving
+// size falls back to ONE serving whatever quantity was said, and because these
+// totals OVERRIDE the model when recognized is true, that guess would win.
+function foodUnscaledQuantity(item: any): boolean {
+  const e = item.entry;
+  if (e.kind !== "count") return false;
+  if (item.grams != null && !e.gramsPerUnit) return true;
+  if (item.ml != null && !e.mlPerUnit) return true;
+  return false;
+}
 function estimateNutrition(text: string): any {
   const r1 = (n: number) => Math.round(n * 10) / 10;
   const matchedByKey = new Map<string, any>();
@@ -1911,7 +1923,8 @@ function estimateNutrition(text: string): any {
       const key = it.entry.key;
       const mult = foodMultiplier(it);
       const prev = matchedByKey.get(key);
-      if (!prev) { matchedByKey.set(key, { entry: it.entry, mult, explicit: it.explicit }); continue; }
+      if (!prev) { matchedByKey.set(key, { entry: it.entry, mult, explicit: it.explicit, unscaled: foodUnscaledQuantity(it) }); continue; }
+      if (foodUnscaledQuantity(it)) prev.unscaled = true;
       if (it.explicit && prev.explicit) prev.mult += mult;
       else if (it.explicit && !prev.explicit) { prev.mult = mult; prev.explicit = true; }
     }
@@ -1923,7 +1936,9 @@ function estimateNutrition(text: string): any {
   }
   const items: any[] = [];
   const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
-  for (const { entry, mult } of matchedByKey.values()) {
+  const unscaled: string[] = [];
+  for (const { entry, mult, unscaled: isUnscaled } of matchedByKey.values()) {
+    if (isUnscaled) unscaled.push(entry.key);
     const row = { key: entry.key, qty: r1(mult), calories: r1(entry.calories * mult), protein_g: r1(entry.protein_g * mult), carbs_g: r1(entry.carbs_g * mult), fat_g: r1(entry.fat_g * mult) };
     items.push(row);
     totals.calories += row.calories; totals.protein_g += row.protein_g; totals.carbs_g += row.carbs_g; totals.fat_g += row.fat_g;
@@ -1931,7 +1946,7 @@ function estimateNutrition(text: string): any {
   totals.calories = Math.round(totals.calories); totals.protein_g = r1(totals.protein_g); totals.carbs_g = r1(totals.carbs_g); totals.fat_g = r1(totals.fat_g);
   const matchedCount = items.length;
   const unknownCount = unknown.size;
-  return { items, unknown: [...unknown], totals, recognized: matchedCount > 0 && unknownCount === 0, coverage: matchedCount + unknownCount === 0 ? 0 : r1(matchedCount / (matchedCount + unknownCount)) };
+  return { items, unknown: [...unknown], totals, unscaled, recognized: matchedCount > 0 && unknownCount === 0 && unscaled.length === 0, coverage: matchedCount + unknownCount === 0 ? 0 : r1(matchedCount / (matchedCount + unknownCount)) };
 }
 // Override the model's food macros with the deterministic table whenever the
 // description is fully recognized. Unusual foods (recognized=false) keep the
