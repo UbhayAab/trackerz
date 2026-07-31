@@ -15,3 +15,9 @@ supabase/.temp/
 
 # Capacitor staged web assets (generated in CI from the repo's own web files)
 www/
+
+# Android signing material. The repo is PUBLIC - the keystore lives in the
+# ANDROID_KEYSTORE_B64 repo secret and is written here by CI at build time.
+# Local backup: ~/.trackerz-signing/trackerz.jks
+android/trackerz.jks
+android/keystore.properties

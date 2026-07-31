@@ -99,7 +99,13 @@ export function buildInsightFeed({
   const oc = computeOpportunityCost(ledger);
   if (oc.count >= 3 && oc.gain !== 0) {
     const verb = oc.gain > 0 ? "would be worth" : "would be";
-    push("money", "info", `${fmtRupees(oc.totalSpent)} of discretionary spend ${verb} ${fmtRupees(oc.hypotheticalNow)} in Nifty 50 today (${oc.pct >= 0 ? "+" : ""}${oc.pct}%).`);
+    // computeOpportunityCost returns a `disclosure` string whenever part of the
+    // total post-dates the last Nifty close on file and is therefore held at
+    // cost. It documents itself as "render this verbatim wherever the headline
+    // number is shown" - and this caller used to drop it, so a figure covering
+    // only part of the spend read as if it covered all of it.
+    const tail = oc.disclosure ? ` ${oc.disclosure}` : "";
+    push("money", "info", `${fmtRupees(oc.totalSpent)} of discretionary spend ${verb} ${fmtRupees(oc.hypotheticalNow)} in Nifty 50 today (${oc.pct >= 0 ? "+" : ""}${oc.pct}%).${tail}`);
   }
 
   // Money - internal transfers + refunds detected (informational, no auto-edit).

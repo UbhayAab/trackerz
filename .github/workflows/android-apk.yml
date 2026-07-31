@@ -1,16 +1,29 @@
 name: Build Android APK
 
-# Builds a DEBUG-signed Trackerz APK entirely on the GitHub runner, so the
+# Builds a release-signed Trackerz APK entirely on the GitHub runner, so the
 # phone owner never installs Android Studio, the JDK, or the Android SDK.
-# They just open the finished run on their phone and download the artifact.
+# They just open the fixed download link on their phone.
 #
-# The APK is DEBUG-signed on purpose: a personal sideload does not need the
-# Play Store, and a debug signature installs fine after Android shows its
-# normal "install from unknown source" prompt. No signing secret is required,
-# so this workflow needs no repository secrets at all.
+# WHY THIS IS NOT A DEBUG BUILD ANY MORE
+# --------------------------------------
+# It used to run `assembleDebug` with no keystore. GitHub runners are
+# ephemeral, so the Android Gradle Plugin generated a fresh random
+# ~/.android/debug.keystore on every run. Measured on two builds six minutes
+# apart, the signer certificates were:
+#   run 30153825634 -> d8f0df6e68f854bc4ba98b834948569d486dc43ce8032fdb8e34dcea9384df40
+#   run 30154001974 -> 0078982d0160ca433f179c0385f85117e7796c8ca7ee1a25c8ef8c234220e7bc
+# Android keys an installed app on (applicationId, signing certificate), so the
+# second APK could never install over the first - "App not installed" with no
+# explanation. versionCode was also pinned at 1 forever, which independently
+# lets the installer refuse an upgrade.
 #
-# NOTE: This build is UNVERIFIED ON HARDWARE. CI proves the project assembles;
-# it cannot prove Health Connect reads work on a real OnePlus phone.
+# Now: one fixed keystore from ANDROID_KEYSTORE_B64, versionCode from the run
+# number, and a verification step that prints the signer fingerprint so a
+# regression is visible in the log instead of on the phone.
+#
+# NOTE: Health Connect reads remain UNVERIFIED ON HARDWARE. CI proves the
+# project assembles and is signed correctly; it cannot prove the OnePlus watch
+# bridge returns data.
 
 on:
   workflow_dispatch:
@@ -107,18 +120,76 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      # Debug build - no keystore, no secrets.
-      - name: Build debug APK
+      # Materialise the ONE stable signing key. Without it every build gets a
+      # different certificate and the APK cannot install over its predecessor.
+      - name: Install signing key
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_B64 is not set - falling back to a throwaway debug key."
+            echo "::warning::This APK will NOT install over an existing Trackerz. It will not be published."
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android/trackerz.jks
+          cat > android/keystore.properties <<EOF
+          storeFile=trackerz.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          echo "stable=true" >> "$GITHUB_OUTPUT"
+          echo "Stable keystore installed ($(wc -c < android/trackerz.jks) bytes)"
+
+      # Release build, signed with the stable key. versionCode comes from the
+      # run number so each build is a genuine upgrade, never a sidegrade.
+      - name: Build APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          TRACKERZ_VERSION_CODE: ${{ github.run_number }}
+          TRACKERZ_VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          if [ "${{ steps.signing.outputs.stable }}" = "true" ]; then
+            ./gradlew assembleRelease --no-daemon --stacktrace
+          else
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          fi
 
       - name: Locate APK
         id: apk
         run: |
-          APK=$(find android/app/build/outputs/apk/debug -name '*.apk' | head -n1)
+          DIR=release
+          [ "${{ steps.signing.outputs.stable }}" = "true" ] || DIR=debug
+          APK=$(find "android/app/build/outputs/apk/$DIR" -name '*.apk' | head -n1)
           test -n "$APK" || { echo "No APK produced"; exit 1; }
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "Built: $APK"
+
+      # Prove the signature. The whole bug was an unverified assumption about
+      # which key signed the artifact, so assert it in the log every time.
+      - name: Verify signature
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n1)
+          echo "Using $APKSIGNER"
+          "$APKSIGNER" verify --print-certs --verbose "${{ steps.apk.outputs.path }}" | tee /tmp/sig.txt
+          FP=$(grep -i 'Signer #1 certificate SHA-256 digest' /tmp/sig.txt | head -n1 | awk '{print $NF}')
+          echo "### APK signer SHA-256" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$FP" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.signing.outputs.stable }}" = "true" ]; then
+            EXPECTED=d4e36fdc74b185d1012dc1b18ad3e5d30fb15d458db288127a9f6c5d04186a1a
+            if [ "$FP" != "$EXPECTED" ]; then
+              echo "::error::Signer changed. Expected $EXPECTED, got $FP. This APK would not install over the previous one."
+              exit 1
+            fi
+            echo "Signer matches the pinned Trackerz sideload key."
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -131,9 +202,11 @@ jobs:
       # Refresh the fixed-URL "android-latest" release so the owner always has a
       # one-tap download link that points at the newest build - no digging
       # through workflow runs, no unzipping an artifact, no GitHub login on the
-      # phone. Only runs on main (a push or manual dispatch), not on forks/PRs.
+      # phone. Only runs on main, and only for a stably-signed APK: publishing a
+      # randomly-keyed build to the permanent link is what caused the original
+      # "cannot install" problem, so it is now refused outright.
       - name: Publish APK to the android-latest release
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.signing.outputs.stable == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -144,5 +217,9 @@ jobs:
           gh release delete android-latest --yes --cleanup-tag 2>/dev/null || true
           gh release create android-latest trackerz.apk \
             --title "Trackerz Android APK (latest)" \
-            --notes "Auto-built from ${{ github.sha }} on $(date -u +%Y-%m-%d). Sideload build; grant Health Connect in Settings after install. See docs/ANDROID-APK.md." \
+            --notes "Build ${{ github.run_number }} (versionCode ${{ github.run_number }}) from ${{ github.sha }} on $(date -u +%Y-%m-%d).
+
+          Release-signed with the fixed Trackerz sideload key, so this installs straight over any build numbered 31 or higher. If you still have an APK from before build 31 on the phone, uninstall Trackerz once first - those were each signed with a different throwaway key and Android will refuse to replace them.
+
+          After installing: Settings -> grant Health Connect, notification access and SMS. See docs/ANDROID-APK.md." \
             --latest
