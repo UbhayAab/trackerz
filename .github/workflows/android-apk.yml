@@ -177,7 +177,11 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n1)
           echo "Using $APKSIGNER"
           "$APKSIGNER" verify --print-certs --verbose "${{ steps.apk.outputs.path }}" | tee /tmp/sig.txt
-          FP=$(grep -i 'Signer #1 certificate SHA-256 digest' /tmp/sig.txt | head -n1 | awk '{print $NF}')
+          # build-tools 37 prints "V3.0 Signer: certificate SHA-256 digest: <hex>";
+          # older ones print "Signer #1 certificate SHA-256 digest: <hex>". Match
+          # on the part both share so a toolchain bump cannot fake a mismatch.
+          FP=$(grep -i 'certificate SHA-256 digest' /tmp/sig.txt | head -n1 | awk '{print $NF}')
+          test -n "$FP" || { echo "::error::Could not read a signer fingerprint from apksigner output."; exit 1; }
           echo "### APK signer SHA-256" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "$FP" >> "$GITHUB_STEP_SUMMARY"
