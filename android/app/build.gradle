@@ -36,15 +36,15 @@ android {
     signingConfigs {
         if (hasStableKey) {
             stable {
-                storeFile rootProject.file(keystoreProps["storeFile"])
-                storePassword keystoreProps["storePassword"]
-                keyAlias keystoreProps["keyAlias"]
-                keyPassword keystoreProps["keyPassword"]
+                storeFile = rootProject.file(keystoreProps["storeFile"])
+                storePassword = keystoreProps["storePassword"]
+                keyAlias = keystoreProps["keyAlias"]
+                keyPassword = keystoreProps["keyPassword"]
                 // v1 costs nothing at minSdk 26 and removes a whole class of
                 // OEM-installer refusals; v2/v3 are what modern Android checks.
-                enableV1Signing true
-                enableV2Signing true
-                enableV3Signing true
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
@@ -57,8 +57,13 @@ android {
         // so Android treats a newer APK as an upgrade instead of a sidegrade.
         // A stuck versionCode of 1 means the installer can legitimately refuse
         // to replace an installed copy.
-        versionCode (System.getenv("TRACKERZ_VERSION_CODE") ?: "1").toInteger()
-        versionName (System.getenv("TRACKERZ_VERSION_NAME") ?: "1.0")
+        //
+        // Assign with `=`. `versionCode (expr).toInteger()` parses in Groovy as
+        // versionCode(expr).toInteger() - the setter is handed a String and
+        // toInteger() runs on its null return, which fails with the wonderfully
+        // unhelpful "Value is null".
+        versionCode = Integer.parseInt(System.getenv("TRACKERZ_VERSION_CODE") ?: "1")
+        versionName = System.getenv("TRACKERZ_VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         aaptOptions {
