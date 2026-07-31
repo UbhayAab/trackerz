@@ -18,7 +18,7 @@
 // Usage: node scripts/repair-notes-2026-07-31.mjs [--apply]
 //        (defaults to a dry run that writes nothing)
 import { config as loadEnv } from "dotenv";
-import pg from "pg";
+import { connectDb } from "./db-connect.mjs";
 import { estimateNutrition } from "../lib/food-nutrition.mjs";
 
 loadEnv({ path: ".env.local" });
@@ -54,12 +54,7 @@ const LOST_MEALS = [
   ["2026-07-25 15:48", "500g curd, added in blender. Blueberries. Sugar"],
 ];
 
-const client = new pg.Client({
-  connectionString: String(process.env.SUPABASE_DB_URL || "").replace(/\?.*$/, ""),
-  ssl: { rejectUnauthorized: false },
-  statement_timeout: 60000,
-});
-await client.connect();
+const client = await connectDb();
 
 async function findNote(stamp, bodyStart) {
   const { rows } = await client.query(
