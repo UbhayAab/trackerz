@@ -41,6 +41,11 @@ const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const GEMINI_IN_USD = 0.075, GEMINI_OUT_USD = 0.3;
 const DEEPSEEK_IN_USD = 0.55, DEEPSEEK_OUT_USD = 2.2;
 
+// answer_question is the app answering out loud. A question used to route to
+// request_user_review tagged as a query, and that queue has never been
+// rendered in any surface since the app was built - four rows, all still
+// proposed. So every question the owner typed produced silence and zero rows.
+// It writes nothing; it carries the reply back to the capture screen.
 const ALLOWED_TOOLS = new Set([
   "create_expense_candidate",
   "create_income_candidate",
@@ -58,6 +63,7 @@ const ALLOWED_TOOLS = new Set([
   "link_duplicate_candidates",
   "update_plan_candidate",
   "request_user_review",
+  "answer_question",
 ]);
 
 // Tools that write a row to a domain table. EVERY member here MUST have an
@@ -126,7 +132,7 @@ Rules:
   • Credit card: "...HDFC Bank Credit Card ending 1234 for Rs 540.00 at SWIGGY on 21-06-2026..." -> create_expense_candidate { amount:540, payment_mode:"card", merchant:"SWIGGY", occurred_at, is_discretionary:true }.
   • UPI / account debit: "Rs.250.00 has been debited from a/c **1234 to VPA name@bank on 21-06-26. UPI Ref 412345678901." -> create_expense_candidate { amount:250, payment_mode:"upi", merchant:"name@bank or the payee name", occurred_at, tags:["412345678901"] }.
   Money LEAVING the account (debited/spent/paid/withdrawn) is an expense; money ARRIVING (credited/received/refund/salary) is income; movement between the user's OWN accounts is a transfer. Never count the "available balance" figure as the transaction amount.
-- LOG vs CHANGE-REQUEST - DECIDE THIS FIRST. If the user is COMMANDING a change to their setup, do NOT log an event and do NOT tick anything; ROUTE it: (a) changing the diet/gym PLAN or SCHEDULE ("change my gym today", "here is my new schedule", "make Thursdays rest", "for the next 4 Mondays I'll have paneer salad", "stop doing Workout A") -> update_plan_candidate, NEVER a workout/food log. (b) changing a BUDGET/TARGET ("raise my protein goal to 180", "set my spend cap to 40000", "adjust my calorie budget to 1800") -> set_target_candidate, NEVER a Rs 0 expense. (c) a QUESTION ("how much did I spend?", "am I on track?") -> request_user_review with reason "query". Only emit a food/workout/expense LOG when the user reports something that ACTUALLY HAPPENED.
+- LOG vs CHANGE-REQUEST - DECIDE THIS FIRST. If the user is COMMANDING a change to their setup, do NOT log an event and do NOT tick anything; ROUTE it: (a) changing the diet/gym PLAN or SCHEDULE ("change my gym today", "here is my new schedule", "make Thursdays rest", "for the next 4 Mondays I'll have paneer salad", "stop doing Workout A") -> update_plan_candidate, NEVER a workout/food log. (b) changing a BUDGET/TARGET ("raise my protein goal to 180", "set my spend cap to 40000", "adjust my calorie budget to 1800") -> set_target_candidate, NEVER a Rs 0 expense. (c) a QUESTION or a request to look at something ("how much did I spend?", "am I on track?", "wtf happened", "look at the cal numbers you pushed", "why is this wrong?") -> answer_question. ANSWER IT, in one or two short sentences, using ONLY the numbers in the memory context above and the user's own words. Put the reply in the answer field, echo what you understood the question to be in the question field, and name the figures you used in the basis field. If the context does not contain what is needed, say exactly that ("I do not have your step data") - NEVER estimate, and never answer from general knowledge about nutrition or finance. Write with plain hyphens only - never an em dash or en dash. Do not also emit request_user_review for a question. Only emit a food/workout/expense LOG when the user reports something that ACTUALLY HAPPENED.
 - MADE vs BOUGHT vs ATE (cost decides the money side): "bought paneer and cheese for 50" -> expense ONLY (purchased, not eaten). "made paneer sabzi which costed me 50" -> BOTH a food_log AND an expense of 50. "just made paneer sabzi" (NO amount stated) -> food_log ONLY, NO expense (never invent a cost). Cooking/eating is a food_log; a stated price is the only thing that adds an expense.
 - PLAN UPDATE (FULL): if the user pastes a whole diet/gym PLAN, or replaces it wholesale ("update my diet", "new plan from gpt", "here is my new schedule"), emit update_plan_candidate { kind:"diet"|"gym", scope:"permanent" for a lasting change OR a "YYYY-MM-DD" date for a one-day temporary change OR a comma-separated list of dates "YYYY-MM-DD,YYYY-MM-DD,..." for a recurring temporary change ("next 4 Mondays and Wednesdays" -> the 8 concrete dates, computed from the current time), summary: one short line, payload: the FULL parsed plan as JSON. For diet payload use { meals:[{time,slot,name,detail,calories,protein_g,carbs_g,fat_g}], targets:{calories,protein_g,carbs_g,fat_g} }; for gym use { name,kind,duration_min,items:[...] } or { days:{Mon:{...},Tue:{...}} }. A plan is a TEMPLATE - do NOT also emit individual food/expense/workout log events for it.
 - PLAN UPDATE (ONE-SHOT DELTA): for a SMALL change to an existing plan - add / drop / swap ONE meal or exercise, or nudge a day's target - do NOT re-send the whole plan. Emit update_plan_candidate with a DELTA payload carrying an "op" (the app folds it onto the current plan): diet ops { op:"add_meal", meal:{name,slot,time,calories,protein_g,carbs_g,fat_g} } | { op:"remove_meal", match:"banana" | a slot } | { op:"replace_meal", match, meal:{...} } | { op:"set_targets", targets:{calories,protein_g,...} }; gym ops { op:"replace_workout", workout:{name,kind,items:[...],duration_min} } | { op:"add_exercise", exercise:"Pull-ups 3×8" } | { op:"remove_exercise", match:"bench" } | { op:"replace_exercise", match:"bench", exercise:"Incline DB press 2×10" } (swap ONE exercise in place, keep the rest). Examples: "add a salad bowl at 4pm to my diet" -> { kind:"diet", scope: today's date, payload:{ op:"add_meal", meal:{name:"Salad bowl", slot:"snack", time:"16:00", ...} } }; "swap today's leg day for cardio" -> { kind:"gym", scope: today, payload:{ op:"replace_workout", workout:{name:"Cardio", kind:"cardio", items:["30 min treadmill"]} } }; "drop the banana snack today" -> { op:"remove_meal", match:"banana" }. IMPORTANT: delta ops are ONLY for a date scope (a specific date / date list). A PERMANENT change must be a FULL payload (send the whole plan), never a delta.
@@ -238,6 +244,7 @@ const TOOL_SCHEMAS: Record<string, Schema> = {
   create_wellness_note_candidate: { required: ["note", "occurred_at"], types: { note: "string", mood_score: "number", energy_score: "number", stress_score: "number", occurred_at: "iso" }, ranges: { mood_score: [1, 10], energy_score: [1, 10], stress_score: [1, 10] } },
   link_duplicate_candidates: { required: ["candidate_a", "candidate_b"], types: { candidate_a: "string", candidate_b: "string", reason: "string" } },
   request_user_review: { required: ["reason"], types: { reason: "string", raw_input: "string" } },
+  answer_question: { required: ["answer"], types: { answer: "string", question: "string", basis: "string" } },
   update_plan_candidate: { required: ["kind"], types: { kind: "string", scope: "string", summary: "string", payload: "object" }, enums: { kind: ["diet", "gym"] } },
   create_note_candidate: { required: ["body"], types: { body: "string", kind: "string", domain: "string", status: "string", due_on: "string", occurred_at: "iso" }, enums: { kind: ["note", "aspiration", "todo", "idea", null], domain: ["money", "diet", "gym", "wellness", "general", null], status: ["open", "done", "archived", null] } },
   set_target_candidate: { required: ["kind", "amount"], types: { kind: "string", amount: "positive_number", reason: "string" }, enums: { kind: ["monthly_spend", "weekly_spend", "food_cap", "daily_calories", "daily_protein", "weekly_calories", "weekly_workouts"] } },
@@ -588,6 +595,73 @@ async function runBrain(combinedText: string, mode: string, contextBlock = "") {
   };
 }
 
+// -------- answering a question --------
+//
+// A dedicated, single-purpose call. Teaching the main SYSTEM_PROMPT to answer
+// questions was not reliable: measured against the deployed function, a question
+// came back with an EMPTY tool_calls array roughly a third of the time - valid
+// JSON, no rejection, nothing to show. The rule was one clause inside a hundred
+// lines of logging instructions, and the model kept concluding "nothing to log,
+// so nothing to emit".
+//
+// One short prompt with one job does not have that failure mode. It is only
+// invoked when the capture is a question AND the main pass produced no answer,
+// so it costs nothing on the logging path.
+const ANSWER_SYSTEM = [
+  "You answer the user's question about their own life-tracker data.",
+  "You are given a MEMORY CONTEXT block of real figures from their database.",
+  "Rules, in order of importance:",
+  "1. Use ONLY numbers that appear in the memory context. Never estimate, never",
+  "   compute a figure the context does not support, and never answer from",
+  "   general knowledge about nutrition, fitness or finance.",
+  "2. If the context does not contain what is needed, say so plainly and name",
+  "   what is missing. That is a correct answer, not a failure.",
+  "3. Two or three short sentences. Direct address. Plain text.",
+  "4. Currency is INR - write amounts as Rs.",
+  "5. Plain hyphens only. Never an em dash or en dash.",
+  'Return ONLY JSON: { "answer": "...", "basis": "which context figures you used" }',
+].join("\n");
+
+async function answerQuestion(question: string, contextBlock: string) {
+  const apiKey = await resolveAnySecret(["DEEPSEEK_API_KEY", "NVIDIA_API_KEY"]);
+  if (!apiKey) return null;
+  const url = (await resolveSecretOptional("DEEPSEEK_BASE_URL")) || DEEPSEEK_URL;
+  const user = [
+    contextBlock ? `MEMORY CONTEXT:\n${contextBlock}` : "MEMORY CONTEXT: (empty - you have no data about this user)",
+    "",
+    `QUESTION: ${question}`,
+  ].join("\n");
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL, // the strict-JSON chat model, not the reasoner
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: ANSWER_SYSTEM },
+          { role: "user", content: user },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const raw = String(json.choices?.[0]?.message?.content ?? "");
+    const parsed = JSON.parse(extractJsonObject(raw) || raw || "{}");
+    const answer = String(parsed.answer || "").trim();
+    if (!answer) return null;
+    return {
+      answer,
+      basis: String(parsed.basis || "").trim(),
+      promptTokens: json.usage?.prompt_tokens || 0,
+      outputTokens: json.usage?.completion_tokens || 0,
+    };
+  } catch {
+    return null; // the caller falls back to an honest "could not answer"
+  }
+}
+
 // Fallback brain - Gemini reasons over text only (evidence is already extracted).
 async function geminiReason(combinedText: string, mode: string, contextBlock = "") {
   const apiKey = await resolveSecret("GEMINI_API_KEY");
@@ -858,6 +932,17 @@ const LOG_OVERRIDE_CUES = ["also i ate", "also had", "also did", "i ate", "i jus
 function routerHasAny(t: string, words: string[]): boolean {
   return words.some((w) => (/[^a-z0-9]/.test(w) ? t.includes(w) : new RegExp(`\\b${w}\\b`).test(t)));
 }
+// Mirror of classifyRequestKind(text) === "query" in lib/request-router.mjs:
+// budget beats plan, plan beats query. A capture that is only a question must
+// get an ANSWER, never a silently filed review row.
+function isQuestion(text = ""): boolean {
+  const t = String(text || "").toLowerCase();
+  if (!t.trim()) return false;
+  if (routerHasAny(t, BUDGET_CHANGE_CUES)) return false;
+  if (routerHasAny(t, PLAN_CHANGE_CUES)) return false;
+  return routerHasAny(t, QUERY_CUES);
+}
+
 function isChangeRequest(text = ""): boolean {
   const t = String(text || "").toLowerCase();
   if (!t.trim()) return false;
@@ -1875,10 +1960,35 @@ function recomputeFoodMacros(toolCalls: ToolCall[]): ToolCall[] {
 // Assembles the compact, size-bounded memory block injected into the reasoning
 // call. Aggregated digest only (O(1) in history). Trusted background, never
 // evidence. Kept under ~1800 chars so it stays well within the daily cost cap.
+// Flow types that count as money actually spent. Derived from FLOW_TYPES in
+// lib/txn-semantics.mjs (the entries with countsAsSpending: true); the rest -
+// card bills, investments, self-transfers, loan principal - are movements, not
+// spending. Keep in step when a flow type is added there.
+// Diet-scaffold defaults, mirrored from MACRO_TARGETS in lib/diet-scaffold.mjs.
+// These are the targets in force when no budget row is saved - which is the
+// owner's actual situation, so they are what an answer about "my protein
+// target" has to quote.
+const SCAFFOLD_DAILY_PROTEIN_G = 162;
+const SCAFFOLD_DAILY_CALORIES = 2000;
+
+const SPENDING_FLOW_TYPES = new Set(["spend", "p2p_out", "loan_emi", "bank_charge", "cash", "unknown_out"]);
+
 function buildContextBlock(input: any, maxChars = 1800): string {
   const lines: string[] = [];
   const p = input.profile || {};
   if (p.display_name || p.timezone) lines.push(`PROFILE: ${[p.display_name, p.timezone, p.currency].filter(Boolean).join(" · ")}`);
+  // The target actually in force, before the saved-budget list. TARGETS below
+  // only shows SAVED rows, and the owner has never saved a daily_protein one -
+  // the 162g every gauge renders comes from the diet scaffold. Without this
+  // line the model answered "I don't have your daily protein target in memory"
+  // to a question the app could obviously answer.
+  const et = input.effectiveTargets;
+  if (et) {
+    const bits: string[] = [];
+    if (Number.isFinite(Number(et.protein_g))) bits.push(`${Math.round(Number(et.protein_g))}g protein/day`);
+    if (Number.isFinite(Number(et.calories))) bits.push(`${Math.round(Number(et.calories))} kcal/day`);
+    if (bits.length) lines.push(`DAILY TARGET (in force now): ${bits.join(", ")}`);
+  }
   const budgets = (input.budgets || []).filter((b: any) => b?.kind && b?.amount != null);
   if (budgets.length) lines.push(`TARGETS: ${budgets.map((b: any) => `${b.kind} ${b.amount}`).join(" · ")}`);
   const notes = (input.notes || []).slice(0, 8);
@@ -1886,7 +1996,16 @@ function buildContextBlock(input: any, maxChars = 1800): string {
   const facts = [...(input.memoryFacts || [])].sort((a: any, b: any) => Number(b.confidence || 0) - Number(a.confidence || 0)).slice(0, 12);
   if (facts.length) lines.push(`KNOWS: ${facts.map((f: any) => `${f.key}="${f.value}"`).join(" · ")}`);
   const ledger = input.recentLedger || [], foods = input.recentFoodLogs || [], workouts = input.recentWorkouts || [];
-  const spent = ledger.filter((l: any) => l.direction === "expense").reduce((s: number, l: any) => s + Number(l.amount || 0), 0);
+  // Mirror of lib/context-builder.mjs: count SPENDING, not gross outflow.
+  // counts_as_spending / flow_type is what separates a grocery run from a
+  // credit-card bill, an SIP or a transfer to the owner's own account.
+  const cbCountsAsSpending = (l: any) => {
+    if (!l || l.merged_into) return false;
+    if (typeof l.counts_as_spending === "boolean") return l.counts_as_spending && l.direction === "expense";
+    if (l.flow_type) return SPENDING_FLOW_TYPES.has(l.flow_type);
+    return l.direction === "expense";
+  };
+  const spent = ledger.filter(cbCountsAsSpending).reduce((s: number, l: any) => s + Math.abs(Number(l.amount || 0)), 0);
   const cal = foods.reduce((s: number, f: any) => s + Number(f.calories_estimate || 0), 0);
   const pro = foods.reduce((s: number, f: any) => s + Number(f.protein_g || 0), 0);
   if (ledger.length || foods.length || workouts.length) {
@@ -1912,15 +2031,33 @@ async function fetchContextBlock(supabase: ReturnType<typeof adminClient>, userI
       supabase.from("budgets").select("kind, amount").eq("user_id", userId),
       supabase.from("notes").select("kind, domain, body, due_on").eq("user_id", userId).eq("status", "open").order("created_at", { ascending: false }).limit(8),
       supabase.from("memory_facts").select("key, value, confidence").eq("user_id", userId).order("confidence", { ascending: false }).limit(12),
-      supabase.from("ledger_entries").select("amount, direction").eq("user_id", userId).gte("occurred_at", since),
+      // counts_as_spending, not direction: since the statement import landed, the
+      // ledger also holds card-bill payments, investments and self-transfers.
+      // Summing by direction told the model a gross outflow roughly 4x the real
+      // spend, and the model then quoted that number back as fact.
+      supabase.from("ledger_entries").select("amount, direction, flow_type, counts_as_spending, merged_into").eq("user_id", userId).gte("occurred_at", since),
       supabase.from("food_logs").select("calories_estimate, protein_g").eq("user_id", userId).gte("occurred_at", since),
       supabase.from("workout_logs").select("id").eq("user_id", userId).gte("occurred_at", since),
       supabase.from("user_plans").select("summary").eq("user_id", userId).eq("kind", "diet").eq("active", true).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
+    // The target the app actually enforces: a saved budget row if there is one,
+    // otherwise the diet scaffold's default. tests/context-builder.test.mjs
+    // pins these two numbers to MACRO_TARGETS in lib/diet-scaffold.mjs so they
+    // cannot drift away from what the gauges render.
+    const goal = (kind: string) => {
+      const row = (budgets.data || []).find((b: any) => b?.kind === kind);
+      const n = Number(row?.amount);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const effectiveTargets = {
+      protein_g: goal("daily_protein") ?? SCAFFOLD_DAILY_PROTEIN_G,
+      calories: goal("daily_calories") ?? SCAFFOLD_DAILY_CALORIES,
+    };
     return buildContextBlock({
       profile: profile.data, budgets: budgets.data, notes: notes.data, memoryFacts: facts.data,
       recentLedger: ledger.data, recentFoodLogs: foods.data, recentWorkouts: workouts.data,
       planToday: plan.data?.summary || "",
+      effectiveTargets,
     });
   } catch (_e) {
     return ""; // context is best-effort; never block a capture on it
@@ -2033,9 +2170,32 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
     };
   }
 
+  // A QUESTION must never come back empty. The main pass is a logging prompt
+  // first and foremost; measured against the deployed function it returned an
+  // empty tool_calls array for a question about a third of the time. When that
+  // happens, ask once more with a prompt that does nothing but answer.
+  let answerCalls = expandedCalls;
+  let answerCost = 0;
+  if (isQuestion(inputText) && !expandedCalls.some((tc: any) => tc?.name === "answer_question")) {
+    const replied = await answerQuestion(inputText, opts.contextBlock || "");
+    if (replied) {
+      answerCalls = [
+        ...expandedCalls.filter((tc: any) => tc?.name !== "request_user_review"),
+        {
+          name: "answer_question",
+          arguments: { question: inputText.slice(0, 300), answer: replied.answer, basis: replied.basis },
+          confidence: 0.9,
+        },
+      ];
+      answerCost = estimateCostUsd(replied.promptTokens, replied.outputTokens);
+    }
+  }
+
   return {
-    toolCalls: expandedCalls, rejected, latencyMs, promptTokens: brainPt, outputTokens: brainOt,
-    provider, model, estimatedCostUsd, evidenceText, inputText,
+    toolCalls: answerCalls, rejected, latencyMs, promptTokens: brainPt, outputTokens: brainOt,
+    provider, model,
+    estimatedCostUsd: Number((estimatedCostUsd + answerCost).toFixed(6)),
+    evidenceText, inputText,
   };
 }
 
@@ -2533,7 +2693,18 @@ Deno.serve(async (req) => {
     );
 
     return Response.json(
-      { ok: true, aiRunId, toolCalls: runInfo.toolCalls, rejected: runInfo.rejected.length, cost, duplicate: false, warning, spendSuggestion },
+      {
+        ok: true, aiRunId, toolCalls: runInfo.toolCalls, rejected: runInfo.rejected.length,
+        // WHY a call was thrown away. The count alone made a rejected tool call
+        // indistinguishable from the model saying nothing, which is the failure
+        // shape this codebase keeps rediscovering: an error is computed, stored
+        // in a variable, and never read by the caller.
+        rejectedDetail: runInfo.rejected.slice(0, 5).map((r: any) => ({
+          tool: r?.tc?.name ?? null,
+          errors: r?.errors ?? [],
+        })),
+        cost, duplicate: false, warning, spendSuggestion,
+      },
       { headers: corsHeaders },
     );
   } catch (error) {

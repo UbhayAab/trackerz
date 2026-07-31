@@ -1,7 +1,7 @@
 // Fires the jarvis edge function the same way pg_cron does, for checking the
 // engine without waiting for a scheduled slot.
 //
-// Usage: node scripts/jarvis-run.mjs status|morning|evening|closeout [--force]
+// Usage: node scripts/jarvis-run.mjs status|morning|midday|evening|closeout [--force]
 import { config as loadEnv } from "dotenv";
 import pg from "pg";
 

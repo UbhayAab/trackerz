@@ -407,6 +407,56 @@ function jbEveningBody(s) {
   return { headline: headline, nudges: nudges, body: body };
 }
 
+// Midday pace check (deterministic).
+//
+// The evening nudge at 20:30 arrives after the day is effectively decided: the
+// owner averages 87g of protein against a 151-162g target, and by 20:30 there is
+// one meal left to find 75g in. This fires early enough to still act on, and
+// stays silent unless it has something concrete to say - a notification that
+// says "on track" every day is how a person learns to swipe them away.
+//
+// Everything here is a real measurement or nothing. `proteinToday` of 0 with
+// `mealsLogged` of 0 means NOT YET LOGGED, which is a different sentence from
+// "you have eaten nothing".
+function jbMiddayBody(s) {
+  var nudges = [];
+  var pt = jbRound(s.proteinTarget), p = jbRound(s.proteinToday);
+  var meals = Number(s.mealsLogged || 0);
+  var hoursLeft = Number(s.hoursLeftInDay);
+
+  if (meals === 0) {
+    nudges.push("nothing logged yet today");
+  } else if (pt > 0) {
+    var gap = pt - p;
+    // Pace, not the raw gap: being 60g short at 14:00 is fine, being 60g short
+    // with two hours of eating left is not.
+    if (gap > 25) nudges.push(p + " / " + pt + "g protein - " + gap + "g to find");
+  }
+
+  var ct = jbRound(s.caloriesTarget), c = jbRound(s.caloriesToday);
+  if (ct > 0 && c > ct) nudges.push(c - ct + " kcal over already");
+
+  if (s.plannedKind && s.plannedKind !== "rest" && !s.workoutLogged && hoursLeft > 3) {
+    nudges.push((s.plannedName || "workout") + " still to do");
+  }
+
+  if (s.spendCap != null && jbRound(s.todaySpend) > jbRound(s.spendCap)) {
+    nudges.push("over today's spend by " + jbRupees(jbRound(s.todaySpend) - jbRound(s.spendCap)));
+  }
+
+  // One concrete move, drawn from the biggest gap rather than a generic cheer.
+  var move = null;
+  if (meals === 0) move = "Log what you have eaten so far.";
+  else if (pt > 0 && pt - p > 40) move = "A 500ml curd plus a whey scoop is about 55g.";
+  else if (pt > 0 && pt - p > 25) move = "Six boiled eggs is about 38g.";
+
+  var headline = nudges.length ? "Midday check" : null;
+  var body = nudges.length
+    ? "Midday: " + nudges.join(" · ") + "." + (move ? " " + move : "")
+    : null;
+  return { headline: headline, nudges: nudges, body: body, move: move };
+}
+
 // Nightly close-out body (deterministic; no LLM at midnight).
 function jbCloseoutBody(day, streaks) {
   var bits = [];
@@ -1178,6 +1228,65 @@ async function runMorning(admin: any, profile: Profile, now: Date, force: boolea
   return { userId: profile.id, action: "morning", forDate: todayKey, briefingId, voice: voice?.provider || "fallback", delivery };
 }
 
+// Midday pace check. Push only - never email, because the point is a glance you
+// can act on, not another thing in the inbox.
+//
+// Why this slot exists: the evening nudge at 20:30 lands after the day is
+// decided. The owner runs ~87g of protein against a 151-162g target, and at
+// 20:30 there is one meal left to close a 75g gap. 14:30 is early enough to act.
+//
+// It is deliberately SILENT when there is nothing concrete to say. jbMiddayBody
+// returns a null body on a day that is on track, and this returns without
+// writing a briefing or sending anything - a notification that fires every day
+// regardless of content is one the user learns to dismiss without reading.
+async function runMidday(admin: any, profile: Profile, now: Date, force: boolean) {
+  const tz = profile.timezone || "Asia/Kolkata";
+  const todayKey = jbDateKeyInTz(now, tz);
+
+  const { data: existingRow } = await admin.from("briefings")
+    .select("id").eq("user_id", profile.id).eq("kind", "midday").eq("for_date", todayKey).maybeSingle();
+  if (existingRow && !force) return { userId: profile.id, action: "midday", forDate: todayKey, skipped: "exists" };
+
+  const win = jbDayWindow(todayKey, tz);
+  const [rows, budgets, gymPayload] = await Promise.all([
+    fetchDayRows(admin, profile.id, win.startISO, now.toISOString()),
+    fetchBudgets(admin, profile.id),
+    fetchGymPayload(admin, profile.id),
+  ]);
+  const planned = jbPlannedWorkout(jbWeekdayFromKey(todayKey), gymPayload);
+  const sofar = jbCloseDay({ ...rows, budgets, plannedKind: planned.kind });
+
+  // Hours of the local day still ahead, so "still to do" is only said while it
+  // is still true. jbMinutesOfDay parses "HH:MM", so format the instant in the
+  // user's zone first - reading the server's UTC clock would be 5.5h out.
+  const hm = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz, hourCycle: "h23", hour: "2-digit", minute: "2-digit",
+  }).format(now);
+  const hoursLeftInDay = Math.max(0, (24 * 60 - (jbMinutesOfDay(hm) ?? 0)) / 60);
+
+  const midday = jbMiddayBody({
+    proteinTarget: sofar.caps.proteinTarget, proteinToday: sofar.protein,
+    caloriesTarget: sofar.caps.caloriesTarget, caloriesToday: sofar.calories,
+    mealsLogged: (rows.foodLogs || []).length,
+    plannedKind: planned.kind, plannedName: planned.name, workoutLogged: sofar.workoutDone,
+    spendCap: sofar.caps.spendCap, todaySpend: sofar.spend,
+    hoursLeftInDay,
+  });
+
+  if (!midday.body) {
+    return { userId: profile.id, action: "midday", forDate: todayKey, skipped: "on_track" };
+  }
+
+  const briefingId = await upsertBriefing(admin, profile.id, "midday", todayKey, midday.body, {
+    headline: midday.headline, nudges: midday.nudges, snapshot: sofar,
+  });
+  const delivery: Record<string, unknown> = {};
+  delivery.push = await sendPush(admin, profile, midday.headline || "Midday check", midday.body, now);
+
+  await auditLog(admin, profile.id, "jarvis.midday", { forDate: todayKey, briefingId, nudges: midday.nudges.length, delivery });
+  return { userId: profile.id, action: "midday", forDate: todayKey, briefingId, nudges: midday.nudges, delivery };
+}
+
 // Evening nudge: what is still fixable today. Push always (outside quiet hours);
 // email only when there is something actionable.
 async function runEvening(admin: any, profile: Profile, now: Date, force: boolean) {
@@ -1297,6 +1406,7 @@ Deno.serve(async (req) => {
         if (action === "status") { results.push(await runStatus(admin, profile)); continue; }
         if (action === "morning") { results.push(await runMorning(admin, profile, now, force)); continue; }
         if (action === "evening") { results.push(await runEvening(admin, profile, now, force)); continue; }
+        if (action === "midday") { results.push(await runMidday(admin, profile, now, force)); continue; }
         // closeout: close the most recently ENDED local day (at 00:05 IST that is
         // yesterday); an explicit payload.date closes that civil day instead.
         const tz = profile.timezone || "Asia/Kolkata";

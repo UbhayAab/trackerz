@@ -16,6 +16,8 @@ export const toolRegistry = [
   { name: "link_duplicate_candidates", domain: "all", write: true, destructive: false },
   { name: "update_plan_candidate", domain: "all", write: true, destructive: false },
   { name: "request_user_review", domain: "all", write: false, destructive: false },
+  // Writes nothing - it carries the AI's reply to a question back to the UI.
+  { name: "answer_question", domain: "all", write: false, destructive: false },
   { name: "apply_verified_action", domain: "all", write: true, destructive: false },
   { name: "undo_ai_action", domain: "all", write: true, destructive: false },
 ];
