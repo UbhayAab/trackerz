@@ -173,3 +173,47 @@ function approx(actual, expected, tol, msg) {
 }
 
 console.log("food-nutrition.test.mjs: all assertions passed");
+
+// ---------------------------------------------------------------------------
+// A stated weight or volume must not be silently swallowed.
+//
+// `curd` is kind:"count" with a katori serving, and it carried no gramsPerUnit,
+// so multiplier() fell back to ONE serving no matter what quantity was said.
+// The table's totals then OVERRIDE the model (CLAUDE.md), so the fallback won.
+// Measured on the owner's real 2026-07-25 row:
+//
+//   "6 boiled eggs and 500ml curd" -> 522 kcal / 42.8g protein
+//
+// which is 6 eggs plus a single 150g katori - half a litre of curd charged as
+// one small bowl, costing ~12g of protein on the exact metric he is short on.
+// ---------------------------------------------------------------------------
+{
+  const curd = estimateNutrition("500ml curd");
+  assert.equal(curd.recognized, true, "500ml curd is fully known");
+  assert.ok(curd.totals.protein_g > 15,
+    `500ml curd must scale past one katori, got ${curd.totals.protein_g}g protein`);
+  assert.ok(curd.totals.calories > 250 && curd.totals.calories < 350,
+    `500ml curd should be ~300 kcal, got ${curd.totals.calories}`);
+
+  // A plain mention still means one serving - scaling must not invent quantity.
+  const plain = estimateNutrition("curd");
+  assert.equal(plain.totals.calories, 90, "a bare mention is still one katori");
+
+  // The real row.
+  const real = estimateNutrition("6 boiled eggs and 500ml curd");
+  assert.ok(real.totals.protein_g > 50,
+    `the 2026-07-25 capture should price above 50g protein, got ${real.totals.protein_g}`);
+
+  // The 100x guard this must NOT reopen: a weighed count food never multiplies
+  // servings by the raw gram number.
+  const rice = estimateNutrition("250 g rice");
+  assert.ok(rice.totals.calories < 600,
+    `250g rice must not become 250 katoris, got ${rice.totals.calories} kcal`);
+
+  // And where the table still cannot convert a stated weight, it must SAY so
+  // rather than assert one serving - recognized:false hands pricing to the model.
+  const momos = estimateNutrition("120g momos");
+  assert.deepEqual(momos.unscaled, ["momo"], "an unconvertible weight is reported");
+  assert.equal(momos.recognized, false,
+    "an unconvertible weight must not let the table override the model");
+}
