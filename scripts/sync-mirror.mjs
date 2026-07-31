@@ -54,4 +54,22 @@ for (const [edgeFile, blocks] of byEdge) {
   if (changed) { writeFileSync(edgeFile, edge); totalChanged += changed; }
 }
 
+// --- derived arrays ---------------------------------------------------------
+// FOOD_WORDS is no longer a literal in lib/ - it is derived from the nutrition
+// table at import time, so it cannot be copied as text. Regenerate the edge's
+// literal from the lib's RUNTIME value instead. This is what stops a food added
+// to food-nutrition.mjs from staying invisible to the edge function's salvage.
+{
+  const { FOOD_WORDS } = await import("../lib/fan-out-expander.mjs");
+  let edge = readFileSync(AGENT, "utf8");
+  const rx = /^const FOOD_WORDS = \[[\s\S]*?\];$/m;
+  if (!rx.test(edge)) throw new Error(`FOOD_WORDS literal not found in ${AGENT}`);
+  const next = edge.replace(rx, `const FOOD_WORDS = ${JSON.stringify([...FOOD_WORDS].sort())};`);
+  if (next !== edge) {
+    writeFileSync(AGENT, next);
+    totalChanged += 1;
+    console.log(`regenerated FOOD_WORDS (${FOOD_WORDS.length} terms) -> ${AGENT}`);
+  }
+}
+
 console.log(totalChanged ? `wrote ${totalChanged} block(s)` : "mirrors already in sync");

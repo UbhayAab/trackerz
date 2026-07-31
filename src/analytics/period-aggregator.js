@@ -1,3 +1,5 @@
+import { rowCountsAsSpending, rowCountsAsIncome } from "../../lib/txn-semantics.mjs";
+
 // Time-window aggregator for the Day/Week/Month dashboards.
 // Pure: takes ledger / food_logs / wellness arrays + a "today" anchor, returns
 // the shape the dashboard renderers consume.
@@ -51,8 +53,11 @@ function summarize({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics 
   for (const r of ledger) {
     if (!inRange(r.occurred_at, range)) continue;
     const amt = Math.abs(Number(r.amount || 0));
-    if (r.direction === "expense") spend += amt;
-    else if (r.direction === "income") income += amt;
+    // counts_as_spending, not direction: a statement import fills the ledger
+    // with credit-card bill payments, mutual-fund purchases and money moved
+    // between the user's own accounts, none of which is spending.
+    if (rowCountsAsSpending(r)) spend += amt;
+    else if (rowCountsAsIncome(r)) income += amt;
   }
   for (const m of foodLogs) {
     if (!inRange(m.occurred_at, range)) continue;

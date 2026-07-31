@@ -76,7 +76,10 @@ export async function fetchLedger({ limit = 50 } = {}) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("ledger_entries")
-    .select("id, occurred_at, merchant, description, amount, currency, direction, payment_mode, duplicate_state, confidence, is_discretionary, tags, merged_into")
+    // flow_type and counts_as_spending travel with every row so the money page
+    // can tell a grocery run from a credit-card bill. Without them a statement
+    // import makes "you spent Rs 8.26 lakh" true of the bank and false of you.
+    .select("id, occurred_at, merchant, description, amount, currency, direction, payment_mode, duplicate_state, confidence, is_discretionary, tags, merged_into, flow_type, counterparty, counts_as_spending, counts_as_income, account_id, rail")
     // A merged-away duplicate must not be counted again. This function feeds
     // EVERY browser-side money number (the month tile, the period aggregator,
     // opportunity cost, exports), so without this filter merging a duplicate
@@ -384,8 +387,10 @@ export async function fetchSpendPatternHistory({ sinceDays = 120, limit = 2000 }
       .from("ledger_entries")
       .select("id, ingestion_id, occurred_at, merchant, description, amount, direction")
       // Only real spend carries a price signal; a merged-away duplicate must not
-      // be counted as a second sighting of the same meal.
+      // be counted as a second sighting of the same meal. counts_as_spending is
+      // what keeps a Rs 25,000 mutual-fund debit from being read as lunch.
       .eq("direction", "expense")
+      .eq("counts_as_spending", true)
       .is("merged_into", null)
       .gte("occurred_at", since)
       .order("occurred_at", { ascending: false })
@@ -852,9 +857,15 @@ export async function deleteRow(table, id) {
 // Server-side data erasure: wipe every row this user owns and their stored
 // media. The profile row is kept so the account still works. RLS guarantees
 // only the caller's own rows are touched.
+// Order matters: ledger_links points at ledger_entries, and statement rows
+// point at both entries and accounts, so children are cleared before parents.
+// A table missing from this list survives "delete everything", which is how a
+// user who asked to be forgotten stays half-remembered.
 const USER_DATA_TABLES = [
-  "ai_actions", "ai_runs", "ledger_entries", "food_logs", "body_metrics",
-  "wellness_logs", "workout_logs", "statement_rows", "statement_imports",
+  "ledger_links", "ai_actions", "ai_runs", "statement_rows", "statement_imports",
+  "ledger_entries", "recurring_series", "bank_accounts",
+  "food_logs", "body_metrics",
+  "wellness_logs", "workout_logs",
   "duplicate_candidates", "budgets", "categories", "subscriptions",
   "merchant_aliases", "category_memory", "bank_format_memory", "meal_templates",
   "hydration_logs", "weekly_reviews", "user_plans", "notes", "memory_facts",
@@ -950,6 +961,184 @@ export async function setStatementImportStatus(importId, status) {
   const supabase = await getSupabaseClient();
   const { error } = await supabase.from("statement_imports").update({ status }).eq("id", importId);
   if (error) throw error;
+}
+
+// ---- bank accounts, flow-typed entries and cross-row links ----
+// The pipeline in lib/statement-ingest.mjs produces all of this; these are the
+// only functions that put it in Postgres.
+
+export async function fetchBankAccounts() {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("bank_accounts")
+    .select("id, bank, account_number, account_last4, ifsc, micr, customer_id, account_holder, nickname, vpas, last_balance, last_balance_on");
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    id: row.id,
+    // Same key the pipeline derives, so a stored account and a freshly parsed
+    // one collapse to one entity instead of importing the account twice.
+    accountKey: row.account_number ? `acct:${row.account_number}` : `bank:${row.bank}:${row.account_last4}`,
+    bank: row.bank,
+    accountNumber: row.account_number,
+    accountLast4: row.account_last4,
+    ifsc: row.ifsc,
+    micr: row.micr,
+    customerId: row.customer_id,
+    accountHolder: row.account_holder,
+    nickname: row.nickname,
+    vpas: row.vpas || [],
+    lastBalance: row.last_balance,
+    lastBalanceOn: row.last_balance_on,
+  }));
+}
+
+export async function upsertBankAccount(account) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const payload = {
+    user_id: userId,
+    bank: account.bank,
+    account_number: account.accountNumber,
+    account_last4: account.accountLast4,
+    ifsc: account.ifsc,
+    micr: account.micr,
+    customer_id: account.customerId,
+    account_holder: account.accountHolder,
+    vpas: account.vpas || [],
+    last_balance: account.lastBalance ?? null,
+    last_balance_on: account.lastBalanceOn ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  if (account.id) {
+    const { data, error } = await supabase.from("bank_accounts").update(payload).eq("id", account.id).select("id").single();
+    if (error) throw error;
+    return data.id;
+  }
+  const { data, error } = await supabase
+    .from("bank_accounts")
+    .upsert(payload, { onConflict: "user_id,account_number" })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function createStatementImport(record) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("statement_imports")
+    .insert({ ...record, user_id: userId })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+// Which of these content keys the user already has. Asked BEFORE writing
+// anything, so a re-import is recognised up front and reported as "already
+// there" rather than being discovered as a pile of constraint violations.
+export async function fetchExistingStatementKeys(contentKeys) {
+  const supabase = await getSupabaseClient();
+  const found = new Set();
+  const BATCH = 200;
+  for (let i = 0; i < contentKeys.length; i += BATCH) {
+    const slice = contentKeys.slice(i, i + BATCH);
+    const { data, error } = await supabase.from("statement_rows").select("content_key").in("content_key", slice);
+    if (error) throw error;
+    for (const row of data || []) found.add(row.content_key);
+  }
+  return found;
+}
+
+export async function insertLedgerEntriesBatch(entries) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("ledger_entries")
+    .insert(entries.map((e) => ({ ...e, user_id: userId })))
+    .select("id");
+  if (error) throw error;
+  return (data || []).map((r) => r.id);
+}
+
+export async function insertStatementRowsBatch(rows) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  // Conflict target is (user_id, content_key) - content only. An import_id in
+  // the key is freshly minted every upload and can never collide.
+  const { data, error } = await supabase
+    .from("statement_rows")
+    .upsert(rows.map((r) => ({ ...r, user_id: userId })), { onConflict: "user_id,content_key", ignoreDuplicates: true })
+    .select("id");
+  if (error) throw error;
+  return (data || []).length;
+}
+
+export async function insertLedgerLinks(links) {
+  if (!links.length) return 0;
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("ledger_links")
+    .upsert(links.map((l) => ({ ...l, user_id: userId })), { onConflict: "user_id,kind,from_entry_id,to_entry_id", ignoreDuplicates: true })
+    .select("id");
+  if (error) throw error;
+  return (data || []).length;
+}
+
+export async function upsertRecurringSeries(series) {
+  if (!series.length) return 0;
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("recurring_series")
+    .upsert(
+      series.map((s) => ({
+        user_id: userId,
+        series_key: s.key,
+        counterparty: s.counterparty,
+        direction: s.direction,
+        cadence: s.cadence,
+        amount: s.amount,
+        amount_varies: s.amountVaries,
+        occurrences: s.occurrences,
+        first_seen: s.firstSeen,
+        last_seen: s.lastSeen,
+        expected_next: s.expectedNext,
+        missed: s.missed,
+        annualised: s.annualised,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: "user_id,series_key" },
+    )
+    .select("id");
+  if (error) throw error;
+  return (data || []).length;
+}
+
+// Hand-logged entries only. Bank rows dedupe by content key; these are the ones
+// a bank row might be a second recording of, and they need scoring instead.
+export async function fetchManualLedgerEntries({ fromDate, toDate }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("ledger_entries")
+    .select("id, amount, merchant, description, occurred_at, source_type")
+    .or("source_type.is.null,source_type.neq.statement")
+    .gte("occurred_at", `${fromDate}T00:00:00Z`)
+    .lte("occurred_at", `${toDate}T23:59:59Z`);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchRecurringSeries() {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("recurring_series")
+    .select("id, series_key, counterparty, direction, cadence, amount, occurrences, first_seen, last_seen, expected_next, missed, annualised")
+    .order("annualised", { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
 
 export async function deleteAllUserData() {
