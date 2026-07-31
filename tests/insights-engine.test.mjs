@@ -10,11 +10,20 @@ const daysAgoIso = (daysAgo, h = 12) => {
   d.setHours(h, 0, 0, 0);
   return d.toISOString();
 };
-const monthsAgoIso = (months) => {
-  const d = new Date(now);
-  d.setMonth(d.getMonth() - months);
-  d.setDate(10);
-  return d.toISOString();
+// Anchor the money fixtures to months the Nifty series actually covers, and do
+// the month arithmetic on the 1st. Two bugs this avoids, both of which used to
+// make the run fail on a calendar date rather than on a code change:
+//   - `new Date(jul 31).setMonth(-3)` is April 31, which JS normalises to May 1,
+//     so "3 months ago" and "2 months ago" collapsed onto the same month.
+//   - once wall-clock time passed the last close in NIFTY_MONTHLY_CLOSES, every
+//     fixture row landed in the unpriced tail, gain rounded to 0, and the
+//     opportunity-cost insight was correctly suppressed.
+import { NIFTY_MONTHLY_CLOSES } from "../src/data/nifty-monthly-closes.js";
+const NIFTY_MONTHS = Object.keys(NIFTY_MONTHLY_CLOSES).sort();
+const monthsBeforeLastClose = (back) => {
+  const key = NIFTY_MONTHS[NIFTY_MONTHS.length - 1 - back];
+  assert.ok(key, `nifty series needs at least ${back + 1} months`);
+  return new Date(`${key}-10T12:00:00.000Z`).toISOString();
 };
 
 // Today's meals: 40g protein → a clear gap to the 130g target.
@@ -23,11 +32,11 @@ const foodLogs = [
   { protein_g: 20, calories_estimate: 600, occurred_at: daysAgoIso(0, 13) },
 ];
 
-// Discretionary spend across several months → opportunity cost fires.
+// Discretionary spend across several priced months → opportunity cost fires.
 const ledger = [
-  { id: "a", direction: "expense", is_discretionary: true, amount: 1000, merchant: "Zomato", occurred_at: monthsAgoIso(3) },
-  { id: "b", direction: "expense", is_discretionary: true, amount: 1200, merchant: "Swiggy", occurred_at: monthsAgoIso(2) },
-  { id: "c", direction: "expense", is_discretionary: true, amount: 800, merchant: "Amazon", occurred_at: monthsAgoIso(1) },
+  { id: "a", direction: "expense", is_discretionary: true, amount: 1000, merchant: "Zomato", occurred_at: monthsBeforeLastClose(3) },
+  { id: "b", direction: "expense", is_discretionary: true, amount: 1200, merchant: "Swiggy", occurred_at: monthsBeforeLastClose(2) },
+  { id: "c", direction: "expense", is_discretionary: true, amount: 800, merchant: "Amazon", occurred_at: monthsBeforeLastClose(1) },
 ];
 
 // Seven nights of short sleep → sleep debt.

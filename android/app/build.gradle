@@ -2,16 +2,65 @@ apply plugin: 'com.android.application'
 // Health Connect bridge (com.ubhayaab.trackerz.health.*) is Kotlin.
 apply plugin: 'kotlin-android'
 
+// ---------------------------------------------------------------------------
+// STABLE SIGNING KEY. This is why installs work.
+//
+// Android identifies an app by (applicationId, signing certificate). A GitHub
+// Actions runner is ephemeral, so `assembleDebug` with no keystore made the
+// Android Gradle Plugin mint a BRAND NEW random ~/.android/debug.keystore on
+// every single build. Two consecutive builds were therefore signed by two
+// different certificates, and installing the second over the first failed with
+// "App not installed" / "package conflicts with an existing package" - with no
+// way out except uninstalling first, which wipes the app's local state.
+//
+// CI now materialises one fixed keystore from the ANDROID_KEYSTORE_B64 repo
+// secret into android/keystore.properties + android/trackerz.jks (both
+// gitignored - the repo is public). Every build from now on carries the same
+// certificate, so the APK installs over itself like any normal app update.
+//
+// If the properties file is absent (a fork, or a local build), signingConfig
+// stays null and Gradle falls back to its own debug key. The workflow refuses
+// to publish such a build to the permanent download link.
+// ---------------------------------------------------------------------------
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+def hasStableKey = keystoreProps.containsKey("storeFile") && rootProject.file(keystoreProps["storeFile"]).exists()
+
 android {
     namespace "com.ubhayaab.trackerz"
     compileSdk rootProject.ext.compileSdkVersion
+
+    signingConfigs {
+        if (hasStableKey) {
+            stable {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+                // v1 costs nothing at minSdk 26 and removes a whole class of
+                // OEM-installer refusals; v2/v3 are what modern Android checks.
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+            }
+        }
+    }
+
     defaultConfig {
         applicationId "com.ubhayaab.trackerz"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Monotonic across CI builds (TRACKERZ_VERSION_CODE = the run number),
+        // so Android treats a newer APK as an upgrade instead of a sidegrade.
+        // A stuck versionCode of 1 means the installer can legitimately refuse
+        // to replace an installed copy.
+        versionCode (System.getenv("TRACKERZ_VERSION_CODE") ?: "1").toInteger()
+        versionName (System.getenv("TRACKERZ_VERSION_NAME") ?: "1.0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -22,6 +71,14 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Without this an `assembleRelease` APK is UNSIGNED and cannot be
+            // installed at all - a worse failure than the one being fixed.
+            if (hasStableKey) signingConfig signingConfigs.stable
+        }
+        debug {
+            // Same key as release, so switching build type never triggers a
+            // signature-mismatch reinstall on the phone.
+            if (hasStableKey) signingConfig signingConfigs.stable
         }
     }
 }
