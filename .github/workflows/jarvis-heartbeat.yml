@@ -10,12 +10,13 @@ name: Jarvis heartbeat
 on:
   schedule:
     - cron: "50 18 * * *" # 00:20 IST - close out the just-ended day
-    - cron: "45 1 * * *"  # 07:15 IST - morning brief
+    - cron: "45 1 * * *"  # 45 1 UTC = 07:15 IST - morning brief
+    - cron: "15 9 * * *"  # 14:45 IST - midday pace check
     - cron: "15 15 * * *" # 20:45 IST - evening nudge
   workflow_dispatch:
     inputs:
       action:
-        description: "closeout | morning | evening | status"
+        description: "closeout | morning | midday | evening | status"
         default: "morning"
 
 jobs:
@@ -31,11 +32,14 @@ jobs:
             exit 0
           fi
           case "${{ github.event.inputs.action }}" in
-            closeout|morning|evening|status) ACTION="${{ github.event.inputs.action }}" ;;
+            closeout|morning|midday|evening|status) ACTION="${{ github.event.inputs.action }}" ;;
             *)
+              # UTC hour -> the slot this run is standing in for. Ordered so
+              # each window maps to exactly one action; 09 UTC is 14:30 IST.
               HOUR=$(date -u +%H)
               if [ "$HOUR" -ge 18 ]; then ACTION=closeout
               elif [ "$HOUR" -lt 8 ]; then ACTION=morning
+              elif [ "$HOUR" -lt 12 ]; then ACTION=midday
               else ACTION=evening
               fi ;;
           esac

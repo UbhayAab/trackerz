@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { buildContextBlock, expandUsualForDate } from "../lib/context-builder.mjs";
 
 // (1) Hard char cap: a large input never exceeds maxChars.
@@ -124,5 +125,43 @@ assert.equal(foods[0].arguments.meal_slot, "breakfast", "meal_slot carried");
 // Null plan -> [].
 assert.deepEqual(expandUsualForDate({ planForDateResult: null, occurredAt, eventGroupId: gid }), []);
 assert.deepEqual(expandUsualForDate({}), []);
+
+
+// ---------------------------------------------------------------------------
+// The DAILY TARGET line, and the edge function's copy of the scaffold defaults.
+//
+// Asked "am I on track with my protein?", the deployed model replied "I don't
+// have your daily protein target in memory" while every gauge in the app was
+// rendering 162g. The context carried only SAVED budget rows, and the owner has
+// never saved a daily_protein row - the number in force comes from the diet
+// scaffold. An answer about a target is impossible if the target is not there.
+// ---------------------------------------------------------------------------
+{
+  const block = buildContextBlock({
+    profile: { display_name: "A", timezone: "Asia/Kolkata", currency: "INR" },
+    effectiveTargets: { protein_g: 162, calories: 2000 },
+  });
+  assert.match(block, /DAILY TARGET \(in force now\): 162g protein\/day, 2000 kcal\/day/,
+    "the enforced daily target must reach the model");
+
+  // Absent targets emit nothing rather than a zero.
+  const none = buildContextBlock({ profile: { display_name: "A" } });
+  assert.ok(!/DAILY TARGET/.test(none), "no target line when there is no target");
+  assert.ok(!/0g protein/.test(none), "never render an absent target as 0");
+}
+
+// The edge function hardcodes the scaffold fallbacks (Deno cannot import
+// lib/diet-scaffold.mjs through a browser-relative path). Pin them to the real
+// constants so the model can never quote a target the app does not enforce.
+{
+  const { MACRO_TARGETS } = await import("../lib/diet-scaffold.mjs");
+  const edge = readFileSync("supabase/functions/agent/index.ts", "utf8");
+  const protein = Number(/const SCAFFOLD_DAILY_PROTEIN_G = (\d+)/.exec(edge)?.[1]);
+  const calories = Number(/const SCAFFOLD_DAILY_CALORIES = (\d+)/.exec(edge)?.[1]);
+  assert.equal(protein, MACRO_TARGETS.protein_g,
+    "edge SCAFFOLD_DAILY_PROTEIN_G drifted from lib/diet-scaffold.mjs MACRO_TARGETS");
+  assert.equal(calories, MACRO_TARGETS.calories,
+    "edge SCAFFOLD_DAILY_CALORIES drifted from lib/diet-scaffold.mjs MACRO_TARGETS");
+}
 
 console.log("context-builder tests passed");

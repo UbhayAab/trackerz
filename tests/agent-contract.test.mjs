@@ -26,8 +26,10 @@ const applyCases = caseLabels("async function applyTool\\(");
 const tableCases = caseLabels("function tableForTool\\(");
 const schemaKeys = allowed.filter((t) => new RegExp(`\\b${t}: \\{`).test(src));
 
-// Tools that legitimately never write a domain row.
-const NON_WRITE = new Set(["request_user_review", "link_duplicate_candidates"]);
+// Tools that legitimately never write a domain row. answer_question is the app
+// replying to a question - it must stay out of WRITE_TOOLS, because a reply that
+// quietly logged something would be the worst possible behaviour for a question.
+const NON_WRITE = new Set(["request_user_review", "link_duplicate_candidates", "answer_question"]);
 
 // 1. Every WRITE tool must have both an applyTool() case and a tableForTool() mapping.
 for (const t of writeTools) {

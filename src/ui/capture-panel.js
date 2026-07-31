@@ -4,6 +4,8 @@ import { updateState } from "../state/app-state.js";
 import { runCapture } from "../services/agent-runner.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { renderSpendSuggestion, clearSpendSuggestion } from "./spend-suggestion.js";
+import { renderAnswer, clearAnswer, answerFrom, bindAnswerCard } from "./answer-card.js";
+import { classifyRequestKind } from "../../lib/request-router.mjs";
 import { startLiveTranscription, stopLiveTranscription, isLiveTranscriptionSupported } from "../services/speech.js";
 import { enqueueCapture } from "../services/offline-queue.js";
 import { showToast } from "./toast.js";
@@ -28,6 +30,7 @@ export function renderRoutePreview() {
 }
 
 export function bindCapturePanel() {
+  bindAnswerCard();
   if (!$("#captureText")) return;
   $("#captureText").addEventListener("input", renderRoutePreview);
   $("#captureText").addEventListener("paste", handlePaste);
@@ -118,6 +121,7 @@ async function handleSubmit() {
   }
 
   clearSpendSuggestion();
+  clearAnswer();
   try {
     const result = await runCapture(
       { text, files: allFiles, captureType, transcript: liveTranscript },
@@ -138,9 +142,32 @@ async function handleSubmit() {
     if (result?.spendSuggestion) {
       renderSpendSuggestion(result.spendSuggestion, { ingestionId: result.suggestionIngestionId });
     }
-    updateOptimistic(optimisticId, { status: "done", detail: "Saved. Review the action queue." });
+    // The capture was a question, and the model answered it. Show the reply
+    // instead of the usual "saved" line - nothing was logged, so claiming a
+    // save would be false.
+    let answered = answerFrom(result);
+    // A question that produced no reply and no row must not report "Saved".
+    // The reasoning model occasionally returns nothing parseable, and the old
+    // behaviour was to show the normal success line - so asking something and
+    // getting silence looked identical to logging a meal. Say what happened.
+    if (!answered && classifyRequestKind(text) === "query") {
+      const wrote = (result?.toolCalls || []).some((c) => String(c?.name || "").startsWith("create_"));
+      if (!wrote) {
+        answered = {
+          question: text,
+          answer: "I could not work that one out just now - the reasoning model came back empty. Nothing was logged. Try asking again, or more specifically.",
+          basis: "",
+        };
+      }
+    }
+    if (answered) renderAnswer(answered);
+    updateOptimistic(optimisticId, {
+      status: "done",
+      detail: answered ? "Answered - nothing was logged." : "Saved. Review the action queue.",
+    });
     const had = allFiles.length > 0;
-    showToast(had ? `Processed ${allFiles.length} file(s) - check the feed` : "Capture saved");
+    if (answered) showToast("Answered");
+    else showToast(had ? `Processed ${allFiles.length} file(s) - check the feed` : "Capture saved");
     updateState((state) => {
       state.activeJob = null;
       state.parseLog.unshift("Tables updated. Review queue and metrics refreshed.");

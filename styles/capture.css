@@ -371,3 +371,58 @@
 .optimistic-queue:empty {
   display: none;
 }
+
+/* ---------------------------------------------------------------------------
+   #captureAnswer - the app answering a question out loud.
+   Sits above the quick actions so a reply is the first thing on screen after
+   asking. It represents nothing written, so it is deliberately styled as a
+   message rather than as a logged row.
+   --------------------------------------------------------------------------- */
+
+.answer-card {
+  border: 1px solid var(--accent, #138a5b);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--accent, #138a5b) 7%, transparent);
+}
+
+.answer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.answer-dismiss {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  font-size: 0.95rem;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 8px;
+}
+.answer-dismiss:hover { opacity: 1; }
+.answer-dismiss:focus-visible { outline: 2px solid var(--accent, #138a5b); outline-offset: 2px; }
+
+.answer-q {
+  margin: 2px 0 6px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.answer-body {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+/* Naming the figures behind the answer is what separates it from a chatbot
+   guess - the app can only answer from rows it actually holds. */
+.answer-basis {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
