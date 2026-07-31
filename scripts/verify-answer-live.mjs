@@ -9,7 +9,7 @@
 //
 // Usage: node scripts/verify-answer-live.mjs
 import { config as loadEnv } from "dotenv";
-import pg from "pg";
+import { connectDb } from "./db-connect.mjs";
 
 loadEnv({ path: ".env.local" });
 const S = process.env.SUPABASE_URL;
@@ -43,14 +43,7 @@ const session = await mintSession();
 const jwt = session.access_token;
 const userId = session.user.id;
 
-// Strip the query string the way scripts/q.mjs does - a trailing sslmode in the
-// URL overrides the ssl object and then Supabase's chain fails verification.
-const client = new pg.Client({
-  connectionString: String(process.env.SUPABASE_DB_URL || "").replace(/\?.*$/, ""),
-  ssl: { rejectUnauthorized: false },
-  statement_timeout: 60000,
-});
-await client.connect();
+const client = await connectDb();
 
 let failures = 0;
 const created = [];

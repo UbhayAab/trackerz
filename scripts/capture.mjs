@@ -10,7 +10,7 @@
 //   node scripts/capture.mjs --dry "no gym today"     # local salvage only, no writes
 //   node scripts/capture.mjs --undo <ingestionId>     # remove everything a capture wrote
 import { config as loadEnv } from "dotenv";
-import pg from "pg";
+import { connectDb } from "./db-connect.mjs";
 import { expandToolCalls } from "../lib/fan-out-expander.mjs";
 import { estimateNutrition } from "../lib/food-nutrition.mjs";
 import { classifyRequestKind } from "../lib/request-router.mjs";
@@ -26,17 +26,14 @@ const DRY = args.includes("--dry");
 const undoAt = args.indexOf("--undo");
 const text = args.filter((a) => !a.startsWith("--"))[undoAt >= 0 ? 1 : 0] || "";
 
-const db = () => new pg.Client({
-  connectionString: String(process.env.SUPABASE_DB_URL || "").replace(/\?.*$/, ""),
-  ssl: { rejectUnauthorized: false },
-  statement_timeout: 60000,
-});
+// Direct host first, session pooler if it will not resolve - see db-connect.mjs.
+const db = connectDb;
 
 // ---- undo -------------------------------------------------------------------
 if (undoAt >= 0) {
   const id = args[undoAt + 1];
   if (!id) { console.error("usage: --undo <ingestionId>"); process.exit(1); }
-  const c = db(); await c.connect();
+  const c = await db();
   let total = 0;
   for (const t of ["food_logs", "ledger_entries", "workout_logs", "notes", "sleep_sessions", "hydration_logs"]) {
     const r = await c.query(`delete from ${t} where ingestion_id = $1`, [id]).catch(() => ({ rowCount: 0 }));
@@ -81,7 +78,7 @@ async function mintSession() {
 }
 
 const session = await mintSession();
-const c = db(); await c.connect();
+const c = await db();
 const ing = await c.query(
   `insert into raw_ingestions (user_id, source_type, raw_text, status)
    values ($1,'text',$2,'queued') returning id`,
