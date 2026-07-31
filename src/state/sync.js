@@ -9,6 +9,7 @@ import { isPlanDelta } from "../../lib/plan-merge.mjs";
 import { resolveDietTargets, goalDef } from "../domain/goals.js";
 import { getBudgetPace } from "../analytics/budget-trajectory.js";
 import { estimateNutrition } from "../../lib/food-nutrition.mjs";
+import { rowCountsAsSpending } from "../../lib/txn-semantics.mjs";
 import { isLocalSession } from "../services/auth.js";
 import { updateState } from "./app-state.js";
 import { detectSubscriptions } from "../domain/money/subscription-detector.js";
@@ -165,7 +166,7 @@ export async function hydrateStateFromSupabase() {
       if (isMoneyGoal) {
         const win = periodWindow(row.period);
         const spentSoFar = ledger
-          .filter((r) => r.direction === "expense" && win.since(r.occurred_at))
+          .filter((r) => rowCountsAsSpending(r) && win.since(r.occurred_at))
           .reduce((acc, r) => acc + Number(r.amount || 0), 0);
         const p = getBudgetPace({ spentSoFar, budget: Number(row.amount), dayOfMonth: win.dayOfMonth, daysInMonth: win.daysInMonth });
         spent = fmtAmount(spentSoFar);
@@ -312,7 +313,9 @@ function periodWindow(period, now = new Date()) {
 
 function sumTodayExpense(rows) {
   return rows
-    .filter((r) => r.direction === "expense" && isSameLocalDay(r.occurred_at))
+    // A budget is about spending, so a transfer between the user's own accounts
+    // or a mutual-fund purchase must not eat into it.
+    .filter((r) => rowCountsAsSpending(r) && isSameLocalDay(r.occurred_at))
     .reduce((acc, r) => acc + Number(r.amount || 0), 0);
 }
 

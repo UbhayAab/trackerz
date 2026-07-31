@@ -12,6 +12,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { looksLikeGym } from "../lib/capture-intent.mjs";
+import { FOOD_WORDS } from "../lib/fan-out-expander.mjs";
 
 const edge = readFileSync("supabase/functions/agent/index.ts", "utf8");
 const fanout = readFileSync("lib/fan-out-expander.mjs", "utf8");
@@ -61,12 +62,19 @@ function assertSameSet(name, a, b) {
 
 // --- 1. string-array mirrors (same const name in lib + edge) ----------------
 for (const [name, libSrc] of [
-  ["FOOD_MERCHANTS", fanout], ["FOOD_WORDS", fanout], ["MONTHS", fanout],
+  ["FOOD_MERCHANTS", fanout], ["MONTHS", fanout],
   ["PLAN_CHANGE_CUES", router], ["BUDGET_CHANGE_CUES", router],
   ["QUERY_CUES", router], ["LOG_OVERRIDE_CUES", router],
 ]) {
   assertSameSet(name, stringArray(libSrc, name), stringArray(edge, name));
 }
+
+// FOOD_WORDS is DERIVED in lib/ (from the nutrition table) rather than written
+// as a literal, so it cannot be extracted statically. Compare the lib's runtime
+// value against the edge's literal - a stronger check than text equality, and
+// the reason `node scripts/sync-mirror.mjs` regenerates that literal. A food
+// added to food-nutrition.mjs without re-running sync fails here.
+assertSameSet("FOOD_WORDS", new Set(FOOD_WORDS), stringArray(edge, "FOOD_WORDS"));
 
 // --- 2. regex mirrors (same const name in lib + edge) -----------------------
 for (const [name, libSrc] of [

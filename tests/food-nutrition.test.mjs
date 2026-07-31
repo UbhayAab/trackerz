@@ -127,4 +127,49 @@ function approx(actual, expected, tol, msg) {
   }
 }
 
+// ORDER MANIFEST (regression, 2026-07-28). This exact capture was filed as a
+// diet NOTE and logged zero calories. All three failure modes are asserted here:
+// the sugar-free reroute, the trailing "x N" count, and the bracketed pack size.
+{
+  const order = [
+    "Coca Cola Zero Sugar Soft Drink Can (300 ml) × 3",
+    "Eat Better Co Ragi Chips, Achari Masti (55 g) × 1",
+    "Eat Better Co Ragi Chips, Thai Chilli Tadka (55 g) × 1",
+  ].join("\n");
+  const r = estimateNutrition(order);
+  assert.equal(r.recognized, true, "a brand/pack/x-N order manifest is fully priceable");
+  assert.deepEqual(r.unknown, [], "a bracketed pack size is not an unknown food");
+
+  const drink = r.items.find((i) => i.key === "diet soft drink");
+  assert.ok(drink, "zero-sugar cola routes to the diet row, not the 140 kcal one");
+  assert.equal(drink.qty, 3, "the trailing 'x 3' is the can count");
+  assert.ok(drink.calories < 20, `3 zero-sugar cans must not cost 420 kcal (got ${drink.calories})`);
+  assert.equal(r.items.find((i) => i.key === "soft drink"), undefined, "no full-sugar row double-counted");
+
+  const chips = r.items.find((i) => i.key === "millet chips");
+  assert.ok(chips, "ragi chips are priced as millet chips, not fried potato chips");
+  assert.equal(chips.qty, 2, "two separate 'x 1' lines are two packs, not one");
+}
+
+// The reroute must not fire on a genuinely sugared drink.
+{
+  assert.equal(estimateNutrition("coke").totals.calories, 140, "plain coke keeps its sugar");
+  assert.equal(estimateNutrition("2 coke").totals.calories, 280);
+  assert.ok(estimateNutrition("coke zero").totals.calories < 10, "coke zero does not");
+  assert.ok(estimateNutrition("diet pepsi").totals.calories < 10);
+}
+
+// Measure-word plurals are not foods ("2 scoops whey" lost its macros to "scoops").
+{
+  const r = estimateNutrition("2 scoops whey");
+  assert.equal(r.recognized, true, "'scoops' is a measure word, not an unknown food");
+  assert.equal(r.totals.protein_g, 48, "2 scoops of whey is 48 g protein");
+}
+
+// A standalone "x N" must not swallow a word that merely ends in x.
+{
+  const r = estimateNutrition("box 8");
+  assert.equal(r.items.length, 0, "'box 8' names no food and invents no count");
+}
+
 console.log("food-nutrition.test.mjs: all assertions passed");

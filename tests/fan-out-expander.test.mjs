@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { expandToolCalls, looksLikeFood, looksLikePurchase, mealSlotFromTime, extractAmount, resolveOccurredAt } from "../lib/fan-out-expander.mjs";
+import { FOOD_TABLE } from "../lib/food-nutrition.mjs";
 
 const NOW = "2026-06-26T10:00:00+05:30"; // a fixed "today" for deterministic dates
 const has = (calls, name) => calls.filter((t) => t.name === name);
@@ -290,6 +291,50 @@ assert.equal(has(expandToolCalls(review(), { evidence: "grocery run at dmart - 1
 {
   const r = expandToolCalls(review(), { evidence: "change my plan to PPL, also I ate dal and 2 rotis for lunch", now: NOW });
   assert.equal(has(r, "create_food_log_candidate").length, 1, "the eaten meal in a mixed message still logs");
+}
+
+// ---------------------------------------------------------------------------
+// SALVAGE VOCABULARY (regression, 2026-07-28)
+// FOOD_WORDS used to be a second, hand-written food list that had drifted from
+// the nutrition table: 119 of the 254 foods the app could already PRICE were
+// invisible to salvage. A capture naming only those got no food row at all.
+// ---------------------------------------------------------------------------
+{
+  // Every alias the nutrition table can price must be a salvage cue. This is the
+  // invariant that makes the drift structurally impossible, not just fixed once.
+  const unpriceable = [];
+  for (const entry of FOOD_TABLE) {
+    for (const alias of entry.aliases) {
+      if (String(alias).length < 3) continue;              // "pb" is too short to match on \b
+      if (!looksLikeFood(alias)) unpriceable.push(alias);
+    }
+  }
+  assert.deepEqual(unpriceable, [],
+    `these foods can be priced but are invisible to salvage: ${JSON.stringify(unpriceable)}`);
+}
+
+// The specific words that were missing, spelled out so a regression names itself.
+for (const w of ["coke", "cola", "chips", "biscuit", "bread", "cheese", "whey", "namkeen", "soda"]) {
+  assert.ok(looksLikeFood(w), `${w} must be a food cue`);
+}
+
+// The capture that started this: a delivery manifest with no verb in it. The
+// model filed it as a diet NOTE; salvage must produce the food row regardless.
+{
+  const order = [
+    "Coca Cola Zero Sugar Soft Drink Can (300 ml) × 3",
+    "Eat Better Co Ragi Chips, Achari Masti (55 g) × 1",
+    "Eat Better Co Ragi Chips, Thai Chilli Tadka (55 g) × 1",
+  ].join("\n");
+  assert.ok(looksLikeFood(order), "an order manifest is food");
+
+  // Even when the model emits NOTHING usable, the row still lands.
+  const r = expandToolCalls([], { evidence: order, now: NOW });
+  assert.equal(has(r, "create_food_log_candidate").length, 1, "salvage logs the order");
+  assert.equal(has(r, "create_expense_candidate").length, 0, "no price cue means no invented expense");
+
+  // And it is not mistaken for a grocery run - these are ready-to-eat items.
+  assert.ok(!looksLikePurchase(order));
 }
 
 console.log("fan-out-expander tests passed");

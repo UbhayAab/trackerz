@@ -34,6 +34,14 @@ npm run screenshot
 # Ad-hoc read-only SQL against the live DB (reads .env.local)
 node scripts/q.mjs "select count(*) from food_logs"
 
+# Import bank statements straight into the live DB (same pipeline as the app).
+# Idempotent; refuses to write a statement whose balance chain does not reconcile.
+node scripts/import-statements.mjs --dry-run "C:/path/one.csv" "C:/path/two.xls"
+node scripts/import-statements.mjs "C:/path/one.csv" "C:/path/two.xls"
+
+# Drive the signed-in money page and print the numbers it actually renders
+node scripts/smoke-money.mjs
+
 # Drive the real signed-in app in a phone viewport; prints console errors,
 # failed requests, and any fabricated "undefined"/NaN on screen
 node scripts/smoke-ui.mjs
@@ -77,10 +85,49 @@ Everything in `lib/` is a pure module imported by both browser code and tests - 
 - `agent-core.mjs`, `flow-catalog.mjs` - agent primitives + the flow catalog.
 - `context-builder.mjs` - assembles the "memory context" block injected into every AI reasoning call (fixed-priority sections under a char cap; LAST7 is O(1)).
 - `fan-out-expander.mjs` - deterministic fan-out + salvage + backdate: guarantees one real event lands in every tracker it belongs to even when the model under-emits or bails to review.
-- `food-nutrition.mjs` - lookup table of everyday foods; when `estimateNutrition(text).recognized` is true its totals are AUTHORITATIVE and override the model (DeepSeek reasoning is only used for non-everyday items).
+- `food-nutrition.mjs` - lookup table of everyday foods; when `estimateNutrition(text).recognized` is true its totals are AUTHORITATIVE and override the model (DeepSeek reasoning is only used for non-everyday items). **This table is the app's ONLY food vocabulary.** `fan-out-expander.mjs` derives its `FOOD_WORDS` salvage cues from these aliases rather than keeping a second hand-written list - that duplication was a real bug, leaving 119 of 254 priceable foods invisible to salvage. Add a food here and both layers learn it; then run `node scripts/sync-mirror.mjs` to regenerate the edge's `FOOD_WORDS` literal. `tests/food-mirror.test.mjs` proves the edge's copy of the whole nutrition engine returns identical numbers to lib's across a corpus (it strips the TS types and runs both), and `tests/fan-out-expander.test.mjs` asserts every priceable alias is also a salvage cue.
 - `negation.mjs` - clause-scoped denial detection. Salvage fires on a domain *mention*, and a mention is not an occurrence: "no gym today" must never become a workout row. Scoped per clause so "no gym but ate 6 eggs" denies the gym and still logs the eggs. A denied workout is written as `workout_logs.status='skipped'` (answered the day, did not train) rather than dropped. See `docs/AUDIT-2026-07-22.md`.
 - `additions.mjs` - shapes recent domain rows into the Home feed's day-over-day "additions" list.
 - `aspiration-cascade.mjs` - maps a free-text goal note to budget/target changes plus the undo math.
+
+### The bank statement pipeline
+
+Statement import is its own four-stage pipeline in `lib/`, pure and
+browser/Node-isomorphic, driven by `lib/statement-ingest.mjs`. The browser
+importer (`src/services/statement-import.js`), the bulk loader
+(`scripts/import-statements.mjs`) and `tests/statement-pipeline.test.mjs` all
+call the SAME `ingestStatements()` - so the preview a user approves and the rows
+that get written cannot disagree.
+
+1. `statement-shape.mjs` - a bank statement is a letter with a table buried in
+   it (13 preamble rows on Kotak, 20 on HDFC, a summary block and marketing
+   footer after). Scores rows to find the header, binds columns POSITIONALLY
+   (Kotak's header contains `Dr / Cr` twice - once for the amount, once for the
+   balance - and any name-keyed mapping loses the sign of every transaction),
+   and reads the account identity out of the letterhead. The dd/mm vs mm/dd
+   convention is decided once per file from evidence in the file.
+2. `statement-audit.mjs` - proves the parse. If `balance[n] = balance[n-1] +
+   credit - debit` holds for every row, the bank has confirmed every date,
+   amount and sign. Verdict is `proven` / `consistent` / `suspect`;
+   `scripts/import-statements.mjs` REFUSES to write a suspect statement.
+3. `txn-semantics.mjs` - narration grammar (HDFC `UPI-PAYEE-VPA-IFSC-RRN-NOTE`,
+   Kotak `UPI/PAYEE/REF/NOTE`, NEFT/IMPS/NACH/TPT/BILLPAY/EMI forms) plus a
+   FLOW TYPE per row. Flow type is the load-bearing idea: `direction` cannot
+   tell a credit-card bill from a grocery run, and over the owner's two real
+   statements 77% of outflow was transfers, investments, card bills and loan
+   principal rather than spending. `rowCountsAsSpending(row)` is the predicate
+   every money total should use.
+4. `statement-link.mjs` - facts needing two rows: own-account transfer pairs,
+   refunds matched to the debits they reverse (including a refund that is an
+   exact multiple of N same-day charges), repeated charges, recurring series and
+   the instances that went MISSING, and bank rows that duplicate a hand-logged
+   entry.
+
+Tables: `bank_accounts` (learned from the statements themselves, which is how a
+payment to KKBK0008109 becomes a recognised self-transfer), `ledger_links`,
+`recurring_series`, plus `flow_type` / `counts_as_spending` / `counterparty` on
+`ledger_entries`. Idempotency is by content key with no import id in it. See
+`docs/STATEMENT-IMPORT-2026-07-28.md`.
 
 ### The capture pipeline (the spine of the app)
 
@@ -99,7 +146,7 @@ If the edge function is unavailable, captures still land in `raw_ingestions` wit
 The model never writes to the DB directly. It returns tool calls that pass through layered guards:
 
 - `src/agent/tool-registry.js` is the allowlist of known tool names (also mirrored in `ALLOWED_TOOLS` inside the edge function - keep them in sync).
-- `src/agent/action-policy.js` decides `block` / `review` / `auto_apply` from `(tool kind, confidence, evidence, risk)`. Thresholds: `autoApply ≥ 0.88`, `review ≥ 0.72`, anything lower or destructive → blocked.
+- `src/agent/action-policy.js` decides `block` / `auto_apply` from `(tool kind, confidence, evidence, risk)`. **There is no approve gate**: an unknown tool or a destructive one is blocked, and everything else auto-applies immediately. `confidencePolicy` (`autoApply 0.88`, `review 0.72`) no longer gates anything - it only tags `reasons` (`low_confidence` / `missing_evidence` / `high_risk`) so the feed can flag a weak row for one-tap deletion. Consequence worth knowing: a confidently WRONG tool choice commits silently and never surfaces as "needs a look" - which is how a food capture filed as `create_note_candidate` at 0.80 lost a whole meal (see `docs/AUDIT-2026-07-28-note-misfile.md`).
 - Postgres RLS (see `supabase/schema.sql` + `supabase/migrations/20260518000001_rls_and_buckets.sql`) is the last line of defense - every user-owned table must have RLS enabled.
 
 If you add a new tool: register it in `src/agent/tool-registry.js` **and** add it to `ALLOWED_TOOLS` in `supabase/functions/agent/index.ts`, and extend `SYSTEM_PROMPT` with its `arguments` shape. Tests in `tests/agent-policy.test.mjs` enforce policy invariants.
@@ -112,7 +159,7 @@ The test asserts these directories exist with modules in them - do not collapse 
 - `src/services/` - UI-facing app services (capture routing, cost meter, Supabase client, dedupe scan, statement import, speech).
 - `src/agent/` - tool registry, action policy, model routing, evidence rules, prompt boundaries.
 - `src/ai/` - client-side AI glue (capture parsing, job runner).
-- `src/imports/` - bank statement format detection, column candidates, row normalizer, statement preview.
+- `src/imports/` - bank statement format detection, column candidates, row normalizer, statement preview, and `sheet-reader.js` (the ONLY module that touches SheetJS - it reads every cell raw, because `cellDates: true` makes SheetJS read Kotak's `01-04-2026` as 4 January).
 - `src/analytics/` - budget trajectory, macro pace, habit score, insight rules, opportunity cost.
 - `src/duplicates/` - pair scoring + expense/food cluster helpers.
 - `src/domain/{money,diet,wellness}/` - domain defaults.

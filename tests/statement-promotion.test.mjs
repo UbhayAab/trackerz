@@ -144,7 +144,9 @@ assert.equal(merchantFromNarration(null), null, "no narration means no merchant,
 
 // ---- the writer and the migration must agree with the rules above ----
 {
-  const service = readFileSync("src/services/statement-import.js", "utf8");
+  // The statement_rows write moved into the data layer when the importer was
+  // rebuilt around lib/statement-ingest.mjs; the rule it has to obey did not.
+  const service = readFileSync("src/services/supabase-data.js", "utf8");
   assert.ok(
     /onConflict:\s*"user_id,content_key"/.test(service),
     "statement_rows must upsert on content only - an import_id in the conflict target can never collide",

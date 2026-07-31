@@ -89,11 +89,41 @@ create table if not exists public.categories (
   unique(user_id, domain, name)
 );
 
+-- The user's own accounts, learned from imported statements rather than typed
+-- in. This is what lets a payment to KKBK0008109 be recognised as the user's own
+-- money the moment that Kotak statement has been seen once - without it, money
+-- moved between two of your own banks is indistinguishable from money spent.
+create table if not exists public.bank_accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  bank text,
+  account_number text,
+  account_last4 text,
+  ifsc text,
+  micr text,
+  customer_id text,
+  account_holder text,
+  nickname text,
+  kind text not null default 'bank' check (kind in ('bank','credit_card','wallet','loan','investment')),
+  currency text not null default 'INR',
+  -- A balance without the date it was true on is a number that quietly rots.
+  last_balance numeric(14,2),
+  last_balance_on date,
+  vpas text[] not null default '{}',
+  is_own boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists ux_bank_accounts_user_number
+  on public.bank_accounts(user_id, account_number) where account_number is not null;
+create index if not exists ix_bank_accounts_user on public.bank_accounts(user_id);
+
 create table if not exists public.ledger_entries (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   category_id uuid references public.categories(id) on delete set null,
   ingestion_id uuid references public.raw_ingestions(id) on delete set null,
+  account_id uuid references public.bank_accounts(id) on delete set null,
   amount numeric(14,2) not null,
   currency text not null default 'INR',
   direction text not null check (direction in ('expense','income','transfer')),
@@ -111,19 +141,99 @@ create table if not exists public.ledger_entries (
   account text,                                                          -- transfer detection (different account)
   event_group_id uuid,                                                   -- transitive "one real event" cluster id
   merged_into uuid references public.ledger_entries(id) on delete set null,
+  -- What KIND of movement this is. `direction` (expense/income/transfer) cannot
+  -- tell a credit-card bill from a grocery run, or a mutual-fund purchase from
+  -- rent - and a bank statement is mostly made of that distinction.
+  flow_type text check (flow_type is null or flow_type in (
+    'spend','income','p2p_out','p2p_in',
+    'self_transfer_out','self_transfer_in',
+    'investment','investment_return',
+    'card_payment','loan_emi','loan_principal','loan_disbursal',
+    'refund','bank_charge','interest','wallet_load','cash',
+    'unknown_out','unknown_in'
+  )),
+  counterparty text,
+  counterparty_vpa text,
+  rail text,                                                             -- upi|neft|imps|nach|billpay|loan|atm|...
+  balance_after numeric(14,2),
+  -- False for transfers, investments and card bill payments: money that moved
+  -- without being spent. Every spending total must filter on this.
+  counts_as_spending boolean not null default true,
+  counts_as_income boolean not null default false,
+  classification_confidence numeric(5,4),
+  classification_reasons text[] not null default '{}',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+create index if not exists ix_ledger_flow on public.ledger_entries(user_id, flow_type);
+create index if not exists ix_ledger_account on public.ledger_entries(user_id, account_id, occurred_at);
+create index if not exists ix_ledger_spending on public.ledger_entries(user_id, occurred_at)
+  where counts_as_spending;
+
+-- Pairs of entries that are one real event, or one cancelling another. Its own
+-- table rather than a column because a refund of a triple-charge points at
+-- THREE debits, and the reason for each link has to survive so a wrong one can
+-- be found and undone.
+create table if not exists public.ledger_links (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  kind text not null check (kind in ('self_transfer','refund','duplicate_charge','manual_match')),
+  from_entry_id uuid references public.ledger_entries(id) on delete cascade,
+  to_entry_id uuid references public.ledger_entries(id) on delete cascade,
+  amount numeric(14,2),
+  confidence numeric(5,4) not null default 1,
+  reason text,
+  state text not null default 'applied' check (state in ('suggested','applied','rejected')),
+  created_at timestamptz not null default now()
+);
+create unique index if not exists ux_ledger_links_pair
+  on public.ledger_links(user_id, kind, from_entry_id, to_entry_id);
+create index if not exists ix_ledger_links_user on public.ledger_links(user_id, kind, state);
+
+-- Recurring payments detected from history, so a MISSING instance can be
+-- noticed. A subscription that kept charging shows up in any category total; an
+-- EMI that stopped only shows up if something was expecting it.
+create table if not exists public.recurring_series (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  series_key text not null,
+  counterparty text,
+  direction text not null check (direction in ('out','in')),
+  cadence text not null check (cadence in ('weekly','monthly','quarterly','yearly')),
+  amount numeric(14,2),
+  amount_varies boolean not null default false,
+  occurrences integer not null default 0,
+  first_seen date,
+  last_seen date,
+  expected_next date,
+  missed boolean not null default false,
+  annualised numeric(14,2),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists ux_recurring_series_user_key
+  on public.recurring_series(user_id, series_key);
 
 create table if not exists public.statement_imports (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   media_asset_id uuid references public.media_assets(id) on delete set null,
+  account_id uuid references public.bank_accounts(id) on delete set null,
   source_name text,
   detected_bank text,
   mapping jsonb,
   status text not null default 'uploaded',
   row_count integer not null default 0,
+  period_from date,
+  period_to date,
+  -- The verification verdict from lib/statement-audit.mjs: proven | consistent
+  -- | suspect. Stored so a statement whose arithmetic never reconciled is not
+  -- silently trusted by anything reading the ledger later.
+  audit_confidence text,
+  audit_summary text,
+  audit_failures text[] not null default '{}',
+  declared_totals jsonb,
+  computed_totals jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -131,8 +241,12 @@ create table if not exists public.statement_rows (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   import_id uuid not null references public.statement_imports(id) on delete cascade,
+  account_id uuid references public.bank_accounts(id) on delete set null,
   row_hash text not null,
   occurred_on date,
+  txn_time text,
+  flow_type text,
+  counterparty text,
   description text,
   debit numeric(14,2),
   credit numeric(14,2),
@@ -490,6 +604,9 @@ alter table public.ai_runs enable row level security;
 alter table public.ai_actions enable row level security;
 alter table public.categories enable row level security;
 alter table public.ledger_entries enable row level security;
+alter table public.bank_accounts enable row level security;
+alter table public.ledger_links enable row level security;
+alter table public.recurring_series enable row level security;
 alter table public.statement_imports enable row level security;
 alter table public.statement_rows enable row level security;
 alter table public.budgets enable row level security;
@@ -510,7 +627,8 @@ begin
   for t in
     select unnest(array[
       'raw_ingestions','media_assets','ai_runs','ai_actions','categories',
-      'ledger_entries','statement_imports','statement_rows','budgets',
+      'ledger_entries','bank_accounts','ledger_links','recurring_series',
+      'statement_imports','statement_rows','budgets',
       'food_logs','body_metrics','wellness_logs','duplicate_candidates'
     ])
   loop

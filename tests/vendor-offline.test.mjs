@@ -87,23 +87,35 @@ assert.ok(/await import\(/.test(clientSrc), "the library import must be dynamic"
 // blocked or unreachable - the identical failure supabase-js was already fixed
 // for. sw.js explicitly refuses to cache esm.sh, so it was re-fetched over the
 // network on every money page load.
-const importSrc = readFileSync("src/services/statement-import.js", "utf8");
-assert.ok(
-  !/^\s*import\s[^\n]*esm\.sh/m.test(importSrc),
-  "statement-import.js still has a static esm.sh import - one CDN hiccup blanks the whole money page"
-);
-const xlsxConst = importSrc.match(/const VENDORED_XLSX = "([^"]+)"/);
-assert.ok(xlsxConst, "statement-import.js does not declare VENDORED_XLSX");
-const xlsxResolved = posix.normalize(posix.join("src/services", xlsxConst[1]));
+// The lazy load lives in src/imports/sheet-reader.js, which is the only module
+// that touches the sheet library. Both it and statement-import.js are checked:
+// a static esm.sh import in EITHER is enough to blank the money page.
+for (const path of ["src/services/statement-import.js", "src/imports/sheet-reader.js"]) {
+  assert.ok(
+    !/^\s*import\s[^\n]*esm\.sh/m.test(readFileSync(path, "utf8")),
+    `${path} still has a static esm.sh import - one CDN hiccup blanks the whole money page`
+  );
+}
+const readerSrc = readFileSync("src/imports/sheet-reader.js", "utf8");
+const xlsxConst = readerSrc.match(/const VENDORED_XLSX = "([^"]+)"/);
+assert.ok(xlsxConst, "sheet-reader.js does not declare VENDORED_XLSX");
+const xlsxResolved = posix.normalize(posix.join("src/imports", xlsxConst[1]));
 assert.equal(xlsxResolved, XLSX_ENTRY, `VENDORED_XLSX points at ${xlsxResolved}, not the vendored entry`);
-assert.ok(/await import\(/.test(importSrc), "the parser import must be dynamic");
+assert.ok(/await import\(/.test(readerSrc), "the parser import must be dynamic");
 
 // It must load lazily, not at module scope: the 425KB parser is only needed when
 // a file is actually dropped.
 assert.ok(
-  /async function loadXlsx\(\)/.test(importSrc),
+  /export async function loadSheetLibrary\(\)/.test(readerSrc),
   "the parser should load behind a call-time loader, not at import time"
 );
+
+// The library must never interpret cells. Handed Kotak's `01-04-2026` with
+// cellDates on, SheetJS returns 4 JANUARY - a silent three-month error on every
+// ambiguous-looking date in the file. Cells are read as raw text and dated by
+// lib/statement-shape.mjs using evidence from the whole statement.
+assert.ok(/cellDates:\s*false/.test(readerSrc), "sheet-reader must disable date coercion");
+assert.ok(/raw:\s*true/.test(readerSrc), "sheet-reader must read cells raw");
 
 // The vendored parser really is SheetJS, not an esm.sh redirect stub.
 const xlsxMod = await import(pathToFileURL(XLSX_ENTRY).href);
