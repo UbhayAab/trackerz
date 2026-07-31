@@ -395,3 +395,63 @@ for (const w of ["coke", "cola", "chips", "biscuit", "bread", "cheese", "whey", 
 }
 
 console.log("fan-out-expander tests passed");
+
+// ---------------------------------------------------------------------------
+// Reporting a missed session must not rewrite the plan you missed.
+//
+// Live capture, 2026-07-31: "drakn 500 g curd, with 2 scoops of protien powder.
+// and no gym today" produced the correct skipped workout row AND an
+// update_plan_candidate replacing the day's Workout B with Rest - auto-applied
+// at confidence 0.55, because there is no review gate. The two then disagree:
+// workout_logs says a session was skipped, user_plans says the day was always
+// rest. jbPlannedWorkout reads the plan, so the miss becomes workout_forgiven,
+// the evening nudge goes quiet, and the next morning's brief calls it a rest
+// day. Every honestly-reported miss would launder itself into a planned rest.
+// ---------------------------------------------------------------------------
+{
+  const planRest = (scope) => ({
+    name: "update_plan_candidate",
+    arguments: { kind: "gym", scope, summary: "No gym today", payload: { op: "replace_workout", workout: { name: "Rest", kind: "rest", items: [] } } },
+    confidence: 0.55,
+  });
+  const day = NOW.slice(0, 10);
+
+  // The real capture. Skip recorded, plan untouched.
+  {
+    const ev = "drakn 500 g curd, with 2 scoops of protien powder. and no gym today";
+    const r = expandToolCalls([planRest(day)], { evidence: ev, now: NOW });
+    const w = has(r, "create_workout_log_candidate");
+    assert.equal(w.length, 1, "the skip is still recorded");
+    assert.equal(w[0].arguments.status, "skipped");
+    assert.equal(has(r, "update_plan_candidate").length, 0,
+      "a same-day denial must not rewrite the day's plan");
+    assert.equal(has(r, "create_food_log_candidate").length, 1, "the food still lands");
+  }
+
+  // A permanent plan change off the back of a denial is worse, not better.
+  {
+    const r = expandToolCalls([planRest("")], { evidence: "no gym today", now: NOW });
+    assert.equal(has(r, "update_plan_candidate").length, 0, "an unscoped rewrite is dropped too");
+  }
+
+  // A genuinely forward-looking multi-day scope SURVIVES: "going to Nagpur
+  // tomorrow and the day after, no gym today" is telling us about days that
+  // have not happened yet, and that is a real plan change.
+  {
+    const scope = [day, "2026-08-01", "2026-08-02"].join(",");
+    const ev = "GOING TO NAGPUR TOMORROW AND DAY AFTER, CALS AND GYM OUT THE WINDOW, NO GYM TODAY";
+    const r = expandToolCalls([planRest(scope)], { evidence: ev, now: NOW });
+    assert.equal(has(r, "update_plan_candidate").length, 1, "a multi-day travel scope is kept");
+    assert.equal(has(r, "create_workout_log_candidate")[0].arguments.status, "skipped");
+  }
+
+  // An explicit instruction is a plan change and must still work. The router
+  // classifies it as plan_change, so salvage never treats it as a denial.
+  {
+    const r = expandToolCalls([planRest(day)], { evidence: "change my gym today to rest", now: NOW });
+    assert.equal(has(r, "update_plan_candidate").length, 1,
+      "an explicit instruction still changes the plan");
+    assert.equal(has(r, "create_workout_log_candidate").length, 0,
+      "an instruction is not a logged event");
+  }
+}

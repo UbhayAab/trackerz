@@ -55,6 +55,11 @@ node scripts/verify-negation-live.mjs
 # Prove the deployed agent ANSWERS a question instead of silently filing it
 node scripts/verify-answer-live.mjs
 
+# Run a REAL capture through the deployed pipeline and print every row it wrote
+node scripts/capture.mjs "6 boiled eggs and 500ml curd"
+node scripts/capture.mjs --dry "no gym today"        # local salvage only, no writes
+node scripts/capture.mjs --undo <ingestionId>        # remove everything it wrote
+
 # Copy the JARVIS-BRIEF mirror block lib/ -> edge fn (tests/mirror-parity guards it)
 node scripts/sync-mirror.mjs
 

@@ -1104,9 +1104,16 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
     out = out.filter((tc) => tc?.name !== "create_workout_log_candidate");
     out.push({
       name: "create_workout_log_candidate",
-      arguments: { description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, status: "skipped", _auto_expanded: true },
+      // Just the denying clause, not the whole capture - mirror of denialClause().
+      arguments: { description: denialClause(ev, looksLikeGym) || ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, status: "skipped", _auto_expanded: true },
       confidence: 0.9,
     });
+    // ...and reporting a miss must NOT rewrite the plan you missed. Mirror of
+    // isSameDayGymPlanChange() in lib/fan-out-expander.mjs. Measured live on
+    // 2026-07-31: "no gym today" wrote the skipped row AND replaced the day's
+    // Workout B with Rest at confidence 0.55, so the miss read as a planned
+    // rest day everywhere downstream.
+    out = out.filter((tc) => !isSameDayGymPlanChange(tc, occurredAt));
   } else if (!command && looksLikeGym(ev) && !out.some((tc) => tc?.name === "create_workout_log_candidate")) {
     // Gym free-text is a workout even without the word "gym" ("did Workout A",
     // "bench 3x10 60kg", "ran 5k").
@@ -1126,6 +1133,31 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   const hasWrite = out.some((tc) => typeof tc?.name === "string" && tc.name.startsWith("create_"));
   if (hasWrite) out = out.filter((tc) => tc?.name !== "request_user_review" || isSafetyReview(tc));
   return out;
+}
+
+// The clause that actually carries the denial, for use as the row's description.
+// Mirror of denialClause() in lib/fan-out-expander.mjs.
+function denialClause(text: string, mentions: (s: string) => boolean): string | null {
+  for (const clause of splitNegationClauses(text)) {
+    if (clauseDeniesEvent(clause) && mentions(clause)) return clause.trim().slice(0, 120);
+  }
+  return null;
+}
+
+// Is this an update_plan_candidate that only rewrites the gym plan for the one
+// day the capture is about? Those are the ones a bare denial must not produce.
+// A scope naming several days is a real forward-looking change and survives -
+// the difference between "no gym today" and "travelling Sunday to Tuesday".
+function isSameDayGymPlanChange(tc: any, occurredAt: string): boolean {
+  if (tc?.name !== "update_plan_candidate") return false;
+  const a = tc.arguments || {};
+  if (a.kind !== "gym") return false;
+  const scope = String(a.scope || "").trim();
+  if (!scope) return true;
+  const days = scope.split(/[,\s]+/).filter(Boolean);
+  if (days.length !== 1) return false;
+  const day = String(occurredAt || "").slice(0, 10);
+  return !day || days[0] === day;
 }
 
 // -------- note de-duplication (mirror of lib/fan-out-expander.mjs) --------
