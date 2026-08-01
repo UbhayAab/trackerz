@@ -132,6 +132,7 @@ Rules:
   • Credit card: "...HDFC Bank Credit Card ending 1234 for Rs 540.00 at SWIGGY on 21-06-2026..." -> create_expense_candidate { amount:540, payment_mode:"card", merchant:"SWIGGY", occurred_at, is_discretionary:true }.
   • UPI / account debit: "Rs.250.00 has been debited from a/c **1234 to VPA name@bank on 21-06-26. UPI Ref 412345678901." -> create_expense_candidate { amount:250, payment_mode:"upi", merchant:"name@bank or the payee name", occurred_at, tags:["412345678901"] }.
   Money LEAVING the account (debited/spent/paid/withdrawn) is an expense; money ARRIVING (credited/received/refund/salary) is income; movement between the user's OWN accounts is a transfer. Never count the "available balance" figure as the transaction amount.
+- ALREADY LOGGED - CHECK THIS FIRST. The memory context may carry a LOGGED TODAY ALREADY line. Anything on it is in the app already: do NOT emit a tool call for it, however clearly the user describes it. The same goes for anything the user themselves flags - "already logged", "logged that so I don't want to log it again", "no need to add it". A DAY JOURNAL (a long retrospective block covering the whole day) is mostly restatement: log only the parts that are genuinely new. And a payment the user says was made long ago is NOT today's spend - either backdate it or leave it out; never date it today.
 - LOG vs CHANGE-REQUEST - DECIDE THIS FIRST. If the user is COMMANDING a change to their setup, do NOT log an event and do NOT tick anything; ROUTE it: (a) changing the diet/gym PLAN or SCHEDULE ("change my gym today", "here is my new schedule", "make Thursdays rest", "for the next 4 Mondays I'll have paneer salad", "stop doing Workout A") -> update_plan_candidate, NEVER a workout/food log. (b) changing a BUDGET/TARGET ("raise my protein goal to 180", "set my spend cap to 40000", "adjust my calorie budget to 1800") -> set_target_candidate, NEVER a Rs 0 expense. (c) a QUESTION or a request to look at something ("how much did I spend?", "am I on track?", "wtf happened", "look at the cal numbers you pushed", "why is this wrong?") -> answer_question. ANSWER IT, in one or two short sentences, using ONLY the numbers in the memory context above and the user's own words. Put the reply in the answer field, echo what you understood the question to be in the question field, and name the figures you used in the basis field. If the context does not contain what is needed, say exactly that ("I do not have your step data") - NEVER estimate, and never answer from general knowledge about nutrition or finance. Write with plain hyphens only - never an em dash or en dash. Do not also emit request_user_review for a question. Only emit a food/workout/expense LOG when the user reports something that ACTUALLY HAPPENED.
 - MADE vs BOUGHT vs ATE (cost decides the money side): "bought paneer and cheese for 50" -> expense ONLY (purchased, not eaten). "made paneer sabzi which costed me 50" -> BOTH a food_log AND an expense of 50. "just made paneer sabzi" (NO amount stated) -> food_log ONLY, NO expense (never invent a cost). Cooking/eating is a food_log; a stated price is the only thing that adds an expense.
 - PLAN UPDATE (FULL): if the user pastes a whole diet/gym PLAN, or replaces it wholesale ("update my diet", "new plan from gpt", "here is my new schedule"), emit update_plan_candidate { kind:"diet"|"gym", scope:"permanent" for a lasting change OR a "YYYY-MM-DD" date for a one-day temporary change OR a comma-separated list of dates "YYYY-MM-DD,YYYY-MM-DD,..." for a recurring temporary change ("next 4 Mondays and Wednesdays" -> the 8 concrete dates, computed from the current time), summary: one short line, payload: the FULL parsed plan as JSON. For diet payload use { meals:[{time,slot,name,detail,calories,protein_g,carbs_g,fat_g}], targets:{calories,protein_g,carbs_g,fat_g} }; for gym use { name,kind,duration_min,items:[...] } or { days:{Mon:{...},Tue:{...}} }. A plan is a TEMPLATE - do NOT also emit individual food/expense/workout log events for it.
@@ -622,6 +623,68 @@ const ANSWER_SYSTEM = [
   'Return ONLY JSON: { "answer": "...", "basis": "which context figures you used" }',
 ].join("\n");
 
+// A day journal that changed nothing must still SAY what it understood.
+//
+// The owner started dictating the whole day in one block at night. Once the
+// already-logged guard and the LOGGED TODAY context are doing their job, the
+// correct outcome for a journal of things already captured is: write nothing.
+// But writing nothing and saying nothing are indistinguishable from the app
+// having failed, which is the exact silence that made 19 of 89 captures
+// unnoticeable. So when a substantial capture produces no rows, summarise it.
+const JOURNAL_SYSTEM = [
+  "The user dictated a journal of their day into a life tracker. Nothing new was",
+  "written from it, because every event in it was already recorded (either the",
+  "user said so, or it is on the LOGGED TODAY ALREADY list in the context).",
+  "Confirm that back to them in two or three short sentences:",
+  "1. What you understood happened - name the actual items.",
+  "2. Say plainly that nothing was added, and why.",
+  "3. If something in the journal looks like it might NOT be captured yet, say",
+  "   which one, so they can add it. If everything is covered, say so.",
+  "Use only what is in the journal and the memory context. Never invent a figure.",
+  "Currency is INR - write amounts as Rs. Plain hyphens only, never an em dash.",
+  'Return ONLY JSON: { "answer": "...", "basis": "what you matched against" }',
+].join("\n");
+
+async function summariseJournal(text: string, contextBlock: string) {
+  const apiKey = await resolveAnySecret(["DEEPSEEK_API_KEY", "NVIDIA_API_KEY"]);
+  if (!apiKey) return null;
+  const url = (await resolveSecretOptional("DEEPSEEK_BASE_URL")) || DEEPSEEK_URL;
+  const user = [
+    contextBlock ? `MEMORY CONTEXT:\n${contextBlock}` : "MEMORY CONTEXT: (empty)",
+    "",
+    `JOURNAL:\n${text}`,
+  ].join("\n");
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: JOURNAL_SYSTEM },
+          { role: "user", content: user },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const raw = String(json.choices?.[0]?.message?.content ?? "");
+    const parsed = JSON.parse(extractJsonObject(raw) || raw || "{}");
+    const answer = String(parsed.answer || "").trim();
+    if (!answer) return null;
+    return {
+      answer,
+      basis: String(parsed.basis || "").trim(),
+      promptTokens: json.usage?.prompt_tokens || 0,
+      outputTokens: json.usage?.completion_tokens || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function answerQuestion(question: string, contextBlock: string) {
   const apiKey = await resolveAnySecret(["DEEPSEEK_API_KEY", "NVIDIA_API_KEY"]);
   if (!apiKey) return null;
@@ -710,7 +773,7 @@ function parseToolCalls(raw: string) {
 // expense also yields a food_log at the same time when the model didn't emit one,
 // so "paid 240 zomato lunch" lands in BOTH money and diet.
 const FOOD_MERCHANTS = ["zomato", "swiggy", "blinkit", "zepto", "instamart", "dominos", "domino", "mcdonald", "kfc", "starbucks", "subway", "pizza", "burger", "cafe", "coffee", "restaurant", "dhaba", "bakery", "biryani", "faasos", "eatfit", "box8", "behrouz", "wow momo", "chaayos", "haldiram", "barbeque", "burger king", "pizza hut", "dunkin", "baskin", "chai point", "theobroma", "la pino", "eatsure", "freshmenu", "ovenstory", "taco bell", "third wave", "blue tokai", "keventers", "bikanervala", "nandos", "sweet truth"];
-const FOOD_WORDS = ["aam","almond","almonds","aloo","aloo gobi","aloo paratha","aloo parathas","aloo tikki burger","americano","amrood","anda","anda curry","ande","apple","apples","ate","badam","baked chips","banana","bananas","bhaat","bhaji","bhindi","bhujia","biryani","biscuit","biscuits","black coffee","black tea","blueberries","blueberry","boiled egg","boiled eggs","boiled rice","bread","bread slice","bread slices","breakfast","burger","butter","butter chicken","buttermilk","cafe latte","cake","cappuccino","chaas","chaat","chai","chana","chana masala","chapathi","chapati","chapatis","chawal","cheese","cheese slice","cheese slices","chhaas","chhole","chia","chia seeds","chicken","chicken 100g","chicken biryani","chicken breast","chicken burger","chicken curry","chicken gravy","chicken patty burger","chickpea curry","chips","choc chip cookie","choc chip cookies","choco bar","choco chip cookie","choco chip cookies","chocolate","chocolate bar","chocolate chip cookie","chocolate chip cookies","chole","coca cola zero","coffee","coke","coke zero","cola","cookie","cookies","cottage cheese","cream biscuit","curd","curry","daal","dahi","dairy milk","dal","dal bowl","dal fry","diet coke","diet pepsi","diet soda","diet soft drink","dinner","doodh","doodh chai","dosa","dosas","dumpling","dumplings","eaten","egg","egg curry","egg masala","egg white","egg whites","eggs","espresso","filter coffee","fish","fish curry","flax seeds","food","fruit","fruit chaat","fruit juice","fruit salad","fulka","granola","greek yoghurt","greek yogurt","green salad","green tea","grilled chicken","grilled sandwich","groundnut","guava","halwa","hung curd","idli","idlis","idly","instant noodles","jalebi","jam","jeera rice","juice","kebab","kela","kheer","khichdi","kidney beans","kulcha","lamb curry","lassi","latte","lays","lemon tea","lentils","lunch","macaroni","maggi","makhan","mango","mango juice","mangoes","marmalade","masala chai","masala dosa","masala dosas","mass gainer shake","mcchicken","meal","milk","milk coffee","milk tea","millet chip","millet chips","mixed veg","mixture","momo","momos","moongphali","muesli","mutton","mutton curry","naan","namkeen","noodles","oatmeal","oats","omelet","omelette","orange","orange juice","oranges","pakoda","pakora","palak","paneer","pao bhaji","parantha","paratha","parathas","pasta","pav bhaji","peanut butter","peanuts","pepsi","pepsi black","pepsi zero","phulka","phulkas","pizza","pizza slice","pizza slices","plain dosa","poha","poori","porridge","potato chips","potato paratha","prawns","protein milk shake","protein scoop","protein shake","pulao","pumpkin seeds","puri","ragi chip","ragi chips","rajma","ramen","rice","rice bowl","roasted peanuts","roti","rotis","rusk","sabji","sabzi","salad","salad bowl","sambar","sambhar","samosa","samosas","sandwich","santra","scoop of whey","scoop whey","seb","seed mix","seeds","sev","shake","shawarma","slice of bread","smoothie","snack","soda","soft drink","soup","south indian coffee","soya","soya beans","soya chunks","soyabean","soyabeans","soybean","soybeans","sprite","sprite zero","sprouts","steamed rice","sugar free cola","sunflower seeds","sweet lassi","tadka dal","tea","thali","thums up","thums up zero","tikka","toast","toast biscuit","tofu","toned milk","upma","uttapam","vada","vada pao","vada pav","veg biryani","veg burger","veg curry","veg salad","veg sandwich","vegetable biryani","wafers","whey","whey scoop","white rice","white sauce pasta","whites","whole egg","whole eggs","yoghurt","yogurt","zero sugar cola"];
+const FOOD_WORDS = ["aam","almond","almonds","aloo","aloo gobi","aloo paratha","aloo parathas","aloo tikki burger","americano","amrood","anda","anda curry","ande","apple","apples","ate","badam","baked chips","banana","bananas","bhaat","bhaji","bhindi","bhujia","biryani","biscuit","biscuits","black coffee","black tea","blueberries","blueberry","boiled egg","boiled eggs","boiled rice","bread","bread slice","bread slices","breakfast","burger","burrito","burritos","butter","butter chicken","buttermilk","cafe latte","cake","cappuccino","caramel popcorn","chaas","chaat","chai","chana","chana masala","chapathi","chapati","chapatis","chawal","cheese","cheese popcorn","cheese slice","cheese slices","chhaas","chhole","chia","chia seeds","chicken","chicken 100g","chicken biryani","chicken breast","chicken burger","chicken curry","chicken gravy","chicken patty burger","chickpea curry","chips","choc chip cookie","choc chip cookies","choco bar","choco chip cookie","choco chip cookies","chocolate","chocolate bar","chocolate chip cookie","chocolate chip cookies","chole","coca cola zero","coffee","coke","coke zero","cola","cookie","cookies","cottage cheese","cream biscuit","curd","curry","daal","dahi","dairy milk","dal","dal bowl","dal fry","diet coke","diet pepsi","diet soda","diet soft drink","dinner","doodh","doodh chai","dosa","dosas","dumpling","dumplings","eaten","egg","egg curry","egg masala","egg white","egg whites","eggs","espresso","filter coffee","fish","fish curry","flax seeds","food","fruit","fruit chaat","fruit juice","fruit salad","fulka","granola","greek yoghurt","greek yogurt","green salad","green tea","grilled chicken","grilled sandwich","groundnut","guava","halwa","hung curd","idli","idlis","idly","instant noodles","jalebi","jam","jeera rice","juice","kebab","kela","kheer","khichdi","kidney beans","kulcha","lamb curry","lassi","latte","lays","lemon tea","lentils","lunch","macaroni","maggi","makhan","mango","mango juice","mangoes","marmalade","masala chai","masala dosa","masala dosas","mass gainer shake","mcchicken","meal","milk","milk coffee","milk tea","millet chip","millet chips","mixed veg","mixture","momo","momos","moongphali","muesli","mutton","mutton curry","naan","nacho","nachos","namkeen","noodles","oatmeal","oats","omelet","omelette","orange","orange juice","oranges","pakoda","pakora","palak","paneer","pao bhaji","parantha","paratha","parathas","pasta","pav bhaji","peanut butter","peanuts","pepsi","pepsi black","pepsi zero","phulka","phulkas","pizza","pizza slice","pizza slices","plain dosa","poha","poori","popcorn","porridge","potato chips","potato paratha","prawns","protein milk shake","protein scoop","protein shake","pulao","pumpkin seeds","puri","quesadilla","quesadillas","ragi chip","ragi chips","rajma","ramen","rice","rice bowl","roasted peanuts","roti","rotis","rusk","sabji","sabzi","salad","salad bowl","sambar","sambhar","samosa","samosas","sandwich","santra","scoop of whey","scoop whey","seb","seed mix","seeds","sev","shake","shawarma","slice of bread","smoothie","snack","soda","soft drink","soup","south indian coffee","soya","soya beans","soya chunks","soyabean","soyabeans","soybean","soybeans","sprite","sprite zero","sprouts","steamed rice","sugar free cola","sunflower seeds","sweet lassi","tadka dal","tea","thali","thums up","thums up zero","tikka","toast","toast biscuit","tofu","toned milk","upma","uttapam","vada","vada pao","vada pav","veg biryani","veg burger","veg curry","veg salad","veg sandwich","vegetable biryani","wafers","whey","whey scoop","white rice","white sauce pasta","whites","whole egg","whole eggs","yoghurt","yogurt","zero sugar cola"];
 // Words that name WHEN you ate, not WHAT - matching only these means no dish was
 // named, so no macros can ever be derived.
 const MEAL_SLOT_WORDS = new Set(["lunch", "dinner", "breakfast", "snack", "meal", "food", "ate", "eaten"]);
@@ -876,6 +939,44 @@ const NEG_AUX_VERB = new RegExp(
 const NEG_NO_EVENT = /\bno\s+(?:gym|workout|work\s?out|exercise|training|session|lifting|cardio|run|walk|breakfast|lunch|dinner|meal|meals|food|snack|eating|spend|spending|purchase|expense)\b/i;
 const NEG_DENIAL_VERB = /\b(?:skip|skips|skipped|skipping|miss|missed|missing|bunk|bunked|ditch|ditched|avoided|refused|declined|forgot\s+to|failed\s+to|gave\s+it\s+a\s+miss)\b/i;
 const NEG_IDIOM = /\b(?:rest\s+day|day\s+off|off\s+day|took\s+rest|taking\s+rest|out\s+(?:\S+\s+){0,2}window|couldn'?t\s+make\s+it|not\s+happening|didn'?t\s+happen)\b/i;
+// ALREADY RECORDED - the event happened and is already in the app. Different
+// from a denial, same consequence: do not write a row.
+const NEG_ALREADY_RECORDED = /\b(?:already\s+(?:\w+\s+){0,2}?(?:logged|added|recorded|entered|captured|tracked|counted|paid|in\s+there|in\s+the\s+app)|(?:logged|added|recorded|captured|counted)\s+(?:it|this|that|them)?\s*already|(?:do\s*n[o']?t|dont|don'?t|no)\s+(?:want\s+to\s+)?(?:log|add|record|count|enter)\s*(?:it|this|that|them)?\s*(?:out\s+)?again|no\s+need\s+to\s+(?:log|add|record|count)|(?:double|twice)[-\s]?(?:log|count|counting|logged|counted))\b/i;
+
+function clauseSaysAlreadyRecorded(clause: string): boolean {
+  return NEG_ALREADY_RECORDED.test(String(clause || "").toLowerCase());
+}
+
+// A flagged clause covers itself AND the one before it: "already logged" points
+// backwards at what was just said, which is how the phrasing actually falls in
+// dictation ("the ticket was around 484 | logged that so I don't want to log it
+// again").
+function alreadyRecordedSpans(text: string): { clauses: string[]; covered: Set<number> } {
+  const clauses = splitNegationClauses(text);
+  const covered = new Set<number>();
+  clauses.forEach((clause, i) => {
+    if (!clauseSaysAlreadyRecorded(clause)) return;
+    covered.add(i);
+    if (i > 0) covered.add(i - 1);
+  });
+  return { clauses, covered };
+}
+
+function isAlreadyRecorded(text: string, mentions: (s: string) => boolean): boolean {
+  const clauses = splitNegationClauses(text);
+  if (!clauses.length) return false;
+  const test = typeof mentions === "function" ? mentions : () => true;
+  let mentioned = 0;
+  let unflagged = 0;
+  for (const clause of clauses) {
+    if (!test(clause)) continue;
+    mentioned++;
+    if (clauseSaysAlreadyRecorded(clause)) continue;
+    unflagged++;
+  }
+  if (mentioned === 0) return test(text) && clauseSaysAlreadyRecorded(text);
+  return unflagged === 0;
+}
 
 function clauseDeniesEvent(clause: string): boolean {
   const t = String(clause || "").toLowerCase();
@@ -1041,6 +1142,8 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   // today", "skipped lunch"). Salvage stays off and any positive row the model
   // emitted for that domain is dropped - an explicit denial outranks a guess.
   const gymDenied = declaresNoWorkout(evidence, looksLikeGym);
+  const foodAlready = isAlreadyRecorded(evidence, looksLikeFood);
+  const moneyAlready = isAlreadyRecorded(evidence, mentionsMoney);
   const foodDenied = isEventDenied(evidence, looksLikeFood);
   const hasExpense = () => out.some((tc) => tc?.name === "create_expense_candidate");
   const hasFood = () => out.some((tc) => tc?.name === "create_food_log_candidate");
@@ -1070,7 +1173,7 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
 
   // 2. Salvage an EXPENSE the model missed (only with an explicit money cue).
   const amount = extractAmount(ev);
-  if (amount != null && !hasExpense() && !command) {
+  if (amount != null && !hasExpense() && !command && !moneyAlready) {
     out.push({
       name: "create_expense_candidate",
       arguments: { amount, currency: "INR", merchant: spendTargetFrom(ev), description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, is_discretionary: true, _auto_expanded: true },
@@ -1081,7 +1184,7 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   // 3. Salvage FOOD the model missed (even alongside an expense), so a food+spend
   //    capture lands in BOTH trackers and never sits in review. Not for a grocery
   //    purchase - that's an expense, not something eaten.
-  if (!purchase && !command && !foodDenied && namesDish(ev) && !hasFood()) {
+  if (!purchase && !command && !foodDenied && !foodAlready && namesDish(ev) && !hasFood()) {
     out.push({
       name: "create_food_log_candidate",
       arguments: { meal_slot: mealSlotFromTime(occurredAt), description: ev.replace(MONEY_TRAIL, "").trim().slice(0, 120), occurred_at: occurredAt, _auto_expanded: true },
@@ -1124,6 +1227,9 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
     });
   }
 
+  // 3b-iii. Drop the rows the capture itself says are ALREADY logged.
+  out = dropAlreadyRecordedRows(out, ev);
+
   // 3d. A note must never restate a row we just wrote. Mirror of
   //     dropRestatingNotes() in lib/fan-out-expander.mjs.
   out = dropRestatingNotes(out, ev);
@@ -1158,6 +1264,56 @@ function isSameDayGymPlanChange(tc: any, occurredAt: string): boolean {
   if (days.length !== 1) return false;
   const day = String(occurredAt || "").slice(0, 10);
   return !day || days[0] === day;
+}
+
+// -------- already-logged guard (mirror of lib/fan-out-expander.mjs) --------
+// A day journal narrates the whole day at night, and most of it is already in
+// the app from the moment it happened. The 2026-08-01 journal re-logged a
+// popcorn and a burrito captured hours earlier and a movie ticket paid long
+// before, taking the day from ~1,850 kcal to 3,315 and inventing Rs 499 of
+// spend. Suppression is per ROW so one journal breath can mix flagged and new.
+function mentionsMoney(text: string): boolean {
+  return /(?:spent|spend|paid|pay|paying|bought|buy|cost|costs|price|rs\.?|inr|rupees?|₹|ticket|bill|share|refund|reimburs\w*)/i
+    .test(String(text || ""));
+}
+
+const ALREADY_GUARDED = new Set(["create_food_log_candidate", "create_expense_candidate"]);
+
+function rowTokens(tc: any) {
+  const a = tc?.arguments || {};
+  const text = [a.description, a.merchant, a.meal_name, a.note].filter(Boolean).join(" ");
+  const words = String(text).toLowerCase().match(/[a-z]{3,}/g) || [];
+  const amount = Number(a.amount);
+  return { words: new Set(words), amount: Number.isFinite(amount) && amount > 0 ? amount : null };
+}
+
+function rowClauseScore(row: any, clause: string): number {
+  const c = String(clause).toLowerCase();
+  let score = 0;
+  for (const w of row.words) if (c.includes(w)) score += 1;
+  if (row.amount != null) {
+    const nums = (c.match(/\d[\d,]*(?:\.\d+)?/g) || []).map((n: string) => Number(n.replace(/,/g, "")));
+    if (nums.some((n: number) => Math.abs(n - row.amount) < 0.5)) score += 3;
+  }
+  return score;
+}
+
+function dropAlreadyRecordedRows(toolCalls: ToolCall[], evidence: string): ToolCall[] {
+  const { clauses, covered } = alreadyRecordedSpans(evidence);
+  if (!covered.size || !clauses.length) return [...toolCalls];
+  return toolCalls.filter((tc: any) => {
+    if (!ALREADY_GUARDED.has(tc?.name)) return true;
+    const row = rowTokens(tc);
+    if (!row.words.size && row.amount == null) return true;
+    let bestIdx = -1;
+    let bestScore = 0;
+    clauses.forEach((clause, i) => {
+      const sc = rowClauseScore(row, clause);
+      if (sc > bestScore) { bestScore = sc; bestIdx = i; }
+    });
+    if (bestIdx < 0) return true;
+    return !covered.has(bestIdx);
+  });
 }
 
 // -------- note de-duplication (mirror of lib/fan-out-expander.mjs) --------
@@ -1820,6 +1976,10 @@ const FOOD_TABLE: any[] = [
   { key: "noodles", kind: "count", aliases: ["maggi", "noodles", "ramen", "instant noodles"], calories: 350, protein_g: 8, carbs_g: 50, fat_g: 13 },
   { key: "pasta", kind: "count", aliases: ["pasta", "macaroni", "white sauce pasta"], calories: 350, protein_g: 10, carbs_g: 55, fat_g: 9 },
   { key: "sandwich", kind: "count", aliases: ["sandwich", "veg sandwich", "grilled sandwich"], calories: 250, protein_g: 8, carbs_g: 35, fat_g: 9 },
+  { key: "popcorn", kind: "gram", per: 100, aliases: ["popcorn", "cheese popcorn", "caramel popcorn"], calories: 500, protein_g: 8, carbs_g: 57, fat_g: 27 },
+  { key: "burrito", kind: "count", aliases: ["burrito", "burritos"], calories: 900, protein_g: 30, carbs_g: 110, fat_g: 38 },
+  { key: "nachos", kind: "gram", per: 100, aliases: ["nachos", "nacho"], calories: 490, protein_g: 8, carbs_g: 58, fat_g: 25 },
+  { key: "quesadilla", kind: "count", aliases: ["quesadilla", "quesadillas"], calories: 520, protein_g: 22, carbs_g: 40, fat_g: 29 },
   { key: "burger", kind: "count", aliases: ["burger", "veg burger", "aloo tikki burger"], calories: 350, protein_g: 10, carbs_g: 45, fat_g: 14 },
   { key: "chicken burger", kind: "count", aliases: ["chicken burger", "mcchicken", "chicken patty burger"], calories: 450, protein_g: 22, carbs_g: 40, fat_g: 22 },
   { key: "pizza slice", kind: "count", aliases: ["pizza slice", "pizza", "pizza slices"], calories: 285, protein_g: 12, carbs_g: 36, fat_g: 10 },
@@ -2036,6 +2196,24 @@ function buildContextBlock(input: any, maxChars = 1800): string {
     if (Number.isFinite(Number(et.calories))) bits.push(`${Math.round(Number(et.calories))} kcal/day`);
     if (bits.length) lines.push(`DAILY TARGET (in force now): ${bits.join(", ")}`);
   }
+  // What is ALREADY in the app for today - so a retrospective journal can see
+  // what it would be duplicating. Mirror of loggedTodayLines in
+  // lib/context-builder.mjs.
+  const lt = input.loggedToday;
+  if (lt) {
+    const bits: string[] = [];
+    for (const f of (lt.food || []).slice(0, 12)) {
+      const label = String(f.description || f.meal_name || "meal").slice(0, 44);
+      const kcal = Number(f.calories_estimate);
+      bits.push(`${label}${Number.isFinite(kcal) && kcal > 0 ? ` (${Math.round(kcal)} kcal)` : ""}`);
+    }
+    for (const m of (lt.money || []).slice(0, 12)) {
+      const label = String(m.merchant || m.description || "spend").slice(0, 36);
+      const amt = Number(m.amount);
+      bits.push(`Rs ${Math.round(Number.isFinite(amt) ? amt : 0)} ${label}`);
+    }
+    if (bits.length) lines.push(`LOGGED TODAY ALREADY (do NOT log these again): ${bits.join(" · ")}`);
+  }
   const budgets = (input.budgets || []).filter((b: any) => b?.kind && b?.amount != null);
   if (budgets.length) lines.push(`TARGETS: ${budgets.map((b: any) => `${b.kind} ${b.amount}`).join(" · ")}`);
   const notes = (input.notes || []).slice(0, 8);
@@ -2073,7 +2251,16 @@ function buildContextBlock(input: any, maxChars = 1800): string {
 async function fetchContextBlock(supabase: ReturnType<typeof adminClient>, userId: string): Promise<string> {
   try {
     const since = new Date(Date.now() - 7 * 86400_000).toISOString();
-    const [profile, budgets, notes, facts, ledger, foods, workouts, plan] = await Promise.all([
+    // Everything already logged TODAY, so a retrospective journal can see what
+    // it would be duplicating. The 2026-08-01 journal re-logged a popcorn and a
+    // burrito captured hours earlier because the model had no idea they were
+    // there - the context only ever carried 7-day AGGREGATES, never the rows.
+    const dayStart = new Date();
+    dayStart.setUTCHours(dayStart.getUTCHours() + 5, dayStart.getUTCMinutes() + 30, 0, 0);
+    const todayKey = dayStart.toISOString().slice(0, 10);
+    const istMidnightUtc = new Date(`${todayKey}T00:00:00+05:30`).toISOString();
+
+    const [profile, budgets, notes, facts, ledger, foods, workouts, plan, todayFood, todayMoney] = await Promise.all([
       supabase.from("profiles").select("display_name, timezone, currency").eq("id", userId).maybeSingle(),
       supabase.from("budgets").select("kind, amount").eq("user_id", userId),
       supabase.from("notes").select("kind, domain, body, due_on").eq("user_id", userId).eq("status", "open").order("created_at", { ascending: false }).limit(8),
@@ -2086,6 +2273,10 @@ async function fetchContextBlock(supabase: ReturnType<typeof adminClient>, userI
       supabase.from("food_logs").select("calories_estimate, protein_g").eq("user_id", userId).gte("occurred_at", since),
       supabase.from("workout_logs").select("id").eq("user_id", userId).gte("occurred_at", since),
       supabase.from("user_plans").select("summary").eq("user_id", userId).eq("kind", "diet").eq("active", true).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("food_logs").select("description, meal_name, calories_estimate, occurred_at")
+        .eq("user_id", userId).gte("occurred_at", istMidnightUtc).order("occurred_at").limit(20),
+      supabase.from("ledger_entries").select("amount, merchant, description, occurred_at")
+        .eq("user_id", userId).gte("occurred_at", istMidnightUtc).is("merged_into", null).order("occurred_at").limit(20),
     ]);
     // The target the app actually enforces: a saved budget row if there is one,
     // otherwise the diet scaffold's default. tests/context-builder.test.mjs
@@ -2105,6 +2296,10 @@ async function fetchContextBlock(supabase: ReturnType<typeof adminClient>, userI
       recentLedger: ledger.data, recentFoodLogs: foods.data, recentWorkouts: workouts.data,
       planToday: plan.data?.summary || "",
       effectiveTargets,
+      loggedToday: {
+        food: todayFood.data || [],
+        money: todayMoney.data || [],
+      },
     });
   } catch (_e) {
     return ""; // context is best-effort; never block a capture on it
@@ -2235,6 +2430,27 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
         },
       ];
       answerCost = estimateCostUsd(replied.promptTokens, replied.outputTokens);
+    }
+  }
+
+  // A substantial capture that wrote NOTHING gets a spoken summary rather than
+  // silence. This is the day-journal case: everything in it was already logged,
+  // which is the right outcome and an indistinguishable-from-broken experience
+  // without a reply.
+  const wroteSomething = answerCalls.some((tc: any) => String(tc?.name || "").startsWith("create_"));
+  const alreadyAnswered = answerCalls.some((tc: any) => tc?.name === "answer_question");
+  if (!wroteSomething && !alreadyAnswered && inputText.trim().length >= 120) {
+    const summary = await summariseJournal(inputText, opts.contextBlock || "");
+    if (summary) {
+      answerCalls = [
+        ...answerCalls.filter((tc: any) => tc?.name !== "request_user_review"),
+        {
+          name: "answer_question",
+          arguments: { question: "Your day", answer: summary.answer, basis: summary.basis },
+          confidence: 0.9,
+        },
+      ];
+      answerCost += estimateCostUsd(summary.promptTokens, summary.outputTokens);
     }
   }
 
