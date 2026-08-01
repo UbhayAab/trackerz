@@ -117,10 +117,16 @@ function approx(actual, expected, tol, msg) {
   assert.equal(egg.qty, 2, "'two' -> 2 eggs");
 }
 
-// table sanity: no entry has absurd macros
+// Table sanity: catch a misplaced digit, not a big meal.
+//
+// The ceiling was 700, which a real single-item restaurant dish clears without
+// help - a burrito is 900. Raised to 1000, which still catches the failure this
+// guard exists for (265 typed as 2650, the class behind the 100x calorie bug)
+// while letting an honest large dish be honest. Anything above 1000 for ONE
+// serving is a data-entry error, not a meal.
 {
   for (const e of FOOD_TABLE) {
-    assert.ok(e.calories >= 0 && e.calories <= 700, `${e.key} calories in range`);
+    assert.ok(e.calories >= 0 && e.calories <= 1000, `${e.key} calories in range (${e.calories})`);
     assert.ok(e.protein_g >= 0 && e.protein_g <= 35, `${e.key} protein in range`);
     assert.ok(Array.isArray(e.aliases) && e.aliases.length >= 1, `${e.key} has aliases`);
     assert.ok(["count", "gram", "ml"].includes(e.kind), `${e.key} has a valid kind`);

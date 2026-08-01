@@ -455,3 +455,84 @@ console.log("fan-out-expander tests passed");
       "an instruction is not a logged event");
   }
 }
+
+// ---------------------------------------------------------------------------
+// The day journal: "already logged" must not become logged twice.
+//
+// The owner started journalling the whole day in one dictated block at night.
+// The real 2026-08-01 entry said, among other things:
+//
+//   "...the ticket was around 484 I guess ... lock that so I don't want to
+//    logout again had popcorn today paid my share already have already logged
+//    also after that had a burritos also eat in legend..."
+//
+// Both the popcorn and the burrito were already captured hours earlier, and the
+// movie ticket had been paid for long before. The journal re-logged all of it:
+// the day went from ~1,850 kcal to 3,315, and Rs 499 appeared that was never
+// spent that day.
+//
+// Suppression is per ROW, not per capture - one journal breath mixes flagged
+// and unflagged items, and killing the whole domain would lose the burrito to
+// save the popcorn.
+// ---------------------------------------------------------------------------
+{
+  const m = (name, args) => ({ name, arguments: args, confidence: 0.9 });
+  const JOURNAL_NOW = "2026-08-01T19:04:00+05:30";
+  const run = (ev, calls) => expandToolCalls(calls, { evidence: ev, now: JOURNAL_NOW });
+
+  // Flagged food -> nothing written.
+  {
+    const r = run("had popcorn today paid my share already have already logged",
+      [m("create_food_log_candidate", { description: "popcorn at the movies", calories_estimate: 450 })]);
+    assert.equal(has(r, "create_food_log_candidate").length, 0, "an already-logged meal is not re-logged");
+  }
+
+  // The flag sits in the clause AFTER the amount - that is how people dictate.
+  {
+    const r = run("the ticket was around 484 I guess, logged that so I dont want to log it again",
+      [m("create_expense_candidate", { amount: 484, merchant: "Movie tickets" })]);
+    assert.equal(has(r, "create_expense_candidate").length, 0,
+      "'logged that, don't log again' suppresses the expense in the previous clause");
+  }
+
+  // The garbled dictation of that same sentence must behave identically.
+  {
+    const r = run("the ticket was around 484 actually lock that so I don't want to logout again",
+      [m("create_expense_candidate", { amount: 484, merchant: "Movie tickets" })]);
+    assert.equal(has(r, "create_expense_candidate").length, 0, "voice typos still suppress");
+  }
+
+  // Unflagged in the same journal -> still logged. This is the whole point.
+  {
+    const r = run("had popcorn already logged, then had a burrito at Legend", [
+      m("create_food_log_candidate", { description: "popcorn", calories_estimate: 450 }),
+      m("create_food_log_candidate", { description: "burrito at Legend", calories_estimate: 650 }),
+    ]);
+    const kept = has(r, "create_food_log_candidate");
+    assert.equal(kept.length, 1, "only the flagged item is dropped");
+    assert.match(kept[0].arguments.description, /burrito/i, "the new item survives");
+  }
+
+  // No flag anywhere -> nothing is suppressed.
+  {
+    const r = run("had a burrito at Legend and popcorn at the movies", [
+      m("create_food_log_candidate", { description: "burrito at Legend", calories_estimate: 650 }),
+      m("create_food_log_candidate", { description: "popcorn", calories_estimate: 450 }),
+    ]);
+    assert.equal(has(r, "create_food_log_candidate").length, 2, "an ordinary capture is untouched");
+  }
+
+  // A row that matches no clause is KEPT - never drop on a guess.
+  {
+    const r = run("already logged everything", [
+      m("create_food_log_candidate", { description: "something unrelated", calories_estimate: 100 }),
+    ]);
+    assert.equal(has(r, "create_food_log_candidate").length, 1, "no clause match -> keep the row");
+  }
+
+  // Salvage must not re-invent what the flag just suppressed.
+  {
+    const r = run("spent around 484 on the movie ticket, already logged that", []);
+    assert.equal(has(r, "create_expense_candidate").length, 0, "salvage respects the flag too");
+  }
+}
