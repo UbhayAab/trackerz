@@ -1262,7 +1262,10 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   // A CHANGE REQUEST / QUERY ("change my plan", "raise my budget", "how much…") is
   // not a loggable event - suppress all deterministic log-salvage so we never write
   // a row or tick a checklist for a command. A mixed "…also I ate dal" keeps it on.
-  const command = isChangeRequest(evidence) && !carriesLoggedEvent(evidence);
+  // A command OR meta-commentary about the app. Both mean "this is not a log",
+  // so every deterministic salvage below stays off; the model's own note /
+  // remember_fact / plan calls are untouched. See isAboutTheApp.
+  const command = (isChangeRequest(evidence) || isAboutTheApp(evidence)) && !carriesLoggedEvent(evidence);
   // DENIAL: the capture names a domain only to say it did NOT happen ("no gym
   // today", "skipped lunch"). Salvage stays off and any positive row the model
   // emitted for that domain is dropped - an explicit denial outranks a guess.
@@ -1397,6 +1400,30 @@ function isSameDayGymPlanChange(tc: any, occurredAt: string): boolean {
 // popcorn and a burrito captured hours earlier and a movie ticket paid long
 // before, taking the day from ~1,850 kcal to 3,315 and inventing Rs 499 of
 // spend. Suppression is per ROW so one journal breath can mix flagged and new.
+// META-COMMENTARY: the capture is ABOUT the app rather than a record of anything
+// that happened. On 2026-08-04 a note reading "When you see me eating 6 boiled
+// eggs daily. Why not add it in the json structure... This is a note. For claude
+// to see later." produced a correct note AND a correct remember_fact, and then
+// salvage fabricated a 432 kcal meal with the note text as its description.
+// Talking about eating is not eating. Deliberately narrow - only vocabulary a
+// real food/spend log would never contain. Mirror of isAboutTheApp in
+// lib/fan-out-expander.mjs; flagged 1 of 109 real captures, and that was this one.
+const META_MARKERS: RegExp[] = [
+  /this is (just )?a note/i,
+  /note (for|to) (claude|myself|self|later)/i,
+  /for claude/i,
+  /why not/i,
+  /why (don'?t|doesn'?t|can'?t|cant|didn'?t)/i,
+  /(json|schema|api|backend|database|codebase|prompt)/i,
+  /(the )?(app|ai) ?(engine|system)/i,
+  /the app('s)?/i,
+  /(log again|quick add|review queue) (section|tab|screen)?/i,
+  /(feature|bug|ui|screen|button|tab) (request|idea|is broken|should)/i,
+];
+function isAboutTheApp(text = ""): boolean {
+  return META_MARKERS.some((rx) => rx.test(String(text)));
+}
+
 function mentionsMoney(text: string): boolean {
   return /(?:spent|spend|paid|pay|paying|bought|buy|cost|costs|price|rs\.?|inr|rupees?|₹|ticket|bill|share|refund|reimburs\w*)/i
     .test(String(text || ""));

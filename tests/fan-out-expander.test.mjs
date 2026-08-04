@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { expandToolCalls, looksLikeFood, looksLikePurchase, mealSlotFromTime, extractAmount, resolveOccurredAt, istHourOf, slotNamedIn, resolveMealSlot } from "../lib/fan-out-expander.mjs";
+import { expandToolCalls, looksLikeFood, looksLikePurchase, mealSlotFromTime, extractAmount, resolveOccurredAt, istHourOf, slotNamedIn, resolveMealSlot, isAboutTheApp } from "../lib/fan-out-expander.mjs";
 import { FOOD_TABLE } from "../lib/food-nutrition.mjs";
 
 const NOW = "2026-06-26T10:00:00+05:30"; // a fixed "today" for deterministic dates
@@ -644,3 +644,45 @@ console.log("fan-out-expander 2026-08-04 regressions passed");
 }
 
 console.log("meal-slot IST regressions passed");
+
+// ---------------------------------------------------------------------------
+// 2026-08-04: talking about eating is not eating. A note reading "When you see
+// me eating 6 boiled eggs daily. Why not add it in the json structure... This is
+// a note. For claude to see later." produced a correct note AND a correct
+// remember_fact, and then salvage fabricated a 432 kcal meal whose description
+// was the note text itself.
+// ---------------------------------------------------------------------------
+{
+  const META = [
+    "When you see me eating 6 boiled eggs daily. Why not add it in the json structure. This is a note. For claude to see later.",
+    "why not add 500g curd to the quick add tab",
+    "the app's ai engine keeps missing my protein powder",
+    "this is a note, the eggs should auto-log",
+  ];
+  for (const t of META) assert.ok(isAboutTheApp(t), `meta-commentary: "${t.slice(0, 40)}"`);
+
+  // Genuine logs must NEVER trip it - checked against the real corpus, where it
+  // flagged 1 of 109 captures and that one was the note above.
+  const REAL = [
+    "6 boiled eggs", "ate 6 boiled eggs and 500ml curd yesterday", "2 paneer rolls spent 350",
+    "drakn 500 g curd, with 2 scoops of protien powder. and no gym today",
+    "Cheese sandwich and cold coffee", "In gym, back / pull day", "120g oats",
+    "Slept 11.30pm to 6.15 am", "2 rolls - gobi, 2 cup cake, 2 samosa",
+    "I have to file gst. Every quarter deadline is 10th of every 3rd month.",
+  ];
+  for (const t of REAL) assert.ok(!isAboutTheApp(t), `NOT meta: "${t.slice(0, 40)}"`);
+
+  // End to end: the note salvages nothing, a real meal still salvages.
+  const noteOut = expandToolCalls(
+    [{ name: "create_note_candidate", arguments: { body: "auto-add recurring foods" }, confidence: 0.9 }],
+    { evidence: META[0], now: NOW },
+  );
+  assert.equal(has(noteOut, "create_food_log_candidate").length, 0, "no phantom meal from a note about meals");
+  assert.equal(has(noteOut, "create_note_candidate").length, 1, "the model's own note survives");
+  assert.equal(
+    has(expandToolCalls([], { evidence: "ate 6 boiled eggs and 500ml curd", now: NOW }), "create_food_log_candidate").length,
+    1, "a genuine meal still salvages",
+  );
+}
+
+console.log("meta-commentary guard tests passed");
