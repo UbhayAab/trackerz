@@ -21,22 +21,25 @@ const FILES = ["supabase/functions/agent/index.ts", "supabase/functions/jarvis/i
 const DENO_NOISE = /error TS2307|Cannot find name 'Deno'|Cannot find module 'https:|Cannot find module 'npm:|Cannot find module 'jsr:/;
 
 // Known pre-existing errors, kept explicit so the check can be enforcing today
-// rather than someday. Fix one and delete its line.
+// rather than someday. Fix one and delete its entry.
+//
+// Matched on FILE + MESSAGE, never on line number: keying on "index.ts(1725,12)"
+// meant any edit above the error silently turned it into a "new" failure, which
+// is exactly the false alarm that makes a guard get switched off.
 const KNOWN = [
-  "supabase/functions/agent/index.ts(1725,12)", // union narrowing on a dedupe candidate
+  // agent: union narrowing on a dedupe candidate.
+  ["agent/index.ts", "Property 'amount' does not exist on type '{ id: string; ingestionId: string;"],
   // jarvis: Intl.DateTimeFormat().formatToParts() reduced into an untyped {},
   // then read by field. Runtime-correct, unprovable to tsc without an interface.
-  "supabase/functions/jarvis/index.ts(95,18)",
-  "supabase/functions/jarvis/index.ts(95,38)",
-  "supabase/functions/jarvis/index.ts(95,63)",
-  "supabase/functions/jarvis/index.ts(96,18)",
-  "supabase/functions/jarvis/index.ts(96,44)",
-  "supabase/functions/jarvis/index.ts(96,64)",
-  "supabase/functions/jarvis/index.ts(96,86)",
+  ["jarvis/index.ts", "Property 'year' does not exist on type '{}'"],
+  ["jarvis/index.ts", "Property 'month' does not exist on type '{}'"],
+  ["jarvis/index.ts", "Property 'day' does not exist on type '{}'"],
+  ["jarvis/index.ts", "Property 'hour' does not exist on type '{}'"],
+  ["jarvis/index.ts", "Property 'minute' does not exist on type '{}'"],
+  ["jarvis/index.ts", "Property 'second' does not exist on type '{}'"],
   // jarvis: extra fields passed to the email template's arg type.
-  "supabase/functions/jarvis/index.ts(1150,7)",
-  "supabase/functions/jarvis/index.ts(1170,5)",
-  "supabase/functions/jarvis/index.ts(1270,24)",
+  ["jarvis/index.ts", "'stats' does not exist in type"],
+  ["jarvis/index.ts", "Property 'foodLogs' does not exist on type"],
 ];
 
 if (!existsSync(TSC)) {
@@ -53,7 +56,7 @@ const lines = `${res.stdout || ""}${res.stderr || ""}`.split(/\r?\n/)
   .filter((l) => l.includes("error TS"))
   .filter((l) => !DENO_NOISE.test(l));
 
-const fresh = lines.filter((l) => !KNOWN.some((k) => l.startsWith(k)));
+const fresh = lines.filter((l) => !KNOWN.some(([file, msg]) => l.includes(file) && l.includes(msg)));
 const known = lines.length - fresh.length;
 
 if (fresh.length) {
