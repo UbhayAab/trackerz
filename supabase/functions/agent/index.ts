@@ -1192,14 +1192,64 @@ function isSafetyReview(tc: ToolCall): boolean {
   const reason = String((tc?.arguments as any)?.reason || "").toLowerCase();
   return reason.includes("injection") || reason.includes("malicious");
 }
+// Reading the hour TEXTUALLY out of the ISO string is right only when the string
+// carries +05:30. The model routinely emits Z, so "2026-07-28T09:15:07Z" bucketed
+// as hour 9 (breakfast) when it is 14:45 IST (lunch). Parse the instant.
+function istHourOf(iso: string): number {
+  const t = Date.parse(String(iso || ""));
+  if (Number.isNaN(t)) {
+    const m = String(iso || "").match(/T(\d{2}):/);
+    return m ? Number(m[1]) : 12;
+  }
+  return new Date(t + 5.5 * 3_600_000).getUTCHours();
+}
+// Bands widened from the original 15:00 lunch cut-off to 16:00, and snack narrowed
+// to 16-18, because the old boundaries called a 15:30 IST lunch a snack.
 function mealSlotFromTime(iso: string): string {
-  const m = String(iso || "").match(/T(\d{2}):/);
-  const h = m ? Number(m[1]) : 12;
+  const h = istHourOf(iso);
   if (h >= 5 && h < 11) return "breakfast";
-  if (h >= 11 && h < 15) return "lunch";
-  if (h >= 15 && h < 18) return "snack";
+  if (h >= 11 && h < 16) return "lunch";
+  if (h >= 16 && h < 18) return "snack";
   if (h >= 18 && h < 23) return "dinner";
   return "other";
+}
+const SLOT_WORDS: [string, RegExp][] = [
+  ["breakfast", /\b(breakfast|nashta)\b/i],
+  ["lunch", /\blunch\b/i],
+  ["dinner", /\b(dinner|supper)\b/i],
+  ["snack", /\b(snack|snacked)\b/i],
+];
+function slotNamedIn(text = ""): string | null {
+  for (const [slot, rx] of SLOT_WORDS) if (rx.test(String(text))) return slot;
+  return null;
+}
+// Hours at which a slot label is IMPOSSIBLE, in IST. Deliberately narrow: a late
+// dinner at 01:00 and a snack at any hour are both normal, so neither is listed.
+const IMPOSSIBLE_AT: Record<string, (h: number) => boolean> = {
+  breakfast: (h) => h >= 12,
+  lunch: (h) => h >= 18 || (h >= 4 && h < 9),
+  dinner: (h) => h >= 5 && h < 15,
+  snack: () => false,
+};
+
+// Authority order for a food row's slot: what the capture NAMED, then the model's
+// own label unless it is impossible for the IST hour, then the clock (which also
+// fills a blank or "other"). Measured over all 103 real captures, 31 of 62 stored
+// food rows disagreed with their own IST hour - the prompt never told the model to
+// derive the slot from the clock, and mealSlotFromTime bucketed a Z timestamp off
+// the UTC hour. But replacing the label with the clock outright measured WORSE: it
+// made 2,475 kcal of pizza at 17:50 a "snack" and movie popcorn at 11:51 "lunch".
+// The clock is a reliable veto, not a better guesser.
+function resolveMealSlot(modelSlot: unknown, occurredAtIso: string, evidence = ""): string {
+  const named = slotNamedIn(evidence);
+  if (named) return named;
+  const slot = (typeof modelSlot === "string" && modelSlot) || "";
+  if (!occurredAtIso || Number.isNaN(Date.parse(String(occurredAtIso)))) return slot || "other";
+  const clock = mealSlotFromTime(occurredAtIso);
+  if (!slot || slot === "other") return clock;
+  const impossible = IMPOSSIBLE_AT[slot];
+  if (impossible && impossible(istHourOf(occurredAtIso))) return clock;
+  return slot;
 }
 function minutesApart(a?: string, b?: string): number {
   if (!a || !b) return Infinity;
@@ -2219,6 +2269,17 @@ function estimateNutrition(text: string): any {
 // description is fully recognized. Unusual foods (recognized=false) keep the
 // brain's estimate; if the brain gave nothing but the table found part of it,
 // use the partial so the log is never blank.
+// Deterministic meal_slot, applied to every food call right after the macro
+// override. See resolveMealSlot for the authority order and the measurement.
+function recomputeMealSlots(toolCalls: ToolCall[], evidence: string): ToolCall[] {
+  for (const tc of toolCalls) {
+    if (tc?.name !== "create_food_log_candidate") continue;
+    const a = (tc.arguments || {}) as Record<string, unknown>;
+    a.meal_slot = resolveMealSlot(a.meal_slot, String(a.occurred_at || ""), evidence);
+  }
+  return toolCalls;
+}
+
 function recomputeFoodMacros(toolCalls: ToolCall[]): ToolCall[] {
   for (const tc of toolCalls) {
     if (tc.name !== "create_food_log_candidate") continue;
@@ -2469,9 +2530,12 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   }
 
   const { validCalls, rejected } = parseToolCalls(raw);
-  const expandedCalls = recomputeFoodMacros(
-    expandToolCalls(validCalls, combinedText, new Date().toISOString()), // fan-out + pure-food fallback
-  ); // then deterministic food-macro override (table beats the model for everyday foods)
+  const expandedCalls = recomputeMealSlots(
+    recomputeFoodMacros(
+      expandToolCalls(validCalls, combinedText, new Date().toISOString()), // fan-out + pure-food fallback
+    ), // then deterministic food-macro override (table beats the model for everyday foods)
+    combinedText,
+  ); // ...and the same treatment for meal_slot: the capture's own words, else the clock
   const latencyMs = Date.now() - startedAt;
   const estimatedCostUsd = Number((extractCost + brainCost).toFixed(6));
   const provider = usedProviders.join("+") || "deepseek";

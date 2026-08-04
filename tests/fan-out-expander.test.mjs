@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { expandToolCalls, looksLikeFood, looksLikePurchase, mealSlotFromTime, extractAmount, resolveOccurredAt } from "../lib/fan-out-expander.mjs";
+import { expandToolCalls, looksLikeFood, looksLikePurchase, mealSlotFromTime, extractAmount, resolveOccurredAt, istHourOf, slotNamedIn, resolveMealSlot } from "../lib/fan-out-expander.mjs";
 import { FOOD_TABLE } from "../lib/food-nutrition.mjs";
 
 const NOW = "2026-06-26T10:00:00+05:30"; // a fixed "today" for deterministic dates
@@ -593,3 +593,54 @@ console.log("fan-out-expander tests passed");
 }
 
 console.log("fan-out-expander 2026-08-04 regressions passed");
+
+// ---------------------------------------------------------------------------
+// 2026-08-04: meal_slot was bucketed off the UTC hour. mealSlotFromTime read the
+// hour TEXTUALLY out of the ISO string, which is right only when the string
+// carries +05:30 - and the model routinely emits Z. Measured over the real
+// corpus, 31 of 62 stored food rows disagreed with their own IST hour.
+// ---------------------------------------------------------------------------
+{
+  // The exact production timestamps that were misbucketed.
+  assert.equal(istHourOf("2026-07-28T09:15:07Z"), 14, "09:15Z is 14:45 IST");
+  assert.equal(mealSlotFromTime("2026-07-28T09:15:07Z"), "lunch", "not breakfast off the UTC hour");
+  assert.equal(mealSlotFromTime("2026-08-02T00:59:15Z"), "breakfast", "00:59Z is 06:29 IST");
+  assert.equal(mealSlotFromTime("2026-07-20T19:59:31Z"), "other", "19:59Z is 01:29 IST, not dinner");
+  assert.equal(mealSlotFromTime("2026-06-30T16:24:56Z"), "dinner", "16:24Z is 21:54 IST");
+  assert.equal(mealSlotFromTime("2026-06-23T15:30:00+05:30"), "lunch", "15:30 is a late lunch, not a snack");
+  // An offset-carrying string still reads as its own wall clock.
+  assert.equal(mealSlotFromTime("2026-06-23T13:00:00+05:30"), "lunch");
+  assert.equal(mealSlotFromTime("2026-06-23T08:00:00+05:30"), "breakfast");
+  assert.equal(mealSlotFromTime("2026-06-23T20:30:00+05:30"), "dinner");
+  // Unparseable input degrades to the old textual read (hour 12) rather than throwing.
+  assert.equal(mealSlotFromTime("not-a-date"), "lunch", "unchanged from the pre-fix fallback");
+  assert.equal(istHourOf("not-a-date"), 12);
+
+  // What the capture NAMES outranks the clock - people eat a late dinner.
+  assert.equal(slotNamedIn("had idli for dinner"), "dinner");
+  assert.equal(slotNamedIn("6 boiled eggs"), null);
+  assert.equal(resolveMealSlot("snack", "2026-07-20T19:59:31Z", "idli for dinner"), "dinner",
+    "the user saying dinner beats a 01:29 IST clock");
+  assert.equal(resolveMealSlot("dinner", "garbage", "6 boiled eggs"), "dinner",
+    "unusable timestamp -> keep the model's guess rather than invent one");
+
+  // The clock is a VETO on an impossible label, not a replacement for a fine one.
+  // Replacing outright was measurably worse: it made 2,475 kcal of pizza at 17:50
+  // a "snack" and movie popcorn at 11:51 "lunch".
+  assert.equal(resolveMealSlot("breakfast", "2026-07-28T09:15:07Z", "4 boiled eggs"), "lunch",
+    "breakfast at 14:45 IST is impossible -> clock wins");
+  assert.equal(resolveMealSlot("lunch", "2026-07-28T12:52:18Z", "2 gobi rolls, 2 samosas"), "dinner",
+    "lunch at 18:22 IST is impossible -> clock wins");
+  assert.equal(resolveMealSlot("snack", "2026-08-01T06:21:20Z", "popcorn at the movies"), "snack",
+    "a snack at 11:51 IST is just a snack - the clock must not relabel it");
+  assert.equal(resolveMealSlot("dinner", "2026-08-02T12:20:31Z", "2 Margherita pizzas"), "dinner",
+    "a 17:50 IST dinner stands - the narrow snack band must not swallow a real meal");
+  assert.equal(resolveMealSlot("dinner", "2026-07-20T19:59:31Z", "7 idlis"), "dinner",
+    "a 01:29 IST late dinner is normal and must survive");
+  assert.equal(resolveMealSlot("other", "2026-07-31T05:26:24Z", "500 g curd"), "breakfast",
+    '"other" is a non-answer -> the clock fills it');
+  assert.equal(resolveMealSlot(null, "2026-07-25T10:18:15Z", "500g curd"), "lunch",
+    "a null slot is filled from the clock");
+}
+
+console.log("meal-slot IST regressions passed");
