@@ -320,6 +320,56 @@ function normalizeEmptyEnums(name: string, args: Record<string, unknown> | undef
   }
 }
 
+// A required field supplied under a NEAR-MISS NAME is not a missing field, but
+// validateToolArguments cannot tell: it reports `required:description` and the whole
+// call is thrown away as `rejected`. Worse than losing it - the deterministic
+// salvage below then synthesizes a replacement from the raw capture text, and THAT
+// one applies, so the detailed row loses to the crude one. Measured 2026-08-03: a
+// cardio log carrying duration 21.43 min / 2.3 km / 216 kcal under `name`+`notes`
+// was rejected, and what landed was the raw OCR blob with none of those numbers.
+// Same shape 2026-07-30 (gym) and 2026-07-29 (food, `required:occurred_at`).
+// Mirror of repairToolArguments in src/agent/tool-schemas.js.
+const REQUIRED_ALIASES: Record<string, string[]> = {
+  description: ["name", "title", "label", "activity", "item", "meal_name", "summary", "notes", "body", "text"],
+  occurred_at: ["timestamp", "datetime", "date", "logged_at", "started_at", "at", "when"],
+  amount: ["value", "total", "price", "cost"],
+  note: ["body", "text", "description", "summary"],
+  body: ["note", "text", "description", "summary"],
+  answer: ["text", "response", "reply"],
+  reason: ["summary", "text"],
+  value: ["amount", "text"],
+};
+
+function firstFilled(args: Record<string, unknown>, keys: string[]): string | number | undefined {
+  for (const k of keys) {
+    const v = args[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return undefined;
+}
+
+function repairToolArguments(name: string, args: Record<string, unknown> | undefined, nowIso: string) {
+  const schema = TOOL_SCHEMAS[name];
+  if (!schema || !args || typeof args !== "object" || Array.isArray(args)) return args;
+  for (const key of schema.required || []) {
+    if (args[key] !== undefined && args[key] !== null && args[key] !== "") continue;
+    const alias = firstFilled(args, REQUIRED_ALIASES[key] || []);
+    if (alias !== undefined) {
+      args[key] = alias;
+      // "Cardio machine session" alone throws away the readout sitting in `notes`.
+      if (key === "description" && typeof args.name === "string" && args.name.trim() === alias
+        && typeof args.notes === "string" && (args.notes as string).trim()) {
+        args[key] = `${alias} - ${(args.notes as string).trim()}`;
+      }
+      continue;
+    }
+    // Last resort, only for time: an untimed capture happened now.
+    if (key === "occurred_at") args[key] = nowIso;
+  }
+  return args;
+}
+
 // -------- rate limiting + cost cap --------
 
 async function rateLimitOk(supabase: ReturnType<typeof adminClient>, userId: string) {
@@ -761,6 +811,7 @@ function parseToolCalls(raw: string) {
       if (tc.name === "create_food_log_candidate") {
         (tc.arguments as Record<string, unknown>).meal_slot = normalizeMealSlot((tc.arguments as Record<string, unknown>).meal_slot);
       }
+      repairToolArguments(tc.name, tc.arguments as Record<string, unknown>, new Date().toISOString());
     }
     const v = validateToolArguments(tc.name, tc.arguments || {});
     if (!v.ok) { rejected.push({ tc, errors: v.errors }); continue; }
@@ -1057,13 +1108,31 @@ function carriesLoggedEvent(text = ""): boolean {
 const MONEY_CUE = /(?:spent|spend|paid|pay|bought|buy|cost|costs|rs\.?|inr|rupees?|₹)\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i;
 const MONEY_SUFFIX = /([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:rs\.?|inr|rupees?|₹|bucks)\b/i;
 const MONEY_TRAIL = /[---:]\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*\/?-?\s*$/;
+// MONEY_TRAIL reads any trailing "- 120" / ": 60" as a price with no currency word
+// anywhere. Right for a short price note ("2 paneer rolls - 350"), wrong for a
+// pasted instrument readout whose last line is a labelled metric: a gym screenshot
+// ending "METs: 5.5" became a Rs 5.50 expense on 2026-08-03. Multi-line text is a
+// document, not a price note; and a unit label is never a price.
+const METRIC_LABEL = /\b(mets?|bmi|kg|kgs|lbs|km|kms|cal|cals|kcal|calories|reps?|sets?|rpm|bpm|watts?|w|level|incline|resistance|speed|pace|distance|duration|time|steps?|floors?|spo2|hba1c|sugar|temp|weight|height|hr|heart\s*rate|protein|carbs?|fat|fibre|fiber|sodium)\s*[---:]\s*[0-9][0-9,]*(?:\.[0-9]+)?\s*\/?-?\s*$/i;
+function moneyTrailAmount(text = ""): string | null {
+  const t = String(text);
+  if (/[\n\r]/.test(t)) return null;
+  if (METRIC_LABEL.test(t)) return null;
+  const m = t.match(MONEY_TRAIL);
+  return m ? m[1] : null;
+}
 function extractAmount(text = ""): number | null {
-  for (const rx of [MONEY_CUE, MONEY_SUFFIX, MONEY_TRAIL]) {
+  const trail = moneyTrailAmount(text);
+  for (const rx of [MONEY_CUE, MONEY_SUFFIX]) {
     const m = String(text).match(rx);
     if (m) {
       const n = Number(m[1].replace(/,/g, ""));
       if (Number.isFinite(n) && n > 0) return n;
     }
+  }
+  if (trail != null) {
+    const n = Number(trail.replace(/,/g, ""));
+    if (Number.isFinite(n) && n > 0) return n;
   }
   return null;
 }
@@ -1073,6 +1142,12 @@ function spendTargetFrom(text = ""): string | null {
   return m[1].replace(MONEY_TRAIL, "").replace(/[.,!]+$/, "").trim().slice(0, 60) || null;
 }
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+// Abbreviation or full name, ending on a word boundary. Without that \b the
+// 3-letter form matched the PREFIX of any word starting with it, and a number sits
+// in front of nearly every food: "2 Margherita pizzas" read as 2 March and filed a
+// 2026-08-02 meal under 2026-03-02. Same trap for marinated / mayonnaise / decaf /
+// junk / julienne / octopus / novelty / apricot.
+const MONTH_RX = String.raw`(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b`;
 function istParts(date: Date) {
   const ist = new Date(date.getTime() + 5.5 * 3_600_000);
   return { y: ist.getUTCFullYear(), m: ist.getUTCMonth(), d: ist.getUTCDate() };
@@ -1097,8 +1172,8 @@ function resolveOccurredAt(text = "", now = ""): string {
     dated = true;
   }
   if (!dated) {
-    mm = t.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i)
-      || (() => { const r = t.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})/i); return r ? [r[0], r[2], r[1]] as RegExpMatchArray : null; })();
+    mm = t.match(new RegExp(String.raw`\b(\d{1,2})(?:st|nd|rd|th)?\s+${MONTH_RX}`, "i"))
+      || (() => { const r = t.match(new RegExp(String.raw`\b${MONTH_RX}\s+(\d{1,2})\b`, "i")); return r ? [r[0], r[2], r[1]] as unknown as RegExpMatchArray : null; })();
     if (mm) { day = Number(mm[1]); month = MONTHS.indexOf(String(mm[2]).slice(0, 3).toLowerCase()); dated = true; }
   }
   if (!dated) {

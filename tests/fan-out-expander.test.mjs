@@ -536,3 +536,60 @@ console.log("fan-out-expander tests passed");
     assert.equal(has(r, "create_expense_candidate").length, 0, "salvage respects the flag too");
   }
 }
+
+// ---------------------------------------------------------------------------
+// 2026-08-04 regressions: two salvage cues that fired on things that were not
+// dates and not money. Both produced silently wrong rows in the live DB.
+// ---------------------------------------------------------------------------
+{
+  // A month ABBREVIATION must end on a word boundary. Without it, a number in
+  // front of any word starting with those 3 letters became a date, and the row
+  // teleported months away from the day it was captured. "2 Margherita pizzas"
+  // filed a 2026-08-02 meal under 2026-03-02.
+  const day = (t) => resolveOccurredAt(t, NOW).slice(0, 10);
+  const CAPTURE_DAY = NOW.slice(0, 10);
+  for (const text of [
+    "2 Margherita pizzas", "2 marinated paneer tikka", "2 marie biscuits",
+    "2 mayonnaise sandwich", "1 decaf coffee", "2 junk food packets",
+    "1 julienne salad", "2 octopus", "4 novelty cakes", "1 apricot",
+    "2 febrile", "2 augmented reality tickets",
+  ]) {
+    assert.equal(day(text), CAPTURE_DAY, `"${text}" names no date - must stay on the capture day`);
+  }
+  // Real dates still parse, in both orders, abbreviated and full.
+  assert.equal(day("ate on 25 June"), "2026-06-25", "explicit day-month still works");
+  assert.equal(day("on 25 Jun had dosa"), "2026-06-25", "abbreviation still works");
+  assert.equal(day("September 14 dinner"), "2026-09-14", "month-day order still works");
+  assert.equal(day("on 3 Dec paid 200"), "2026-12-03", "abbreviation + amount still works");
+  assert.equal(day("25/06 lunch"), "2026-06-25", "numeric date still works");
+  assert.equal(day("yesterday dosa"), "2026-06-25", "relative dates still work");
+}
+
+{
+  // The trailing "- 120" / ": 60" price cue carries no currency word, so it must
+  // not fire on a pasted instrument readout. A gym screenshot ending "METs: 5.5"
+  // booked a Rs 5.50 expense on 2026-08-03 whose description was the whole display.
+  const TREADMILL = [
+    "From the display, here's what I can read:", "", "Time: 21:26 (21 minutes 26 seconds)", "",
+    "Calories burned: 216 kcal", "", "Distance: 2.3 km", "", "Speed: 6.1 km/h", "",
+    "Resistance level: 17", "", "Power: 111 watts", "", "Cadence: 31 RPM", "", "METs: 5.5",
+  ].join("\n");
+  assert.equal(extractAmount(TREADMILL), null, "a machine readout is not a purchase");
+  assert.equal(extractAmount("METs: 5.5"), null, "a unit label is never a price");
+  assert.equal(extractAmount("Resistance level: 17"), null, "nor is a resistance level");
+  assert.equal(extractAmount("weight - 72.5"), null, "nor is a bodyweight");
+  // ...and the price note the cue exists for still works.
+  assert.equal(extractAmount("2 paneer rolls - 350"), 350, "price tail still reads");
+  assert.equal(extractAmount("chai: 20"), 20, "colon price tail still reads");
+  assert.equal(extractAmount("spent 350 on rolls"), 350, "explicit cue unaffected");
+  assert.equal(extractAmount("120 rupees"), 120, "currency suffix unaffected");
+
+  // End to end: the readout yields a workout and NO expense.
+  const out = expandToolCalls(
+    [{ name: "create_workout_log_candidate", arguments: { description: "cardio machine", occurred_at: NOW }, confidence: 0.95 }],
+    { evidence: TREADMILL, now: NOW },
+  );
+  assert.equal(has(out, "create_expense_candidate").length, 0, "no phantom expense from a cardio display");
+}
+
+console.log("fan-out-expander 2026-08-04 regressions passed");

@@ -143,6 +143,64 @@ export function validateToolArguments(name, args) {
   return { ok: errors.length === 0, errors };
 }
 
+// A required field the model supplied under a NEAR-MISS NAME is not a missing
+// field, but validateToolArguments cannot tell the difference: it sees
+// `required:description` and the whole tool call is thrown away as `rejected`.
+// What makes that worse than losing the call is what happens next - the
+// deterministic salvage in fan-out-expander.mjs then synthesizes a replacement
+// from the raw capture text, and THAT one applies. So the detailed row loses to
+// the crude one. Measured on 2026-08-03: the model emitted a cardio log with
+// duration 21.43 min, 2.3 km and 216 kcal under `name`/`notes`; it was rejected
+// for `required:description`, and the row that landed was the raw OCR blob with
+// no duration, no distance and no calories. Same shape on 2026-07-30 (gym) and
+// 2026-07-29 (food, `required:occurred_at`).
+//
+// So: before validating, fill a missing required field from an obvious alias, and
+// let a missing occurred_at mean "now" - which is what an untimed capture means
+// and exactly what the salvage path already assumes. Never overwrite a value the
+// model did supply.
+const REQUIRED_ALIASES = {
+  description: ["name", "title", "label", "activity", "item", "meal_name", "summary", "notes", "body", "text"],
+  occurred_at: ["timestamp", "datetime", "date", "logged_at", "started_at", "at", "when"],
+  amount: ["value", "total", "price", "cost"],
+  note: ["body", "text", "description", "summary"],
+  body: ["note", "text", "description", "summary"],
+  answer: ["text", "response", "reply"],
+  reason: ["summary", "text"],
+  value: ["amount", "text"],
+};
+
+function firstFilled(args, keys) {
+  for (const k of keys) {
+    const v = args[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return undefined;
+}
+
+export function repairToolArguments(name, args, nowIso) {
+  const schema = TOOL_SCHEMAS[name];
+  if (!schema || !args || typeof args !== "object" || Array.isArray(args)) return args;
+  for (const key of schema.required || []) {
+    if (args[key] !== undefined && args[key] !== null && args[key] !== "") continue;
+    const alias = firstFilled(args, REQUIRED_ALIASES[key] || []);
+    if (alias !== undefined) {
+      args[key] = alias;
+      // "Cardio machine session" alone throws away the readout that was sitting
+      // in `notes`. Keep both when the description came from a bare label.
+      if (key === "description" && typeof args.name === "string" && args.name.trim() === alias
+        && typeof args.notes === "string" && args.notes.trim()) {
+        args[key] = `${alias} - ${args.notes.trim()}`;
+      }
+      continue;
+    }
+    // Last resort, only for time: an untimed capture happened now.
+    if (key === "occurred_at") args[key] = nowIso || new Date().toISOString();
+  }
+  return args;
+}
+
 export function sanitizeArguments(name, args) {
   const schema = TOOL_SCHEMAS[name];
   if (!schema) return args;
