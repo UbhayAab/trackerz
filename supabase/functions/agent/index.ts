@@ -545,12 +545,12 @@ async function geminiExtract(opts: { text: string; inlineMedia: { mimeType: stri
   return { evidenceText, promptTokens: usage.promptTokenCount || 0, outputTokens: usage.candidatesTokenCount || 0 };
 }
 
-function reasoningUserMessage(combinedText: string, mode: string, contextBlock = "") {
+function reasoningUserMessage(combinedText: string, mode: string, contextBlock = "", nowIso = "") {
   // The memory block is TRUSTED background - it sits OUTSIDE <user_content> and is
   // never routed through the injection wrapper or used for evidence grounding, so
   // a budget figure can't be used to "launder" a fabricated expense.
   const memory = contextBlock ? `<memory_context>\n${contextBlock}\n</memory_context>\n` : "";
-  return `Current time: ${new Date().toISOString()}.
+  return `Current time: ${nowIso || new Date().toISOString()}.
 Mode hint: ${mode}.
 ${memory}${wrapUserContent(combinedText)}
 Return ONLY JSON.`;
@@ -589,7 +589,7 @@ function extractJsonObject(raw: string): string {
   return "";
 }
 
-async function callDeepseek(model: string, combinedText: string, mode: string, opts: { json: boolean; contextBlock?: string }) {
+async function callDeepseek(model: string, combinedText: string, mode: string, opts: { json: boolean; contextBlock?: string; nowIso?: string }) {
   const apiKey = await resolveAnySecret(["DEEPSEEK_API_KEY", "NVIDIA_API_KEY"]);
   if (!apiKey) throw new Error("no_brain_key"); // -> Gemini reasoning fallback
   const url = (await resolveSecretOptional("DEEPSEEK_BASE_URL")) || DEEPSEEK_URL;
@@ -597,7 +597,7 @@ async function callDeepseek(model: string, combinedText: string, mode: string, o
     model,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: reasoningUserMessage(combinedText, mode, opts.contextBlock) },
+      { role: "user", content: reasoningUserMessage(combinedText, mode, opts.contextBlock, opts.nowIso) },
     ],
   };
   // deepseek-reasoner rejects response_format + temperature; only set them for chat.
@@ -620,13 +620,13 @@ async function callDeepseek(model: string, combinedText: string, mode: string, o
 
 // Thinking-mode primary (deepseek-reasoner) with a strict-JSON deepseek-chat
 // fallback. Returns the same shape the pipeline expects from the brain.
-async function runBrain(combinedText: string, mode: string, contextBlock = "") {
+async function runBrain(combinedText: string, mode: string, contextBlock = "", nowIso = "") {
   const configured = await resolveSecretOptional("DEEPSEEK_MODEL");
   const primary = configured || DEEPSEEK_REASONER_MODEL; // thinking by default
   const isReasoner = /reason|r1/i.test(primary);
   // Attempt 1: primary brain (thinking mode when it's a reasoner model).
   try {
-    const r = await callDeepseek(primary, combinedText, mode, { json: !isReasoner, contextBlock });
+    const r = await callDeepseek(primary, combinedText, mode, { json: !isReasoner, contextBlock, nowIso });
     const jsonStr = extractJsonObject(r.raw) || (isReasoner ? "" : r.raw);
     if (jsonStr) {
       return {
@@ -639,7 +639,7 @@ async function runBrain(combinedText: string, mode: string, contextBlock = "") {
     if (!isReasoner) throw err; // chat already failed -> let caller fall back to Gemini
   }
   // Attempt 2: deepseek-chat with strict json_object (reliable structured output).
-  const r2 = await callDeepseek(DEEPSEEK_MODEL, combinedText, mode, { json: true, contextBlock });
+  const r2 = await callDeepseek(DEEPSEEK_MODEL, combinedText, mode, { json: true, contextBlock, nowIso });
   return {
     raw: extractJsonObject(r2.raw) || r2.raw, promptTokens: r2.promptTokens,
     outputTokens: r2.outputTokens, model: DEEPSEEK_MODEL, provider: "deepseek",
@@ -776,7 +776,7 @@ async function answerQuestion(question: string, contextBlock: string) {
 }
 
 // Fallback brain - Gemini reasons over text only (evidence is already extracted).
-async function geminiReason(combinedText: string, mode: string, contextBlock = "") {
+async function geminiReason(combinedText: string, mode: string, contextBlock = "", nowIso = "") {
   const apiKey = await resolveSecret("GEMINI_API_KEY");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const response = await fetch(`${url}?key=${apiKey}`, {
@@ -784,7 +784,7 @@ async function geminiReason(combinedText: string, mode: string, contextBlock = "
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: "user", parts: [{ text: reasoningUserMessage(combinedText, mode, contextBlock) }] }],
+      contents: [{ role: "user", parts: [{ text: reasoningUserMessage(combinedText, mode, contextBlock, nowIso) }] }],
       generationConfig: { temperature: 0, responseMimeType: "application/json" },
     }),
   });
@@ -795,7 +795,7 @@ async function geminiReason(combinedText: string, mode: string, contextBlock = "
   return { raw, promptTokens: usage.promptTokenCount || 0, outputTokens: usage.candidatesTokenCount || 0 };
 }
 
-function parseToolCalls(raw: string) {
+function parseToolCalls(raw: string, nowIso = "") {
   let parsed: { tool_calls?: ToolCall[] } = {};
   try { parsed = JSON.parse(raw); }
   catch {
@@ -811,7 +811,7 @@ function parseToolCalls(raw: string) {
       if (tc.name === "create_food_log_candidate") {
         (tc.arguments as Record<string, unknown>).meal_slot = normalizeMealSlot((tc.arguments as Record<string, unknown>).meal_slot);
       }
-      repairToolArguments(tc.name, tc.arguments as Record<string, unknown>, new Date().toISOString());
+      repairToolArguments(tc.name, tc.arguments as Record<string, unknown>, nowIso || new Date().toISOString());
     }
     const v = validateToolArguments(tc.name, tc.arguments || {});
     if (!v.ok) { rejected.push({ tc, errors: v.errors }); continue; }
@@ -2492,7 +2492,11 @@ async function computeSpendSuggestion(
 
 // Orchestrates the two-model pipeline: Gemini extracts evidence from media,
 // DeepSeek (brain) reasons into tool calls, Gemini reasoning is the fallback.
-async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string; data: string }[]; mode: string; contextBlock?: string }) {
+async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string; data: string }[]; mode: string; contextBlock?: string; capturedAt?: string }) {
+  // Every "now" below is the CAPTURE instant, not the processing clock - see the
+  // capturedAt note at the call site.
+  const nowIso = opts.capturedAt && !Number.isNaN(Date.parse(opts.capturedAt))
+    ? new Date(opts.capturedAt).toISOString() : new Date().toISOString();
   const startedAt = Date.now();
   let geminiEvidence = "";
   let extractCost = 0;
@@ -2516,23 +2520,23 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   let brainPt = 0, brainOt = 0, brainCost = 0;
   let model = DEEPSEEK_REASONER_MODEL;
   try {
-    const r = await runBrain(combinedText, opts.mode, opts.contextBlock || "");
+    const r = await runBrain(combinedText, opts.mode, opts.contextBlock || "", nowIso);
     raw = r.raw; brainPt = r.promptTokens; brainOt = r.outputTokens;
     model = r.model || DEEPSEEK_REASONER_MODEL;
     brainCost = costOf(DEEPSEEK_IN_USD, DEEPSEEK_OUT_USD, brainPt, brainOt);
     usedProviders.push(r.provider || "deepseek");
   } catch (_e) {
-    const r = await geminiReason(combinedText, opts.mode, opts.contextBlock || "");
+    const r = await geminiReason(combinedText, opts.mode, opts.contextBlock || "", nowIso);
     raw = r.raw; brainPt = r.promptTokens; brainOt = r.outputTokens;
     model = GEMINI_MODEL;
     brainCost = costOf(GEMINI_IN_USD, GEMINI_OUT_USD, brainPt, brainOt);
     usedProviders.push("gemini-fallback");
   }
 
-  const { validCalls, rejected } = parseToolCalls(raw);
+  const { validCalls, rejected } = parseToolCalls(raw, nowIso);
   const expandedCalls = recomputeMealSlots(
     recomputeFoodMacros(
-      expandToolCalls(validCalls, combinedText, new Date().toISOString()), // fan-out + pure-food fallback
+      expandToolCalls(validCalls, combinedText, nowIso), // fan-out + pure-food fallback
     ), // then deterministic food-macro override (table beats the model for everyday foods)
     combinedText,
   ); // ...and the same treatment for meal_slot: the capture's own words, else the clock
@@ -3018,7 +3022,7 @@ Deno.serve(async (req) => {
     // 3. Verify the ingestion belongs to this user. The ingestion already has
     //    user_id from the client (RLS would reject otherwise), but recheck.
     const { data: ing, error: ingErr } = await supabase
-      .from("raw_ingestions").select("id, user_id, raw_text").eq("id", payload.ingestionId).single();
+      .from("raw_ingestions").select("id, user_id, raw_text, created_at").eq("id", payload.ingestionId).single();
     if (ingErr || ing?.user_id !== userId) {
       return Response.json({ ok: false, error: "ingestion_not_owned" }, { status: 403, headers: corsHeaders });
     }
@@ -3082,6 +3086,14 @@ Deno.serve(async (req) => {
       inlineMedia,
       mode: payload.mode || "auto",
       contextBlock,
+      // WHEN THE USER LOGGED IT, not when the backend got to it. A capture made
+      // while the agent is unreachable lands in raw_ingestions with status
+      // 'queued' and is processed later - and every undated event in it used to
+      // be stamped with the processing clock. Eight real captures made between
+      // 2026-06-25 and 2026-06-27 were all processed in one batch on 06-28
+      // 07:18-07:20 and every one of them landed on 06-28, so three days of
+      // meals and spends collapsed onto a single wrong day.
+      capturedAt: ing?.created_at ? new Date(ing.created_at).toISOString() : new Date().toISOString(),
     });
     const { aiRunId, cost } = await persistRunAndActions(supabase, userId, payload.ingestionId, runInfo);
 
