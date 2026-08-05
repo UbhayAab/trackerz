@@ -9,6 +9,7 @@ const JARVIS = "supabase/functions/jarvis/index.ts";
 const AGENT = "supabase/functions/agent/index.ts";
 const BLOCKS = [
   { lib: "lib/jarvis-brief.mjs", edge: JARVIS, start: "JARVIS-BRIEF MIRROR START", end: "JARVIS-BRIEF MIRROR END" },
+  { lib: "lib/reminders.mjs", edge: JARVIS, start: "REMINDERS MIRROR START", end: "REMINDERS MIRROR END" },
   { lib: "lib/email-template.mjs", edge: JARVIS, start: "EMAIL-TEMPLATE MIRROR START", end: "EMAIL-TEMPLATE MIRROR END" },
   { lib: "lib/sleep-window.mjs", edge: AGENT, start: "SLEEP-WINDOW MIRROR START", end: "SLEEP-WINDOW MIRROR END" },
 ];

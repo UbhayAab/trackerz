@@ -10,6 +10,7 @@ import { renderNav } from "../ui/navigation.js";
 import { registerServiceWorker } from "../services/pwa.js";
 import { subscribe } from "../state/app-state.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { loadReminders, bindRemindersPanel } from "../ui/reminders-panel.js";
 
 // Settings is where push gets turned on, and there is no subscription without a
 // service worker - this page never registered one, so navigator.serviceWorker.ready
@@ -37,5 +38,9 @@ bootWithAuth(async () => {
   // app only" fallback in a browser; inside the APK the user grants access once and
   // every payment is logged without changing how they pay.
   mountSpendCapturePanel();
+  // Recurring reminders: the list, plus pause/delete. Created by capture, not
+  // here - the point of the feature is that you say it once out loud.
+  bindRemindersPanel();
+  loadReminders();
   await hydrateStateFromSupabase();
 });

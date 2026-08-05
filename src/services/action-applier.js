@@ -9,6 +9,7 @@ import { goalDef } from "../domain/goals.js";
 import { sleepWindowFromArgs } from "../../lib/sleep-window.mjs";
 
 export const APPLIER_WRITE_TOOLS = [
+  "create_reminder_candidate",
   "create_expense_candidate",
   "create_income_candidate",
   "create_transfer_candidate",
@@ -112,6 +113,27 @@ export function buildRowForTool(action, userId) {
         domain: args.domain || "general", status: args.status || "open",
         due_on: args.due_on || null, occurred_at: occurredAt,
       } };
+    case "create_reminder_candidate": {
+      // A recurring calendar fact. No occurred_at: a reminder is not something
+      // that happened, it is a rule about dates that have not arrived yet.
+      const int = (v) => (typeof v === "number" && Number.isFinite(v) ? Math.trunc(v) : null);
+      const kind = args.kind || "task";
+      return { table: "reminders", row: {
+        ...base,
+        title: String(args.title || "").slice(0, 200),
+        note: args.note ? String(args.note).slice(0, 500) : null,
+        kind,
+        freq: String(args.freq || "").toLowerCase(),
+        day_of_month: int(args.day_of_month),
+        month_of_year: int(args.month_of_year),
+        weekday: int(args.weekday),
+        on_date: args.on_date || null,
+        // A filing wants a week of warning, a birthday a day or two. Defaulting
+        // to 0 would make a tax reminder arrive on the deadline itself.
+        lead_days: int(args.lead_days)
+          ?? (kind === "filing" || kind === "bill" ? 7 : kind === "birthday" || kind === "anniversary" ? 2 : 0),
+      } };
+    }
     case "set_target_candidate":
       // Upsert the single canonical budget row for this goal kind (see goals.js).
       return { table: "budgets", conflictTarget: "user_id,kind", row: {

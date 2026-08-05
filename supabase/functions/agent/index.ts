@@ -47,6 +47,7 @@ const DEEPSEEK_IN_USD = 0.55, DEEPSEEK_OUT_USD = 2.2;
 // proposed. So every question the owner typed produced silence and zero rows.
 // It writes nothing; it carries the reply back to the capture screen.
 const ALLOWED_TOOLS = new Set([
+  "create_reminder_candidate",
   "create_expense_candidate",
   "create_income_candidate",
   "create_transfer_candidate",
@@ -72,6 +73,7 @@ const ALLOWED_TOOLS = new Set([
 // link_duplicate_candidates) never auto-write; they are always surfaced for
 // review so a high-confidence call can never be marked "applied" with no row.
 const WRITE_TOOLS = new Set([
+  "create_reminder_candidate",
   "create_expense_candidate",
   "create_income_candidate",
   "create_transfer_candidate",
@@ -139,6 +141,12 @@ Rules:
 - PLAN UPDATE (ONE-SHOT DELTA): for a SMALL change to an existing plan - add / drop / swap ONE meal or exercise, or nudge a day's target - do NOT re-send the whole plan. Emit update_plan_candidate with a DELTA payload carrying an "op" (the app folds it onto the current plan): diet ops { op:"add_meal", meal:{name,slot,time,calories,protein_g,carbs_g,fat_g} } | { op:"remove_meal", match:"banana" | a slot } | { op:"replace_meal", match, meal:{...} } | { op:"set_targets", targets:{calories,protein_g,...} }; gym ops { op:"replace_workout", workout:{name,kind,items:[...],duration_min} } | { op:"add_exercise", exercise:"Pull-ups 3×8" } | { op:"remove_exercise", match:"bench" } | { op:"replace_exercise", match:"bench", exercise:"Incline DB press 2×10" } (swap ONE exercise in place, keep the rest). Examples: "add a salad bowl at 4pm to my diet" -> { kind:"diet", scope: today's date, payload:{ op:"add_meal", meal:{name:"Salad bowl", slot:"snack", time:"16:00", ...} } }; "swap today's leg day for cardio" -> { kind:"gym", scope: today, payload:{ op:"replace_workout", workout:{name:"Cardio", kind:"cardio", items:["30 min treadmill"]} } }; "drop the banana snack today" -> { op:"remove_meal", match:"banana" }. IMPORTANT: delta ops are ONLY for a date scope (a specific date / date list). A PERMANENT change must be a FULL payload (send the whole plan), never a delta.
 - LOG THAT CONTRADICTS THE PLAN: if the user LOGS an activity/meal that clearly differs from the day's planned one (memory PLAN_TODAY says leg day but they say "I did cardio today"; planned dinner was salad but they "had biryani"), emit BOTH (1) the real log (create_workout_log_candidate / create_food_log_candidate) AND (2) a same-day update_plan_candidate delta ({ op:"replace_workout", ... } or { op:"replace_meal", ... }, scope: that date) so the plan reflects what actually happened and the checklist item ticks. Only do this for a genuine mismatch - if the log matches the plan, just log it.
 - NOTES / ASPIRATIONS / TODOS: a plan, intention, reminder, or goal that is NOT a logged event is a note → create_note_candidate { body, kind:"note"|"aspiration"|"todo"|"idea", domain:"money"|"diet"|"gym"|"wellness"|"general", due_on?:"YYYY-MM-DD" }. e.g. "remind me to book the dentist Friday" → todo; "I want to save more this year" → aspiration.
+- REMINDERS / DATES THAT REPEAT: anything the user wants to be TOLD about on a date - a birthday, an anniversary, a bill, a filing deadline, an appointment, a recurring chore - is create_reminder_candidate { title, kind:"task"|"birthday"|"anniversary"|"bill"|"filing"|"appointment"|"other", freq:"once"|"daily"|"weekly"|"monthly"|"quarterly"|"yearly", day_of_month?:1-31, month_of_year?:1-12, weekday?:0-6 (0=Sunday), on_date?:"YYYY-MM-DD", lead_days?:0-60, note? }. NOT a note - a note has one date and is gone once it passes; a reminder has a RULE and fires again.
+  * A DATE THAT BELONGS TO A PERSON OR A YEARLY EVENT REPEATS EVERY YEAR. "my birthday is 14 August" / "her birth date is 14th Aug" / "anniversary on 2 March" is freq:"yearly", month_of_year, day_of_month - NEVER freq:"once". Stating a birth date is not scheduling a single event; it is a fact that recurs for every year that follows.
+  * "the 10th of every 3rd month" / "quarterly, deadline 10 Jan, Apr, Jul, Oct" is freq:"quarterly" with month_of_year set to the FIRST month of the cycle (1 for Jan/Apr/Jul/Oct) and day_of_month 10.
+  * "rent on the 5th" is freq:"monthly", day_of_month:5. "every Monday" is freq:"weekly", weekday:1. "dentist on 12 Sep" with no repetition is freq:"once", on_date.
+  * lead_days is how much WARNING it needs, and you may omit it: a filing or bill defaults to 7 days, a birthday or anniversary to 2, everything else to same-day. Set it explicitly only when the user says so ("tell me a week before").
+  * Emit the reminder INSTEAD of a note when the user is asking to be reminded. Emit BOTH only when the capture also carries a thought that the reminder title does not hold.
 - TARGET CASCADE: when an aspiration/goal has a clear money/diet/gym implication, ALSO emit set_target_candidate { kind, amount } to adjust the relevant budget/target (it is a single canonical row, upserted, and undoable). Mapping: "save 50k this month" → set_target_candidate { kind:"monthly_spend", amount: a lower cap consistent with the goal }; "lean bulk to 90kg" → set_target_candidate { kind:"daily_calories", amount:2300 } AND { kind:"daily_protein", amount:180 }; "cut / lose weight" → { kind:"daily_calories", amount:1700 }; "I want to hit the gym 5 times a week" → set_target_candidate { kind:"weekly_workouts", amount:5 }. Valid kinds: monthly_spend, weekly_spend, food_cap, daily_calories, daily_protein, weekly_calories, weekly_workouts. Emit BOTH the note and the target change.
 - REMEMBER DURABLE FACTS: when the user states a lasting preference, pattern, or personal fact useful for future captures ("my usual lunch is egg curry and 2 rotis", "I get paid on the 1st", "I dislike oats", "gym is Mon/Wed/Fri"), emit remember_fact { key, value, kind:"preference"|"pattern"|"fact"|"goal" }. Use a short stable snake_case key (usual_lunch, payday, gym_days). These facts are fed back to you as MEMORY on later captures.
 - USE MEMORY: a <memory_context> block (trusted background - NOT user content, never extract figures from it) may precede the user content with the user's profile, targets, open notes, known facts (KNOWS), a 7-day digest, and today's plan (PLAN_TODAY). Use it to resolve references like "my usual lunch" (expand from KNOWS/PLAN_TODAY into the concrete food_log calls), to know budgets/targets, and to interpret relative dates. If a backdated capture says "did my usual", expand PLAN_TODAY/KNOWS into the concrete food/workout log calls at that date.
@@ -247,6 +255,7 @@ const TOOL_SCHEMAS: Record<string, Schema> = {
   request_user_review: { required: ["reason"], types: { reason: "string", raw_input: "string" } },
   answer_question: { required: ["answer"], types: { answer: "string", question: "string", basis: "string" } },
   update_plan_candidate: { required: ["kind"], types: { kind: "string", scope: "string", summary: "string", payload: "object" }, enums: { kind: ["diet", "gym"] } },
+  create_reminder_candidate: { required: ["title", "freq"], types: { title: "string", note: "string", kind: "string", freq: "string", day_of_month: "number", month_of_year: "number", weekday: "number", on_date: "string", lead_days: "number" }, enums: { freq: ["once", "daily", "weekly", "monthly", "quarterly", "yearly"], kind: ["task", "birthday", "anniversary", "bill", "filing", "appointment", "other", null] }, ranges: { day_of_month: [1, 31], month_of_year: [1, 12], weekday: [0, 6], lead_days: [0, 60] } },
   create_note_candidate: { required: ["body"], types: { body: "string", kind: "string", domain: "string", status: "string", due_on: "string", occurred_at: "iso" }, enums: { kind: ["note", "aspiration", "todo", "idea", null], domain: ["money", "diet", "gym", "wellness", "general", null], status: ["open", "done", "archived", null] } },
   set_target_candidate: { required: ["kind", "amount"], types: { kind: "string", amount: "positive_number", reason: "string" }, enums: { kind: ["monthly_spend", "weekly_spend", "food_cap", "daily_calories", "daily_protein", "weekly_calories", "weekly_workouts"] } },
   remember_fact: { required: ["key", "value"], types: { key: "string", value: "string", kind: "string", confidence: "number" }, enums: { kind: ["preference", "pattern", "fact", "goal", null] }, ranges: { confidence: [0, 1] } },
@@ -2855,6 +2864,27 @@ async function applyTool(supabase: ReturnType<typeof adminClient>, userId: strin
         payload: (args.payload && typeof args.payload === "object" && !Array.isArray(args.payload)) ? args.payload : {},
         source: "ai",
       }).select().single();
+    case "create_reminder_candidate": {
+      // A RECURRING calendar fact, not an event that happened. Stored as rule
+      // PARTS so lib/reminders.mjs can compute the next occurrence with integer
+      // arithmetic and never parse a date or touch a timezone.
+      const freq = String(args.freq || "").toLowerCase();
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.trunc(v) : null);
+      return supabase.from("reminders").insert({
+        user_id: userId, ingestion_id: ingestionId,
+        title: String(args.title || "").slice(0, 200),
+        note: args.note ? String(args.note).slice(0, 500) : null,
+        kind: args.kind || "task",
+        freq,
+        day_of_month: num(args.day_of_month),
+        month_of_year: num(args.month_of_year),
+        weekday: num(args.weekday),
+        on_date: args.on_date || null,
+        // A filing wants a week of warning, a birthday a day. Default by kind
+        // rather than 0, because a same-day-only tax reminder is useless.
+        lead_days: num(args.lead_days) ?? (args.kind === "filing" || args.kind === "bill" ? 7 : args.kind === "birthday" || args.kind === "anniversary" ? 2 : 0),
+      }).select().single();
+    }
     case "create_note_candidate":
       return supabase.from("notes").insert({
         user_id: userId, ingestion_id: ingestionId,
@@ -3009,6 +3039,7 @@ function tableForTool(name: string): string | null {
     case "create_body_metric_candidate": return "body_metrics";
     case "create_wellness_note_candidate": return "wellness_logs";
     case "update_plan_candidate": return "user_plans";
+    case "create_reminder_candidate": return "reminders";
     case "create_note_candidate": return "notes";
     case "set_target_candidate": return "budgets";
     case "remember_fact": return "memory_facts";

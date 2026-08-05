@@ -145,6 +145,21 @@ function markedBlock(src, file, startMark, endMark) {
   );
 }
 
+// --- 5b. reminders block parity (lib/reminders.mjs -> jarvis edge fn) --------
+// The recurrence engine is copied verbatim into the jarvis edge function between
+// REMINDERS markers. Drift here means a birthday or a filing deadline resolves to
+// a different date on the server than in the UI that shows the user when it is
+// next due - the two would disagree about a date the user is relying on.
+{
+  const remLib = readFileSync("lib/reminders.mjs", "utf8");
+  const jarvisSrc = readFileSync("supabase/functions/jarvis/index.ts", "utf8");
+  assert.equal(
+    markedBlock(jarvisSrc, "supabase/functions/jarvis/index.ts", "REMINDERS MIRROR START", "REMINDERS MIRROR END"),
+    markedBlock(remLib, "lib/reminders.mjs", "REMINDERS MIRROR START", "REMINDERS MIRROR END"),
+    "DRIFT in REMINDERS mirror block: run `node scripts/sync-mirror.mjs`",
+  );
+}
+
 const GYM_CORPUS = [
   "did Workout A", "did chest and back", "worked out today", "bench 3x10 60kg",
   "squat 60kg 3x8", "leg press 2x12", "ran 5k", "walked 35 min", "brisk walk",

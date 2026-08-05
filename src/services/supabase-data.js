@@ -1141,6 +1141,44 @@ export async function fetchRecurringSeries() {
   return data || [];
 }
 
+// ---- recurring reminders ----------------------------------------------------
+// Rows are calendar RULES, not events. The next occurrence is computed in-process
+// by lib/reminders.mjs, so there is no date filtering here and the UI and the
+// jarvis engine cannot disagree about when something is next due.
+
+export async function fetchReminders() {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("reminders")
+    .select("id, title, note, kind, freq, day_of_month, month_of_year, weekday, on_date, lead_days, active, created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createReminder(reminder) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from("reminders")
+    .insert({ ...reminder, user_id: userId })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function setReminderActive(id, active) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.from("reminders").update({ active, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteReminder(id) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.from("reminders").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function deleteAllUserData() {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
