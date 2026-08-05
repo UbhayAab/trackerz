@@ -35,7 +35,7 @@ if (undoAt >= 0) {
   if (!id) { console.error("usage: --undo <ingestionId>"); process.exit(1); }
   const c = await db();
   let total = 0;
-  for (const t of ["food_logs", "ledger_entries", "workout_logs", "notes", "sleep_sessions", "hydration_logs"]) {
+  for (const t of ["food_logs", "ledger_entries", "workout_logs", "notes", "sleep_sessions", "hydration_logs", "reminders", "body_metrics", "wellness_logs"]) {
     const r = await c.query(`delete from ${t} where ingestion_id = $1`, [id]).catch(() => ({ rowCount: 0 }));
     if (r.rowCount) { console.log(`  removed ${r.rowCount} from ${t}`); total += r.rowCount; }
   }
@@ -109,6 +109,15 @@ for (const [t, cols] of [
   ["workout_logs", "status, description"],
   ["notes", "kind, domain, body"],
   ["sleep_sessions", "started_at, ended_at"],
+  // Every table an applied tool can write must be listed here. A missing entry
+  // makes this script report "this capture was lost" for a capture that landed
+  // perfectly - the exact shape of lying-about-absent-data this repo keeps
+  // hitting, except here it is the DIAGNOSTIC doing the lying.
+  ["reminders", "title, kind, freq, day_of_month, month_of_year, weekday, on_date, lead_days"],
+  ["body_metrics", "metric_type, value, unit"],
+  ["wellness_logs", "note, mood_score"],
+  ["hydration_logs", "ml"],
+  ["memory_facts", "key, value"],
 ]) {
   const r = await c.query(`select ${cols} from ${t} where ingestion_id = $1`, [ingestionId]).catch(() => ({ rows: [] }));
   for (const row of r.rows) { console.log(`  ${t.padEnd(15)} ${JSON.stringify(row)}`); landed += 1; }

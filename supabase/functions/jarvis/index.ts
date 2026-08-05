@@ -78,6 +78,244 @@ function safeEqual(a: string, b: string): boolean {
   return out === 0;
 }
 
+// ==== REMINDERS MIRROR START (byte-identical in lib/reminders.mjs) ====
+// Plain declarations, exported once at the end - Deno cannot import repo-relative
+// lib/, so the jarvis function hosts a copy and tests/mirror-parity.test.mjs proves
+// the two never drift. Do not add an import to this block.
+const FREQUENCIES = ["once", "daily", "weekly", "monthly", "quarterly", "yearly"];
+
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function isLeapYear(y) {
+  return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+}
+
+function daysInMonth(year, month /* 1-12 */) {
+  if (month === 2 && isLeapYear(year)) return 29;
+  return DAYS_IN_MONTH[month - 1];
+}
+
+function parseKey(key) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ""));
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return { y, m: mo, d };
+}
+
+function toKey(y, m, d) {
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+// A date that does not exist lands on the last day of that month rather than
+// rolling into the next one. "Rent on the 31st" in February is 28 Feb, not
+// 3 March, and a 29 Feb birthday is 28 Feb in a common year. Rolling forward
+// would silently move a deadline PAST itself, which for a tax filing is the one
+// direction that costs money.
+function clampDay(year, month, day) {
+  return Math.min(Math.max(1, day), daysInMonth(year, month));
+}
+
+// Day-of-week for a date key. Sakamoto, so it needs no Date object.
+const SAKAMOTO = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+function weekdayOf(key) {
+  const p = parseKey(key);
+  if (!p) return null;
+  let { y, m, d } = p;
+  if (m < 3) y -= 1;
+  return (y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + SAKAMOTO[m - 1] + d) % 7;
+}
+
+function addDays(key, delta) {
+  const p = parseKey(key);
+  if (!p) return null;
+  let { y, m, d } = p;
+  d += delta;
+  while (d > daysInMonth(y, m)) { d -= daysInMonth(y, m); m += 1; if (m > 12) { m = 1; y += 1; } }
+  while (d < 1) { m -= 1; if (m < 1) { m = 12; y -= 1; } d += daysInMonth(y, m); }
+  return toKey(y, m, d);
+}
+
+function compareKeys(a, b) {
+  return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+}
+
+function daysBetween(from, to) {
+  const a = parseKey(from), b = parseKey(to);
+  if (!a || !b) return null;
+  const toDays = ({ y, m, d }) => {
+    let n = d;
+    for (let mm = 1; mm < m; mm++) n += daysInMonth(y, mm);
+    for (let yy = 1970; yy < y; yy++) n += isLeapYear(yy) ? 366 : 365;
+    return n;
+  };
+  return toDays(b) - toDays(a);
+}
+
+// The next date on or after `from` on which this rule fires. Returns null when
+// the rule can never fire again (a `once` that has passed) or is unusable.
+//
+// `from` is inclusive: a reminder due TODAY is due today, not next year. Getting
+// this backwards is how a birthday reminder fires on the 15th.
+// `rule` is normalised in the body rather than via a `= {}` default: the edge
+// mirror is byte-identical TypeScript, where an empty-object default infers the
+// type `{}` and every property read below becomes a compile error.
+function nextOccurrence(rule, from) {
+  rule = rule || {};
+  const start = parseKey(from);
+  if (!start) return null;
+  const freq = String(rule.freq || "").toLowerCase();
+
+  if (freq === "once") {
+    const on = parseKey(rule.on_date);
+    if (!on) return null;
+    return compareKeys(rule.on_date, from) >= 0 ? rule.on_date : null;
+  }
+
+  if (freq === "daily") return from;
+
+  if (freq === "weekly") {
+    const want = Number(rule.weekday);
+    if (!Number.isInteger(want) || want < 0 || want > 6) return null;
+    const have = weekdayOf(from);
+    return addDays(from, (want - have + 7) % 7);
+  }
+
+  const day = Number(rule.day_of_month);
+  if (!Number.isInteger(day) || day < 1 || day > 31) return null;
+
+  if (freq === "monthly") {
+    let { y, m } = start;
+    for (let i = 0; i < 24; i++) {
+      const key = toKey(y, m, clampDay(y, m, day));
+      if (compareKeys(key, from) >= 0) return key;
+      m += 1; if (m > 12) { m = 1; y += 1; }
+    }
+    return null;
+  }
+
+  if (freq === "quarterly" || freq === "yearly") {
+    const anchor = Number(rule.month_of_year);
+    if (!Number.isInteger(anchor) || anchor < 1 || anchor > 12) return null;
+    const step = freq === "quarterly" ? 3 : 12;
+    // Walk the anchor month forward/back in `step` jumps from the start year, and
+    // also check the previous year so a January anchor is reachable from December.
+    for (let y = start.y - 1; y <= start.y + 2; y++) {
+      for (let m = ((anchor - 1) % step) + 1; m <= 12; m += step) {
+        const key = toKey(y, m, clampDay(y, m, day));
+        if (compareKeys(key, from) >= 0) return key;
+      }
+    }
+    return null;
+  }
+
+  return null;
+}
+
+// Every occurrence in [from, to], capped. Used by the UI calendar strip.
+function occurrencesBetween(rule, from, to, cap = 24) {
+  rule = rule || {};
+  const out = [];
+  let cursor = from;
+  for (let i = 0; i < cap; i++) {
+    const next = nextOccurrence(rule, cursor);
+    if (!next || compareKeys(next, to) > 0) break;
+    out.push(next);
+    cursor = addDays(next, 1);
+    if (!cursor) break;
+  }
+  return out;
+}
+
+// How a rule reads to a human. Shown in the UI and spoken in the brief, so it
+// must never say something the rule does not mean.
+const MONTHS = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function describeRule(rule) {
+  rule = rule || {};
+  const freq = String(rule.freq || "").toLowerCase();
+  const day = Number(rule.day_of_month);
+  const anchor = Number(rule.month_of_year);
+  if (freq === "once") return rule.on_date ? `once on ${rule.on_date}` : "once";
+  if (freq === "daily") return "every day";
+  if (freq === "weekly") {
+    const w = WEEKDAYS[Number(rule.weekday)];
+    return w ? `every ${w}` : "every week";
+  }
+  if (freq === "monthly") return `the ${ordinal(day)} of every month`;
+  if (freq === "yearly") return `every ${ordinal(day)} ${MONTHS[anchor - 1] || ""}`.trim();
+  if (freq === "quarterly") {
+    const months = [];
+    for (let m = ((anchor - 1) % 3) + 1; m <= 12; m += 3) months.push(MONTHS[m - 1].slice(0, 3));
+    return `the ${ordinal(day)} of ${months.join("/")}`;
+  }
+  return "";
+}
+
+// Reminders that should be SAID today: due today, or inside their lead window.
+// `lead_days` is how many days of warning a thing needs - a tax filing wants a
+// week, a birthday wants a day or two - and 0 means "only on the day".
+function dueReminders(reminders, today, { horizon = null } = {}) {
+  reminders = reminders || [];
+  const out = [];
+  for (const r of reminders) {
+    if (!r || r.active === false) continue;
+    const next = nextOccurrence(r, today);
+    if (!next) continue;
+    const away = daysBetween(today, next);
+    if (away == null) continue;
+    const lead = horizon == null ? Math.max(0, Number(r.lead_days) || 0) : horizon;
+    if (away > lead) continue;
+    out.push({ ...r, next_due_on: next, days_away: away });
+  }
+  return out.sort((a, b) => compareKeys(a.next_due_on, b.next_due_on) || String(a.title).localeCompare(String(b.title)));
+}
+
+// The next occurrence of every active reminder, soonest first. Powers the
+// "Coming up" list. Unlike dueReminders this ignores lead_days.
+function upcoming(reminders, today, { limit = 5, withinDays = 400 } = {}) {
+  reminders = reminders || [];
+  const out = [];
+  for (const r of reminders) {
+    if (!r || r.active === false) continue;
+    const next = nextOccurrence(r, today);
+    if (!next) continue;
+    const away = daysBetween(today, next);
+    if (away == null || away > withinDays) continue;
+    out.push({ ...r, next_due_on: next, days_away: away });
+  }
+  out.sort((a, b) => compareKeys(a.next_due_on, b.next_due_on) || String(a.title).localeCompare(String(b.title)));
+  return out.slice(0, limit);
+}
+
+// "today", "tomorrow", "in 3 days", "in 2 weeks" - the phrasing the brief uses.
+function whenLabel(daysAway) {
+  const n = Number(daysAway);
+  if (!Number.isFinite(n)) return "";
+  if (n === 0) return "today";
+  if (n === 1) return "tomorrow";
+  if (n < 14) return `in ${n} days`;
+  if (n < 60) return `in ${Math.round(n / 7)} weeks`;
+  return `in ${Math.round(n / 30)} months`;
+}
+
+// One line per due reminder, for the morning brief and the push body.
+function reminderLines(due) {
+  due = due || [];
+  return due.map((r) => {
+    const when = whenLabel(r.days_away);
+    return `${r.title} ${when === "today" ? "is due today" : `is due ${when}`} (${r.next_due_on}).`;
+  });
+}
+// ==== REMINDERS MIRROR END ====
+
 // ==== JARVIS-BRIEF MIRROR START (byte-identical in lib/jarvis-brief.mjs) ====
 function jbRound(n) { return Math.round(Number(n) || 0); }
 
@@ -353,6 +591,13 @@ function jbBriefFacts(o) {
       monthSpend: o.monthSpend, daysLeft: jbDaysLeftInMonth(o.dateKey), subsDueTotal: subsDueTotal,
     }),
     subs_due: subsDue,
+    // Calendar reminders due today or inside their own lead window. Titles and
+    // dates only - the voice model may phrase them but the brief also appends
+    // them deterministically, because a missed filing must not depend on the
+    // model having chosen to mention it.
+    reminders_due: (o.remindersDue || []).map(function (r) {
+      return { title: r.title, kind: r.kind, due_on: r.next_due_on, days_away: r.days_away };
+    }),
     weekly_workouts: { done: Number(o.weeklyWorkouts) || 0, target: jbBudgetAmount(o.budgets, "weekly_workouts") },
   };
 }
@@ -505,7 +750,7 @@ function jbWeeklySummary(days) {
 }
 
 // Voice contract: the model phrases, the facts JSON owns every number.
-var JB_VOICE_SYSTEM = "You are Jarvis, the user's personal chief of staff inside their life tracker. Write their morning brief from the facts JSON: 3 to 6 short sentences, direct address, brisk and warm, plain text only (no markdown, no emoji, no headings, no bullet lists). Every figure you mention must be copied verbatim from the facts JSON - never invent, recompute, or extrapolate a number. NULL MEANS NOT MEASURED AND NOT SET: if a value is null, that thing was never recorded or never configured - say NOTHING about it at all. Never render null as zero, and never describe it as missed, over, failed, skipped, or lacking. In particular, if sleep_h is null the app has no sleep data, so do not mention sleep in any form. Only mention a metric when its value is a real number. workout_done=false means no session happened; if workout_ok is true on the same day it was a planned rest or forgiven day, so do not call it a miss. Currency is INR; write amounts as Rs. Cover: how yesterday closed, today's plan (workout and protein/calorie targets), safe-to-spend if present, any subscription due soon, and the strongest streak worth protecting. End with one concrete next move for the morning.";
+var JB_VOICE_SYSTEM = "You are Jarvis, the user's personal chief of staff inside their life tracker. Write their morning brief from the facts JSON: 3 to 6 short sentences, direct address, brisk and warm, plain text only (no markdown, no emoji, no headings, no bullet lists). Every figure you mention must be copied verbatim from the facts JSON - never invent, recompute, or extrapolate a number. NULL MEANS NOT MEASURED AND NOT SET: if a value is null, that thing was never recorded or never configured - say NOTHING about it at all. Never render null as zero, and never describe it as missed, over, failed, skipped, or lacking. In particular, if sleep_h is null the app has no sleep data, so do not mention sleep in any form. Only mention a metric when its value is a real number. workout_done=false means no session happened; if workout_ok is true on the same day it was a planned rest or forgiven day, so do not call it a miss. Currency is INR; write amounts as Rs. Cover: how yesterday closed, today's plan (workout and protein/calorie targets), safe-to-spend if present, any subscription due soon, and the strongest streak worth protecting. End with one concrete next move for the morning. Do NOT mention anything from reminders_due: those lines are appended verbatim after your text so they are guaranteed to be said, and repeating them makes the brief say the same thing twice.";
 
 function jbVoiceUserPrompt(facts) {
   return "FACTS JSON:\n" + JSON.stringify(facts) + "\n\nWrite the morning brief now, plain text only.";
@@ -1180,6 +1425,23 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
 }
 
 // Morning brief: self-heal yesterday's closeout, build facts, narrate, deliver.
+// Active reminders for a user. Rows are calendar RULES, not events - the next
+// occurrence is computed in-process by lib/reminders.mjs (mirrored above), so
+// this is a plain select with no date filtering in SQL.
+async function fetchReminders(admin: any, userId: string) {
+  const { data, error } = await admin.from("reminders")
+    .select("id, title, note, kind, freq, day_of_month, month_of_year, weekday, on_date, lead_days, active")
+    .eq("user_id", userId).eq("active", true);
+  // A failed read must NOT look like "you have no reminders". Swallowing this is
+  // how a missed tax deadline would present as a perfectly normal quiet morning -
+  // the exact computed-then-never-surfaced failure this codebase keeps hitting.
+  // (It bit immediately: the first live test returned nothing because PostgREST
+  // had not reloaded its schema cache after the table was created, and the empty
+  // array was indistinguishable from having none.)
+  if (error) throw new Error(`reminders_unavailable: ${error.message}`);
+  return data || [];
+}
+
 async function runMorning(admin: any, profile: Profile, now: Date, force: boolean) {
   const tz = profile.timezone || "Asia/Kolkata";
   const todayKey = jbDateKeyInTz(now, tz);
@@ -1195,23 +1457,33 @@ async function runMorning(admin: any, profile: Profile, now: Date, force: boolea
     yday = await fetchHabitDay(admin, profile.id, ydayKey);
   }
 
-  const [budgets, gymPayload, monthSpend, subsDue, weeklyWorkouts] = await Promise.all([
+  const [budgets, gymPayload, monthSpend, subsDue, weeklyWorkouts, allReminders] = await Promise.all([
     fetchBudgets(admin, profile.id),
     fetchGymPayload(admin, profile.id),
     fetchMonthSpend(admin, profile.id, todayKey, tz),
     fetchSubsDue(admin, profile.id, now),
     fetchWeeklyWorkouts(admin, profile.id, todayKey, tz),
+    fetchReminders(admin, profile.id),
   ]);
+  // What is due today or inside its own lead window. This is the whole point of
+  // the feature: a quarterly filing has to speak up a week early, on its own,
+  // without the user having remembered to look.
+  const remindersDue = dueReminders(allReminders, todayKey);
 
   const facts = jbBriefFacts({
     dateKey: todayKey, budgets, gymPayload,
     yesterday: yday ? { ...(yday.summary || {}), flags: yday.flags } : null,
     streaks: yday?.streaks || {},
-    monthSpend, subsDue, weeklyWorkouts,
+    monthSpend, subsDue, weeklyWorkouts, remindersDue,
   });
 
   const voice = await voiceBrief(admin, profile.id, facts);
-  const body = voice?.body || jbMorningFallback(facts);
+  // The voice model may only PHRASE the facts JSON, and a missed deadline is the
+  // one thing that must never depend on it having chosen to mention something.
+  // Reminder lines are appended deterministically, after the narration.
+  const reminderText = reminderLines(remindersDue).join(" ");
+  const narrated = voice?.body || jbMorningFallback(facts);
+  const body = reminderText ? `${narrated} ${reminderText}` : narrated;
   const briefingId = await upsertBriefing(admin, profile.id, "morning", todayKey, body, {
     facts, voice: voice ? { provider: voice.provider, model: voice.model } : "fallback",
   });
@@ -1222,7 +1494,11 @@ async function runMorning(admin: any, profile: Profile, now: Date, force: boolea
       body, facts, forDate: todayKey, dateLabel: facts.weekday, profile,
     });
   }
-  delivery.push = await sendPush(admin, profile, "Morning brief", body.slice(0, 160), now);
+  // A due reminder leads the push. "Morning brief" on the lock screen is a thing
+  // you swipe; "File quarterly GST" is a thing you open.
+  const pushTitle = remindersDue.length ? remindersDue[0].title : "Morning brief";
+  const pushBody = remindersDue.length ? `${reminderText} ${narrated}`.slice(0, 160) : body.slice(0, 160);
+  delivery.push = await sendPush(admin, profile, pushTitle, pushBody, now);
 
   await auditLog(admin, profile.id, "jarvis.morning", { forDate: todayKey, briefingId, voice: voice?.provider || "fallback", delivery });
   return { userId: profile.id, action: "morning", forDate: todayKey, briefingId, voice: voice?.provider || "fallback", delivery };

@@ -535,3 +535,19 @@
   font-size: 0.74rem;
   color: var(--muted, #7d8c84);
 }
+
+/* Recurring reminders: the Home "Coming up" strip and the Settings manage list. */
+.reminder-strip { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.reminder-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; border-radius: 0.6rem; background: var(--surface-2, rgba(255,255,255,0.04)); font-size: 0.9rem; }
+.reminder-item.is-today { outline: 1px solid var(--accent, #6ea8fe); }
+.reminder-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reminder-when { flex: 0 0 auto; opacity: 0.75; font-variant-numeric: tabular-nums; }
+.reminder-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.reminder-row { display: flex; align-items: flex-start; gap: 0.55rem; padding: 0.55rem 0.6rem; border-radius: 0.6rem; background: var(--surface-2, rgba(255,255,255,0.04)); }
+.reminder-row.is-paused { opacity: 0.55; }
+.reminder-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.reminder-main small { opacity: 0.75; }
+.reminder-note { font-style: italic; }
+.reminder-actions { flex: 0 0 auto; display: flex; gap: 0.5rem; }
+.reminder-actions .linklike { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; text-decoration: underline; font-size: 0.85rem; }
+.reminder-actions .linklike.danger { color: var(--danger, #ff6b6b); }

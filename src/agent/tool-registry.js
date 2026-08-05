@@ -11,6 +11,7 @@ export const toolRegistry = [
   { name: "create_hydration_candidate", domain: "wellness", write: true, destructive: false },
   { name: "create_sleep_candidate", domain: "wellness", write: true, destructive: false },
   { name: "create_note_candidate", domain: "all", write: true, destructive: false },
+  { name: "create_reminder_candidate", domain: "all", write: true, destructive: false },
   { name: "set_target_candidate", domain: "all", write: true, destructive: false },
   { name: "remember_fact", domain: "all", write: true, destructive: false },
   { name: "link_duplicate_candidates", domain: "all", write: true, destructive: false },

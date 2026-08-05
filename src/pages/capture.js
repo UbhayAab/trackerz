@@ -14,6 +14,7 @@ import { ensureTodayBriefing, watchTodayBriefings } from "../services/briefing.j
 import { renderBriefingStrip } from "../ui/briefing-strip.js";
 import { bindQuickActions, refreshQuickActions } from "../ui/quick-actions.js";
 import { bindMealChips, refreshMealChips } from "../ui/meal-chips.js";
+import { loadReminders } from "../ui/reminders-panel.js";
 
 registerServiceWorker();
 bindInstallPrompt("installAppBtn");
@@ -33,6 +34,9 @@ bootWithAuth(async () => {
     refreshQuickActions();
     refreshMealChips();
   });
+  // A capture can CREATE a reminder ("my birthday is 14 August"), so the strip is
+  // reloaded after every capture, not just on first paint.
+  loadReminders();
   bindCapturePanel();
   bindQuickActions();
   // One tap re-logs a meal from your own history with its median macros - no model

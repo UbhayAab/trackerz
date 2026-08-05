@@ -81,6 +81,19 @@ export const TOOL_SCHEMAS = {
     types: { kind: "string", scope: "string", summary: "string", payload: "object" },
     enums: { kind: ["diet", "gym"] },
   },
+  create_reminder_candidate: {
+    required: ["title", "freq"],
+    types: {
+      title: "string", note: "string", kind: "string", freq: "string",
+      day_of_month: "number", month_of_year: "number", weekday: "number",
+      on_date: "string", lead_days: "number",
+    },
+    enums: {
+      freq: ["once", "daily", "weekly", "monthly", "quarterly", "yearly"],
+      kind: ["task", "birthday", "anniversary", "bill", "filing", "appointment", "other", null],
+    },
+    ranges: { day_of_month: [1, 31], month_of_year: [1, 12], weekday: [0, 6], lead_days: [0, 60] },
+  },
   create_note_candidate: {
     required: ["body"],
     types: { body: "string", kind: "string", domain: "string", status: "string", due_on: "string", occurred_at: "iso" },
