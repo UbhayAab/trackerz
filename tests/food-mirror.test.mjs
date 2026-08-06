@@ -56,6 +56,14 @@ const CORPUS = [
   // quantities, weights and the 100x blow-up guard
   "250 g rice", "500ml curd", "2 scoops whey", "cookies x5", "box 8",
   "1 litre curd and 2 scoops whey protein", "6 boiled eggs and 500ml curd",
+  // The three 2026-08-06 logic changes, each of which lived in lib alone for a
+  // while. A corpus that does not name them lets the edge keep the old answer.
+  "200-300 g curd",                       // a RANGE collapses to its midpoint
+  "100-200 ml milk", "3-4 rotis",
+  "one tomato", "two tomatoes",           // a spelled-out number is not a food
+  "1 small bowl Haldiram Aloo Bhujia (30 g)",  // a trailing weight beats a vague count
+  "50 g aloo bhujia and 2 soup sachets",  // the owner's snack, priced by the table
+  "30 g aloo bhujia", "6 whole boiled eggs", "70 g soya chunks soaked and drained",
   "3 rotis dal sabzi", "two boiled eggs", "coffee and 5 cookies",
   "egg curry and 2 eggs", "100g paneer", "1.5 cups rice",
   // things that are not food at all

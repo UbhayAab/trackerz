@@ -63,13 +63,59 @@ assert.deepEqual(
 
 // 6. buildRowForTool returns a {table,row} for every write tool, and null for a
 //    non-write tool.
+//
+// The two amendment tools take an extra argument the others do not: `_amend`,
+// the plan the SERVER resolved against the closed set of rows on the day the
+// user named. That is deliberate and is the whole safety property - the client
+// may not re-resolve "the 30 g aloo bhujia" at confirm time, because it could
+// land on a different row than the diff card the user was looking at. So the
+// fixture supplies a resolved plan, exactly as the server would have.
+const AMEND_PLAN = {
+  amend_log_candidate: {
+    op: "update", table: "food_logs", id: "row-1", kind: "food",
+    before: { calories_estimate: 205 }, values: { calories_estimate: 430 }, columns: ["calories_estimate"],
+  },
+  delete_log_candidate: {
+    op: "soft_delete", table: "food_logs", id: "row-1", kind: "food",
+    before: { deleted_at: null }, values: {}, columns: ["deleted_at"],
+  },
+};
 for (const t of APPLIER_WRITE_TOOLS) {
   const built = buildRowForTool(
-    { tool_name: t, arguments: { amount: 1, value: 1, metric_type: "weight", description: "x", note: "n", occurred_at: "2026-01-01T00:00:00Z" }, confidence: 0.9 },
+    {
+      tool_name: t,
+      arguments: {
+        amount: 1, value: 1, metric_type: "weight", description: "x", note: "n", occurred_at: "2026-01-01T00:00:00Z",
+        ...(AMEND_PLAN[t] ? { target_ref: "x", target_kind: "food", _amend: AMEND_PLAN[t] } : {}),
+      },
+      confidence: 0.9,
+    },
     "user-1",
   );
   assert.ok(built && typeof built.table === "string" && built.row, `buildRowForTool produced no row for write tool "${t}"`);
 }
 assert.equal(buildRowForTool({ tool_name: "request_user_review", arguments: {} }, "user-1"), null);
+
+// 6b. An amendment with NO resolved plan builds nothing. It must never fall
+//     through to the insert path - that would add a second row, which is the
+//     exact bug amend_log_candidate exists to remove - and it must never be
+//     reported as a write that happened.
+for (const t of ["amend_log_candidate", "delete_log_candidate"]) {
+  assert.equal(
+    buildRowForTool({ tool_name: t, arguments: { target_ref: "30g aloo bhujia", target_kind: "food" } }, "user-1"),
+    null,
+    `${t} with an unresolved target must build nothing`,
+  );
+}
+// ...and a resolved plan carries an `op`, so applyProposedAction can tell an
+// amendment from an insert without knowing the tool names.
+assert.equal(
+  buildRowForTool({ tool_name: "amend_log_candidate", arguments: { _amend: AMEND_PLAN.amend_log_candidate } }, "user-1").op,
+  "update",
+);
+assert.equal(
+  buildRowForTool({ tool_name: "delete_log_candidate", arguments: { _amend: AMEND_PLAN.delete_log_candidate } }, "user-1").op,
+  "soft_delete",
+);
 
 console.log(`agent contract tests passed: ${allowed.length} tools, ${writeTools.length} write tools wired server+client`);

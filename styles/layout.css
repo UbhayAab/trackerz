@@ -1,8 +1,14 @@
+/* The inline padding takes the safe-area insets into account because index.html,
+   analytics, gym and quick-log ship `viewport-fit=cover`: on a notched phone in
+   landscape, and inside the Capacitor WebView, that hands us a layout viewport
+   that runs under the cutout. Without max() the first 30-40px of every row sits
+   beneath it. Never below 14px, so nothing changes on a phone with no inset. */
 .app-shell {
   width: min(100%, 860px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: 16px 14px calc(env(safe-area-inset-bottom, 0px) + 100px);
+  padding-block: 16px calc(env(safe-area-inset-bottom, 0px) + 100px);
+  padding-inline: max(14px, env(safe-area-inset-left, 0px)) max(14px, env(safe-area-inset-right, 0px));
 }
 
 .topbar,

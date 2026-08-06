@@ -217,6 +217,139 @@
       "expect": { "must": [], "must_not": ["create_food_log_candidate"], "max_rows": 0 },
       "tags": ["edge", "deterministic"],
       "weight": 1
+    },
+    {
+      "id": "amend-aloo-bhujia-owner-case",
+      "source": "the owner, 2026-08-06, verbatim",
+      "note": "\"in the afternoon I said that I ate thirty grams of aloo bhujia, but then I remember later on that actually it was fifty grams\". The row exists (food_logs 1b90dbea, 15:14 IST). A correction must CHANGE it, never write a second snack - the day counting both is exactly the bug.",
+      "input": "actually it was 50g of aloo bhujia not 30g",
+      "model": [
+        { "name": "amend_log_candidate", "arguments": { "target_ref": "30g aloo bhujia", "target_kind": "food", "when": "this afternoon", "set": { "description": "50g aloo bhujia and 2 soup sachets" } }, "confidence": 0.9 }
+      ],
+      "expect": {
+        "must": [{ "tool": "amend_log_candidate", "min": 1, "max": 1, "args": { "target_ref": { "contains": ["aloo bhujia"] } } }],
+        "must_not": ["create_food_log_candidate", "create_expense_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["amend", "not-a-log", "regression"],
+      "weight": 3
+    },
+    {
+      "id": "amend-aloo-bhujia-no-model-output",
+      "source": "same text, brain unavailable",
+      "note": "The one that matters most. Salvage runs even when the model says nothing, and 'aloo bhujia' is in the nutrition table - so without an amendment cue this sentence becomes a fresh 365 kcal snack and the day counts the mistake AND the fix.",
+      "input": "actually it was 50g of aloo bhujia not 30g",
+      "model": [],
+      "expect": {
+        "must": [],
+        "must_not": ["create_food_log_candidate", "create_expense_candidate", "create_workout_log_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["amend", "not-a-log", "deterministic", "regression"],
+      "weight": 3
+    },
+    {
+      "id": "amend-over-emitted-log",
+      "source": "derived from the 2026-08-06 phantom-meal shape",
+      "note": "The model routes it correctly AND appends the log anyway. One capture, one intent: the log is dropped and the amendment stands.",
+      "input": "actually it was 50g of aloo bhujia not 30g",
+      "model": [
+        { "name": "amend_log_candidate", "arguments": { "target_ref": "30g aloo bhujia", "target_kind": "food", "set": { "description": "50g aloo bhujia" } }, "confidence": 0.9 },
+        { "name": "create_food_log_candidate", "arguments": { "description": "50g aloo bhujia", "occurred_at": "2026-08-06T12:00:00+05:30" }, "confidence": 0.6 }
+      ],
+      "expect": {
+        "must": [{ "tool": "amend_log_candidate", "min": 1, "max": 1 }],
+        "must_not": ["create_food_log_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["amend", "not-a-log", "regression"],
+      "weight": 3
+    },
+    {
+      "id": "amend-past-date",
+      "source": "the owner: \"not just for the same day, but ANY day if dates are properly mentioned\"",
+      "input": "change yesterday's dinner to 2 rotis",
+      "model": [
+        { "name": "amend_log_candidate", "arguments": { "target_ref": "yesterday's dinner", "target_kind": "food", "when": "yesterday", "set": { "description": "2 rotis" } }, "confidence": 0.9 }
+      ],
+      "expect": {
+        "must": [{ "tool": "amend_log_candidate", "min": 1, "max": 1, "args": { "when": "yesterday" } }],
+        "must_not": ["create_food_log_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["amend", "not-a-log"],
+      "weight": 3
+    },
+    {
+      "id": "delete-logged-row",
+      "source": "the owner: \"delete the coke I logged this morning\"",
+      "input": "delete the coke I logged this morning",
+      "model": [
+        { "name": "delete_log_candidate", "arguments": { "target_ref": "coke", "target_kind": "food", "when": "this morning" }, "confidence": 0.9 }
+      ],
+      "expect": {
+        "must": [{ "tool": "delete_log_candidate", "min": 1, "max": 1 }],
+        "must_not": ["create_food_log_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["amend", "delete", "not-a-log"],
+      "weight": 3
+    },
+    {
+      "id": "delete-no-model-output",
+      "source": "corpus",
+      "note": "'remove that lunch entry' names lunch. Salvage must not read a deletion as a meal.",
+      "input": "remove that lunch entry",
+      "model": [],
+      "expect": {
+        "must": [],
+        "must_not": ["create_food_log_candidate", "create_expense_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["amend", "delete", "not-a-log", "deterministic"],
+      "weight": 2
+    },
+    {
+      "id": "amend-control-plain-meal-still-inserts",
+      "source": "corpus",
+      "note": "CONTROL. A feature that quietly converts new logs into edits is far worse than not having it. An ordinary meal is still an INSERT.",
+      "input": "6 boiled eggs and 500ml curd",
+      "model": [],
+      "expect": {
+        "must": [{ "tool": "create_food_log_candidate", "min": 1, "max": 1 }],
+        "must_not": ["amend_log_candidate", "delete_log_candidate"]
+      },
+      "tags": ["amend-control", "food", "deterministic", "contrast"],
+      "weight": 3
+    },
+    {
+      "id": "amend-control-actually-is-not-a-correction",
+      "source": "corpus",
+      "note": "CONTROL. 'actually' is a filler word people put in front of ordinary sentences. On its own it must never turn a meal into an edit - a correction has to say WHAT it is correcting.",
+      "input": "actually I am starving, had 6 eggs",
+      "model": [],
+      "expect": {
+        "must": [{ "tool": "create_food_log_candidate", "min": 1, "max": 1 }],
+        "must_not": ["amend_log_candidate", "delete_log_candidate"]
+      },
+      "tags": ["amend-control", "food", "deterministic", "contrast"],
+      "weight": 3
+    },
+    {
+      "id": "amend-control-spend-and-meal-survive",
+      "source": "corpus",
+      "note": "CONTROL. The fan-out that puts one event in two trackers still runs; the amendment guard did not switch it off.",
+      "input": "spent 120 on rose milk and sandwich",
+      "model": [],
+      "expect": {
+        "must": [
+          { "tool": "create_expense_candidate", "min": 1, "max": 1 },
+          { "tool": "create_food_log_candidate", "min": 1, "max": 1 }
+        ],
+        "must_not": ["amend_log_candidate", "delete_log_candidate"]
+      },
+      "tags": ["amend-control", "money", "deterministic", "contrast"],
+      "weight": 3
     }
   ]
 }

@@ -5,8 +5,8 @@
 // resolving on recency alone.
 import assert from "node:assert/strict";
 import {
-  resolveReferent, buildClosedWorld, normalizeCandidate, splitContrast,
-  isBarePronoun, describeCandidate, AMBIGUITY_MARGIN,
+  resolveReferent, buildClosedWorld, buildWindowWorld, normalizeCandidate, splitContrast,
+  isBarePronoun, describeCandidate, AMBIGUITY_MARGIN, CANDIDATE_SOURCES,
 } from "../lib/referent-resolver.mjs";
 
 const T = (h, m = 0) => `2026-08-06T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00+05:30`;
@@ -193,6 +193,54 @@ assert.match(describeCandidate(eggs6), /6 boiled eggs/);
   // The resolver must still be USEFUL: a distinguishable row should mostly
   // resolve, or "never guess" has quietly become "never answer".
   assert.ok(resolvedUniques / uniques > 0.75, `only ${resolvedUniques}/${uniques} distinguishable refs resolved`);
+}
+
+// ---------------------------------------------------------------------------
+// THE THIRD WAY INTO THE WORLD: a calendar WINDOW.
+//
+// An amendment ("change yesterday's dinner") cannot use the conversation's
+// closed world - the row is usually not in the memory block and was not written
+// this session. So lib/amend-target.mjs loads the rows that actually sit on the
+// day the user named and tags them `window`. The properties that matter are
+// unchanged: no guessing, no nearest neighbour, and no way in for an untagged
+// row.
+// ---------------------------------------------------------------------------
+{
+  assert.deepEqual([...CANDIDATE_SOURCES].sort(), ["context", "session", "window"]);
+
+  const dayKeyOf = (iso) => String(iso).slice(0, 10); // the caller owns the zone
+  const w = buildWindowWorld([eggs6, coffee, tea], dayKeyOf);
+  assert.equal(w.length, 3);
+  assert.ok(w.every((c) => c.source === "window"));
+  assert.ok(w.every((c) => c.day_key === "2026-08-06"), "every candidate carries the day the CALLER resolved");
+
+  // It resolves exactly like the other two sources - the source decides
+  // reachability, never score.
+  const out = resolveReferent("6 eggs", w);
+  assert.equal(out.status, "resolved");
+  assert.equal(out.row.id, "f1");
+
+  // Rows with no id are not candidates, however well they match.
+  assert.equal(buildWindowWorld([{ description: "6 boiled eggs" }], dayKeyOf).length, 0);
+  // A duplicate id appears once.
+  assert.equal(buildWindowWorld([eggs6, eggs6], dayKeyOf).length, 1);
+  // No dayKeyOf: the candidate still exists but claims no day, so a window
+  // filter downstream rejects it rather than letting it through unlabelled.
+  assert.equal(buildWindowWorld([eggs6])[0].day_key, null);
+
+  // A row smuggled in with a made-up source is still unreachable.
+  const smuggled = [{ ...normalizeCandidate(eggs6), source: "database" }];
+  assert.equal(resolveReferent("6 eggs", smuggled).reason, "closed_world_empty");
+
+  // Two identical rows inside the window still ask.
+  const twin = { ...eggs6, id: "f1b", occurred_at: T(9) };
+  assert.equal(resolveReferent("6 eggs", buildWindowWorld([eggs6, twin], dayKeyOf)).status, "ambiguous");
+
+  // `dayKey` is the zone-resolved "today" the caller passes in; it is what
+  // "today" in a phrase scores against, and it must never be derived here.
+  const dayScored = resolveReferent("the coffee today", buildWindowWorld([coffee, tea], dayKeyOf), { dayKey: "2026-08-06" });
+  assert.equal(dayScored.status, "resolved");
+  assert.equal(dayScored.row.id, "f2");
 }
 
 console.log("referent-resolver tests passed");

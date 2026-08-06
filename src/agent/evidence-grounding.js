@@ -9,6 +9,7 @@
 // the two copies in sync; tests/evidence-grounding.test.mjs locks this one.
 
 import { SCHEDULE_CUE } from "../../lib/schedule-args.mjs";
+import { AMEND_CUE, DELETE_CUE } from "../../lib/amend-target.mjs";
 
 // True if the numeric value appears in the evidence as a standalone number
 // (commas ignored, digit-boundary aware so 240 does not match inside 1240).
@@ -171,6 +172,19 @@ export function isGrounded(toolName, args = {}, evidence = "") {
       // written BY the model, so it cannot be required to echo the evidence -
       // what must be grounded is that scheduling was actually asked for.
       return SCHEDULE_CUE.test(String(ev || ""));
+    case "amend_log_candidate":
+      // TWO things have to be in the evidence, not one. The ACT of correcting
+      // ("actually", "change", "50 not 30") proves an amendment was asked for at
+      // all - without it, a model that mis-reads a plain meal as a correction
+      // rewrites a row nobody touched. The WORDS OF THE TARGET prove it is this
+      // row: `target_ref` is the user's own phrase for the thing they mean, so
+      // unlike a scheduled task's prompt it CAN be required to echo the evidence.
+      return AMEND_CUE.test(ev) && hasWordOverlap(args.target_ref, ev);
+    case "delete_log_candidate":
+      // Same shape, and the strictest tool in the app: a delete removes a row
+      // from totals the user has already read. The deletion verb must be present
+      // in what they actually said - an amendment cue is not enough.
+      return DELETE_CUE.test(ev) && hasWordOverlap(args.target_ref, ev);
     default:
       return true;
   }

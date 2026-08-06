@@ -190,6 +190,173 @@ export function planChangePreview(kind, base, payload) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// AMENDING A ROW THAT ALREADY EXISTS.
+//
+// Same card, same rules, one different input: a plan from lib/amend-target.mjs
+// instead of a plan document. The plan carries `before` and `values` for exactly
+// the columns the write will touch, so these rows cannot describe a change the
+// write will not make - there is nothing here to recompute.
+//
+// LEAD WITH THE AGGREGATE still holds and matters more here than for a plan: the
+// decision on "actually it was 50 g not 30 g" turns on the day going from 205 to
+// 430 kcal, not on the word "30" becoming the word "50". `plan.headline` is the
+// figure amend-target already picked for that kind, so the ordering is decided
+// once, next to the column rules, rather than guessed by the renderer.
+// ---------------------------------------------------------------------------
+
+const AMEND_COLUMN_LABELS = {
+  calories_estimate: { label: "Calories", unit: " kcal" },
+  protein_g: { label: "Protein", unit: " g" },
+  carbs_g: { label: "Carbs", unit: " g" },
+  fat_g: { label: "Fat", unit: " g" },
+  description: { label: "What", unit: "" },
+  meal_name: { label: "Meal name", unit: "" },
+  meal_slot: { label: "Meal", unit: "" },
+  amount: { label: "Amount", unit: "" },
+  merchant: { label: "Merchant", unit: "" },
+  payment_mode: { label: "Paid by", unit: "" },
+  is_discretionary: { label: "Discretionary", unit: "" },
+  duration_min: { label: "Duration", unit: " min" },
+  intensity: { label: "Intensity", unit: "" },
+  status: { label: "Status", unit: "" },
+  ml: { label: "Water", unit: " ml" },
+  quality: { label: "Sleep quality", unit: "/5" },
+  started_at: { label: "Slept from", unit: "" },
+  ended_at: { label: "Woke at", unit: "" },
+  value: { label: "Value", unit: "" },
+  unit: { label: "Unit", unit: "" },
+  metric_type: { label: "Metric", unit: "" },
+  note: { label: "Note", unit: "" },
+  body: { label: "Note", unit: "" },
+  mood_score: { label: "Mood", unit: "/10" },
+  energy_score: { label: "Energy", unit: "/10" },
+  stress_score: { label: "Stress", unit: "/10" },
+  occurred_at: { label: "When", unit: "" },
+  due_on: { label: "Due", unit: "" },
+  deleted_at: { label: "Deleted", unit: "" },
+};
+
+function amendLabel(column) {
+  return AMEND_COLUMN_LABELS[column] || { label: String(column).replace(/_/g, " "), unit: "" };
+}
+
+// Numerics arrive as a JS number from PostgREST and as a string ("7.00") from
+// node-postgres. Rendering "7.00 -> 7" as a change would be a lie about the write.
+function amendSame(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  const na = Number(a);
+  const nb = Number(b);
+  if (Number.isFinite(na) && Number.isFinite(nb) && String(a).trim() !== "" && String(b).trim() !== "") return na === nb;
+  return String(a).trim() === String(b).trim();
+}
+
+/**
+ * Rows for one amendment plan, aggregates first.
+ *
+ * @param {{op, table, id, kind, before, values, columns, headline}} plan
+ *   Straight from amendWritePlan(). Nothing else is accepted, because anything
+ *   else would be a second opinion about what the write does.
+ */
+export function amendDiffRows(plan) {
+  const p = plan && typeof plan === "object" ? plan : {};
+  const rows = [];
+  if (p.op === "soft_delete") {
+    // A delete has no column diff worth showing - the change is the whole row.
+    // Lead with the figures it takes OUT of the day, because that is the number
+    // the user is deciding about.
+    for (const h of p.headline || []) {
+      const meta = amendLabel(h.column);
+      rows.push({
+        verb: "-", key: `del.${h.column}`, label: meta.label,
+        from: fmt(h.from, meta.unit), to: "0", aggregate: true, delta: -num(h.from),
+      });
+    }
+    rows.push({ verb: "-", key: "row", label: "This entry", from: "kept", to: "" });
+    return rows;
+  }
+
+  const before = p.before || {};
+  const after = p.values || {};
+  const columns = Array.isArray(p.columns) ? p.columns : Object.keys(after);
+
+  // 1. The aggregate the decision turns on.
+  const headlineCols = new Set();
+  for (const h of p.headline || []) {
+    if (!h.changed) continue;
+    headlineCols.add(h.column);
+    const meta = amendLabel(h.column);
+    rows.push({
+      verb: "~", key: `total.${h.column}`, label: meta.label,
+      from: fmt(h.from, meta.unit), to: fmt(h.to, meta.unit),
+      aggregate: true, delta: num(h.to) - num(h.from),
+    });
+  }
+
+  // 2. Every other column the write will actually touch. Unchanged columns are
+  //    not in `columns` at all - amendWritePlan drops the no-ops - so there is
+  //    nothing here to filter for noise.
+  for (const col of columns) {
+    if (headlineCols.has(col)) continue;
+    if (amendSame(before[col], after[col])) continue;
+    const meta = amendLabel(col);
+    const from = before[col];
+    const to = after[col];
+    const verb = from == null || from === "" ? "+" : (to == null || to === "" ? "-" : "~");
+    rows.push({ verb, key: col, label: meta.label, from: fmt(from, meta.unit), to: fmt(to, meta.unit) });
+  }
+  return rows;
+}
+
+/**
+ * The card for an amendment. Confirm label says what will happen to WHICH row.
+ */
+export function renderAmendCard(plan, { title = null, summary = "", id = "amendCard" } = {}) {
+  const p = plan && typeof plan === "object" ? plan : {};
+  const deleting = p.op === "soft_delete";
+  return renderDiffCard(amendDiffRows(p), {
+    title: title || (deleting ? "Delete this entry?" : "Change this entry?"),
+    summary,
+    confirmLabel: deleting ? "Delete it" : "Change it",
+    cancelLabel: "Leave it",
+    id,
+  });
+}
+
+/**
+ * AMBIGUITY RENDERS A CHOOSER, NOT A GUESS.
+ *
+ * Three buttons maximum, each NAMING the row it would change ("50g aloo bhujia,
+ * 15:14 today"). A fourth button is a list, and a list on a phone is a thing
+ * people dismiss - and dismissing this one means the correction is lost, which is
+ * why the resolver's answer is a question rather than a best guess in the first
+ * place.
+ *
+ * `labels` are produced by describeAmendCandidate() in lib/amend-target.mjs, so
+ * the words on the button come from the same place the row did.
+ */
+export function renderAmendChooser(labels = [], {
+  question = "Which one did you mean?",
+  id = "amendChooser",
+} = {}) {
+  const list = (Array.isArray(labels) ? labels : []).slice(0, 3);
+  if (!list.length) {
+    return `<section class="command-panel diff-card" id="${esc(id)}" data-amend-choices="0">
+      <p class="small muted">I could not find that entry.</p>
+    </section>`;
+  }
+  return `<section class="command-panel diff-card" id="${esc(id)}" data-amend-choices="${list.length}">
+    <p class="diff-title" style="font-weight:600;margin:0 0 8px">${esc(question)}</p>
+    <div class="diff-rows" style="display:grid;gap:6px">
+      ${list.map((label, i) => `<button class="secondary-button" type="button" data-amend-choice="${i}" style="min-height:44px;text-align:left">${esc(label)}</button>`).join("")}
+    </div>
+    <div class="diff-actions" style="position:sticky;bottom:0;display:grid;grid-template-columns:1fr;gap:8px;padding-top:10px;background:var(--panel)">
+      <button class="ghost-button" type="button" data-diff-act="cancel" style="min-height:44px">None of these</button>
+    </div>
+  </section>`;
+}
+
 const VERB_CLASS = { "+": "diff-add", "-": "diff-del", "~": "diff-mod" };
 
 function rowHtml(row) {
@@ -244,10 +411,20 @@ export function renderDiffCard(rows = [], {
 // Wire one card. `onConfirm` / `onCancel` are called at most ONCE each: the
 // buttons disable themselves on the first tap, because a double tap on a confirm
 // is how one plan change becomes two rows.
-export function bindDiffCard(root, { onConfirm, onCancel } = {}) {
+export function bindDiffCard(root, { onConfirm, onCancel, onChoose } = {}) {
   if (!root || typeof root.addEventListener !== "function") return () => {};
   let settled = false;
   const handler = (event) => {
+    // The ambiguity chooser. Same one-tap-only rule as confirm: a double tap on
+    // "which one did you mean" would resolve twice and amend two rows.
+    const choice = event.target?.closest?.("[data-amend-choice]");
+    if (choice) {
+      if (settled) return;
+      settled = true;
+      root.querySelectorAll("[data-amend-choice],[data-diff-act]").forEach((b) => { b.disabled = true; });
+      onChoose?.(Number(choice.getAttribute("data-amend-choice")));
+      return;
+    }
     const btn = event.target?.closest?.("[data-diff-act]");
     if (!btn) return;
     const act = btn.getAttribute("data-diff-act");

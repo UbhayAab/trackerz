@@ -1,18 +1,23 @@
+/* A single `1fr` track is `minmax(auto, 1fr)`, and `auto` as a MINIMUM means
+   "at least the widest child's min-content". Measured on Home at 320px with a
+   larger system font, that floor made .command-panel and .ai-panel lay out at
+   313px inside a 300px shell. minmax(0, 1fr) is the same column that is allowed
+   to be narrow. */
 @media (max-width: 720px) {
   .command-grid,
   .analysis-grid,
   .pipeline-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 520px) {
   .app-shell {
-    padding-inline: 10px;
+    padding-inline: max(10px, env(safe-area-inset-left, 0px)) max(10px, env(safe-area-inset-right, 0px));
   }
 
   .dashboard-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .summary-rail {
@@ -28,7 +33,8 @@
   .mode-grid,
   .view-tabs,
   .data-actions {
-    grid-template-columns: repeat(2, 1fr);
+    /* minmax(0, 1fr), never a bare 1fr - see styles/capture.css. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .bar-chart {

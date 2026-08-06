@@ -1,7 +1,17 @@
 /* One-tap row: sleep / water / gym.
    Sized for a thumb on a phone - every control is >= 44px tall, which the audit
-   flagged the 30px gym controls for failing. Rows scroll horizontally rather
-   than wrapping into a tall stack or forcing the page to scroll sideways. */
+   flagged the 30px gym controls for failing.
+
+   These rows USED to scroll horizontally rather than wrap, on the theory that a
+   sideways row beats a tall stack. Measured on a 320px phone that theory costs
+   real text: the water row lays out at 360px inside a 300px box and the gym row
+   at 377px, so "2.3L / 3.5L" reads "2.3L / 3." and "logged as done today" is cut
+   mid-word at the screen edge, with no visible affordance saying it can be
+   swiped. The buttons were never the problem - they total 220px at 320px and
+   fit. It is the trailing NOTE, which is passive text, that pushes the row out.
+   So the row wraps and the note takes its own line when there is no space for
+   it: every control stays on one line, nothing lands off-screen, and no text is
+   lost to an ellipsis. Above ~390px it still renders as one line, unchanged. */
 
 .quick-actions {
   display: grid;
@@ -12,14 +22,10 @@
 .quick-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
   padding-bottom: 2px;
-  -webkit-overflow-scrolling: touch;
 }
-.quick-row::-webkit-scrollbar { display: none; }
 
 .quick-label {
   flex: 0 0 auto;
@@ -196,18 +202,27 @@
 .water-more .quick-btn { min-height: 44px; }
 .water-more-close { margin-left: auto; }
 
+/* `flex: 1 1 auto` + `min-width: 0`, not `0 0 auto`. This is the element that
+   was running off the right edge of a 320/360px phone: refusing to shrink, it
+   made the whole row wider than the screen. It may now shrink and, once it hits
+   its own content, wrap onto the row's second line. */
 .quick-note {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-size: 0.78rem;
   color: var(--muted, #7c8a82);
   padding-left: 2px;
+  overflow-wrap: anywhere;
 }
 
 .quick-meter {
   display: inline-block;
+  /* Its width IS the reading, so it must not be shrunk by the flex row it sits
+     in - the text beside it wraps instead. */
+  flex: 0 0 auto;
   width: 54px;
   height: 6px;
   border-radius: 999px;

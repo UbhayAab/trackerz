@@ -175,7 +175,12 @@
 #dietPlan .nutrow.nut-near .nutval { color: #c98a00; }
 #dietPlan .nutrow.nut-bad  .nutval { color: #d4533e; }
 #dietPlan .nutgauge-over { position: absolute; right: 3px; top: -7px; font-size: 0.58rem; font-weight: 700; color: #d4533e; }
-#dietPlan .nutrow.nut-pegged .nutgauge-ptr { left: 100% !important; }
+/* calc(100% - 2.5px), not 100%. The pointer is 5px wide and centred on its
+   position with translateX(-50%), so parking it at exactly 100% leaves half of
+   it (2.5px) hanging past the gauge, past the panel and past the phone: this was
+   the last thing on Home whose scrollWidth exceeded its clientWidth, 269 inside
+   266 at 320px. Half a pointer width back and it sits flush. */
+#dietPlan .nutrow.nut-pegged .nutgauge-ptr { left: calc(100% - 2.5px) !important; }
 
 /* Additions feed: day-over-day rows, green adds, one-tap ✕ delete. Capped +
    scrollable (same shape as .audit-list in styles/audit.css) so a long capture

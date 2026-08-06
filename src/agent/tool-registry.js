@@ -42,6 +42,19 @@ export const toolRegistry = [
   // writer, which is the third drift tests/tool-sync.test.mjs caught on day one.
   { name: "link_duplicate_candidates", domain: "all", write: false, destructive: false },
   { name: "update_plan_candidate", domain: "all", write: true, destructive: false },
+  // THE FIRST TWO DESTRUCTIVE TOOLS THIS APP HAS EVER REGISTERED.
+  //
+  // Everything above ADDS a row: wrong is a row in the feed with a ✕ next to it.
+  // These two CHANGE or REMOVE a row that is already in the day's totals, the
+  // weekly review and the pattern engine, so wrong is a number that silently
+  // stops being true. destructive:true is what routes them to `confirm` in
+  // decideActionPolicy - a diff card and one tap - instead of the auto path, and
+  // lib/mutation-risk.mjs makes a delete a tombstone rather than a removal.
+  //
+  // They exist because the alternative was worse: without them "actually it was
+  // 50 g not 30 g" wrote a SECOND meal and the day counted both.
+  { name: "amend_log_candidate", domain: "all", write: true, destructive: true },
+  { name: "delete_log_candidate", domain: "all", write: true, destructive: true },
   { name: "request_user_review", domain: "all", write: false, destructive: false },
   // Writes nothing - it carries the AI's reply to a question back to the UI.
   { name: "answer_question", domain: "all", write: false, destructive: false },

@@ -29,6 +29,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { toolRegistry, isKnownTool, getTool } from "../src/agent/tool-registry.js";
+import { decideActionPolicy } from "../src/agent/action-policy.js";
+import { mutationTier, mutationGate, mutationRisk } from "../lib/mutation-risk.mjs";
 
 const edge = readFileSync("supabase/functions/agent/index.ts", "utf8");
 
@@ -141,14 +143,44 @@ for (const dead of ["estimate_food_macros", "apply_verified_action", "undo_ai_ac
   assert.equal(getTool(dead), null);
 }
 
-// --- 6. nothing destructive is registered ------------------------------------
+// --- 6. a destructive tool may exist, but ONLY behind the confirm gate --------
 //
-// decideActionPolicy() blocks destructive tools, but only ones it knows about.
-// There is no approve gate in this app: everything non-blocked auto-applies
-// immediately, so a destructive tool arriving here is a one-way door.
+// This check used to read "nothing destructive is registered", and its stated
+// reason was "there is no approve gate in this app: everything non-blocked
+// auto-applies immediately". That reason expired when the confirm gate landed
+// (lib/mutation-risk.mjs -> gate "hard" -> a diff card and one tap), and keeping
+// the old assertion would have meant the app could never correct a row it had
+// already written - so "actually it was 50 g not 30 g" stayed a SECOND meal and
+// the day counted both.
+//
+// What replaces it is stricter about the thing that actually matters. A
+// registered destructive tool must be:
+//   * classified `destructive` by mutation-risk (not merely named like it),
+//   * gated "hard" - never auto, never a soft undo-toast,
+//   * softDeleteOnly - the model gets no hard-delete path at any tier,
+//   * routed to `confirm` by decideActionPolicy, never `auto_apply`.
+// And a NON-destructive tool must not be named like a destructive one, which is
+// the original spirit of the name check.
 for (const tool of toolRegistry) {
-  assert.equal(tool.destructive, false, `destructive tool "${tool.name}" registered - there is no approve gate to catch it`);
-  assert.ok(!/delete|drop|truncate|purge/i.test(tool.name), `tool "${tool.name}" reads as destructive`);
+  if (!tool.destructive) {
+    assert.ok(
+      !/^(delete|remove|drop|purge|truncate|erase)[_-]/i.test(tool.name),
+      `tool "${tool.name}" reads as destructive but is registered destructive:false`,
+    );
+    continue;
+  }
+  const call = { name: tool.name, confidence: 0.99, evidenceId: "ev_1", arguments: {} };
+  assert.equal(mutationTier(call), "destructive", `${tool.name} is registered destructive but mutationTier says otherwise`);
+  assert.equal(mutationGate(call), "hard", `${tool.name} must be gated hard - a destructive write may never auto-apply`);
+  assert.equal(mutationRisk(call).softDeleteOnly, true, `${tool.name} must be soft-delete only`);
+  assert.equal(decideActionPolicy(call).mode, "confirm", `${tool.name} must reach the user as a confirm, not a silent write`);
 }
+// The destructive set is small and deliberate. A third one appearing without a
+// decision being made is what this count is for.
+assert.deepEqual(
+  toolRegistry.filter((t) => t.destructive).map((t) => t.name).sort(),
+  ["amend_log_candidate", "delete_log_candidate"],
+  "the registered destructive tools changed - that is a decision, not a diff",
+);
 
 console.log(`tool sync tests passed: ${registryNames.length} tools agree across registry, ALLOWED_TOOLS, applyTool and SYSTEM_PROMPT`);

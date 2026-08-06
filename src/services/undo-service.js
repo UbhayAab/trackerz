@@ -104,6 +104,69 @@ async function runStep(supabase, userId, step) {
   return { reason: step.reason || "not_undoable" };
 }
 
+// APPLYING AN AMENDMENT / A DELETE.
+//
+// This lives here, next to runStep, because an amendment and the undo of an
+// amendment are the SAME two writes in opposite directions - `update` with named
+// columns, `soft_delete` with a tombstone - and having them in two files is how
+// they drift into disagreeing about what "applied" means.
+//
+// `plan` comes from the server (lib/amend-target.mjs -> ai_actions.arguments
+// ._amend, read out by buildRowForTool). Nothing is re-resolved here: the row id
+// was decided against the closed candidate world at capture time, and the user
+// confirmed a card describing THAT row.
+//
+// Returns the v2 undo_payload for the write it performed, or a reason. Both are
+// reported; neither is thrown away.
+export async function applyAmendment(built) {
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { table, id, op } = built || {};
+  if (!table || !id || !op) return { ok: false, reason: "no_amend_plan" };
+  if (!SOFT.has(table)) return { ok: false, reason: `not_amendable:${table}` };
+
+  const existing = await rowExists(supabase, table, id, userId);
+  if (!existing) return { ok: false, reason: "target_missing" };
+  if (existing.deleted_at) return { ok: false, reason: "target_deleted" };
+
+  if (op === "soft_delete") {
+    const { data, error } = await supabase
+      .from(table)
+      .update(built.row)
+      .eq("id", id).eq("user_id", userId).is("deleted_at", null)
+      .select("id");
+    if (error) return { ok: false, reason: error.message };
+    if (!(data || []).length) return { ok: false, reason: "already_deleted" };
+    return {
+      ok: true, table, id,
+      // A delete is reversed by CLEARING the tombstone, which is why the payload
+      // records the delete rather than the row: undo-ledger's invert() turns
+      // op:"delete" into a restore and never into a re-insert.
+      undo: { v: 2, op: "delete", table, id, before: built.before || null, after: null, columns: [] },
+    };
+  }
+
+  if (op === "update") {
+    if (!built.columns?.length) return { ok: false, reason: "no_columns_recorded" };
+    const { data, error } = await supabase
+      .from(table)
+      .update(built.row)
+      .eq("id", id).eq("user_id", userId).is("deleted_at", null)
+      .select("id");
+    if (error) return { ok: false, reason: error.message };
+    if (!(data || []).length) return { ok: false, reason: "target_missing" };
+    return {
+      ok: true, table, id,
+      // NAMED COLUMNS ONLY, recorded at write time. This is what lets an undo
+      // reverse this edit without clobbering a later, legitimate one to the same
+      // row - see the interleaving proof in tests/undo-ledger.test.mjs.
+      undo: { v: 2, op: "update", table, id, before: built.before || null, after: built.row, columns: built.columns },
+    };
+  }
+
+  return { ok: false, reason: `unknown_amend_op:${op}` };
+}
+
 async function markReverted(supabase, actionId, payload) {
   const next = { ...(payload || {}), undone_at: new Date().toISOString() };
   const { error } = await supabase
