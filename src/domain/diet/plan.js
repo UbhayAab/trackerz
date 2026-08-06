@@ -5,10 +5,11 @@
 
 import {
   MACRO_TARGETS, sumMealMacros, WEEKDAY_NAMES, isoWeekday, dietTypeForWeekday,
-  WORKOUTS, WORKOUT_BY_WEEKDAY, mealsFor, WATER, supplementsFor, prepForTomorrow,
+  WORKOUTS, WORKOUT_BY_WEEKDAY, mealsFor, WATER, supplementsFor,
   scaffoldDietPayload, scaffoldGymPayload,
 } from "../../../lib/diet-scaffold.mjs";
 import { foldPlanPayloads } from "../../../lib/plan-merge.mjs";
+import { prepFromMeals } from "../../../lib/diet-prep.mjs";
 
 // Re-export the scaffold primitives other modules/tests import from here, so the
 // extraction to lib/diet-scaffold.mjs keeps this module's public API stable.
@@ -150,12 +151,32 @@ export function planForDate(date = new Date()) {
   }
   const datedWorkout = gymPayload ? gymWorkoutFromPayload(gymPayload, wd) : null;
 
+  // TOMORROW, resolved exactly the way today is - a permanent override and/or
+  // that date's rows folded onto the scaffold. Prep used to be a fixed list keyed
+  // off nothing but the weekday, so it asked for hung curd the owner stopped
+  // eating. It is now derived from the meals that will actually be on the plan,
+  // and `tomorrowIsReal` says whether those meals came from the owner or from the
+  // built-in placeholder. Advice derived from a placeholder is fiction with a
+  // checkbox next to it, so the panel shows nothing when this is false.
+  const keyT = localDateKey(tomorrow);
+  const datedDietRowsT = normRows(_dietDated.get(keyT));
+  let dietPayloadT = null;
+  if (_dietOverride || datedDietRowsT.length) {
+    const baseT = _dietOverride || scaffoldDietPayload(tomorrow);
+    dietPayloadT = datedDietRowsT.length ? foldPlanPayloads("diet", baseT, datedDietRowsT) : _dietOverride;
+  }
+  const mealsT = (dietPayloadT && overrideMeals(dietPayloadT)) || mealsFor(dietTypeForWeekday(wdT));
+
   return {
     date,
     weekday: wd,
     weekdayName: WEEKDAY_NAMES[wd],
     dietType,
-    dietLabel: dietType === "paneer-soy" ? "Paneer-Soy day" : "Soybean day",
+    // "Soybean day" is a label from the BUILT-IN scaffold's weekday rota. Once
+    // the owner has a real plan, the day's food is whatever they set, and calling
+    // it a Soybean day while listing whey and curd is the heading contradicting
+    // the list directly underneath it. A custom plan gets no invented label.
+    dietLabel: dietPayload ? "Your plan" : (dietType === "paneer-soy" ? "Paneer-Soy day" : "Soybean day"),
     workout: datedWorkout || WORKOUTS[WORKOUT_BY_WEEKDAY[wd]],
     meals,
     customDiet: Boolean(dietPayload),
@@ -165,7 +186,9 @@ export function planForDate(date = new Date()) {
     macroTargets: resolveTargets(meals, dietPayload),
     tomorrowName: WEEKDAY_NAMES[wdT],
     tomorrowDietLabel: dietTypeForWeekday(wdT) === "paneer-soy" ? "Paneer-Soy day" : "Soybean day",
-    prepForTomorrow: prepForTomorrow(dietTypeForWeekday(wdT)),
+    tomorrowIsReal: Boolean(dietPayloadT),
+    tomorrowMeals: mealsT,
+    prepForTomorrow: dietPayloadT ? prepFromMeals(mealsT) : [],
   };
 }
 
