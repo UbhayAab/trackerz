@@ -603,6 +603,8 @@ Rules:
 - PLAN UPDATE (ONE-SHOT DELTA): for a SMALL change to an existing plan - add / drop / swap ONE meal or exercise, or nudge a day's target - do NOT re-send the whole plan. Emit update_plan_candidate with a DELTA payload carrying an "op" (the app folds it onto the current plan): diet ops { op:"add_meal", meal:{name,slot,time,calories,protein_g,carbs_g,fat_g} } | { op:"remove_meal", match:"banana" | a slot } | { op:"replace_meal", match, meal:{...} } | { op:"set_targets", targets:{calories,protein_g,...} }; gym ops { op:"replace_workout", workout:{name,kind,items:[...],duration_min} } | { op:"add_exercise", exercise:"Pull-ups 3×8" } | { op:"remove_exercise", match:"bench" } | { op:"replace_exercise", match:"bench", exercise:"Incline DB press 2×10" } (swap ONE exercise in place, keep the rest). Examples: "add a salad bowl at 4pm to my diet" -> { kind:"diet", scope: today's date, payload:{ op:"add_meal", meal:{name:"Salad bowl", slot:"snack", time:"16:00", ...} } }; "swap today's leg day for cardio" -> { kind:"gym", scope: today, payload:{ op:"replace_workout", workout:{name:"Cardio", kind:"cardio", items:["30 min treadmill"]} } }; "drop the banana snack today" -> { op:"remove_meal", match:"banana" }. IMPORTANT: delta ops are ONLY for a date scope (a specific date / date list). A PERMANENT change must be a FULL payload (send the whole plan), never a delta.
 - LOG THAT CONTRADICTS THE PLAN: if the user LOGS an activity/meal that clearly differs from the day's planned one (memory PLAN_TODAY says leg day but they say "I did cardio today"; planned dinner was salad but they "had biryani"), emit BOTH (1) the real log (create_workout_log_candidate / create_food_log_candidate) AND (2) a same-day update_plan_candidate delta ({ op:"replace_workout", ... } or { op:"replace_meal", ... }, scope: that date) so the plan reflects what actually happened and the checklist item ticks. Only do this for a genuine mismatch - if the log matches the plan, just log it.
 - NOTES / ASPIRATIONS / TODOS: a plan, intention, reminder, or goal that is NOT a logged event is a note → create_note_candidate { body, kind:"note"|"aspiration"|"todo"|"idea", domain:"money"|"diet"|"gym"|"wellness"|"general", due_on?:"YYYY-MM-DD" }. e.g. "remind me to book the dentist Friday" → todo; "I want to save more this year" → aspiration.
+  * A DECISION TO STOP EATING SOMETHING IS AN ASPIRATION, NEVER A MEAL. "I should stop eating the aloo bhujia in the evening, too many calories" names a food and is the exact OPPOSITE of eating it. Emit create_note_candidate { kind:"aspiration", domain:"diet" } capturing the decision. Do NOT emit create_food_log_candidate - naming a food is evidence of DOMAIN, never of OCCURRENCE. That exact sentence was once logged as a 570 kcal snack, twice.
+  * NEVER RETURN AN EMPTY TOOL LIST FOR A CAPTURE THAT SAYS SOMETHING. A stated intention, preference or decision always deserves at least a note; a question always deserves answer_question. Zero tool calls means the user typed something and the app silently did nothing, which reads to them as the capture having been lost.
 - REMINDERS / DATES THAT REPEAT: anything the user wants to be TOLD about on a date - a birthday, an anniversary, a bill, a filing deadline, an appointment, a recurring chore - is create_reminder_candidate { title, kind:"task"|"birthday"|"anniversary"|"bill"|"filing"|"appointment"|"other", freq:"once"|"daily"|"weekly"|"monthly"|"quarterly"|"yearly", day_of_month?:1-31, month_of_year?:1-12, weekday?:0-6 (0=Sunday), on_date?:"YYYY-MM-DD", lead_days?:0-60, note?, at_time?:"HH:MM", interval?:2-52, weekdays?:[0-6], nth_weekday?, until?:"YYYY-MM-DD", count?:1-500, dtstart?:"YYYY-MM-DD" }. NOT a note - a note has one date and is gone once it passes; a reminder has a RULE and fires again.
   * at_time is a 24-hour "HH:MM" in the user's local time and you SHOULD set it whenever the user says an hour. "gym at 6am every day" is freq:"daily", at_time:"06:00". "call mom at 9pm on Sundays" is freq:"weekly", weekday:0, at_time:"21:00". Omit at_time only when no hour was said - the reminder then rides the morning brief.
   * interval is "every Nth". "every other Wednesday" is freq:"weekly", weekday:3, interval:2. "every 3 months on the 15th" is freq:"monthly", day_of_month:15, interval:3. When you set interval you SHOULD also set dtstart to the first date the cycle is anchored to, otherwise the phase is guessed from today.
@@ -3267,6 +3269,22 @@ const STANDING_MARKERS = [
   "every day", "everyday", "every single day", "daily", "from now on",
   "going forward", "now i", "i now", "has changed", "have changed",
   "switched to", "these days", "nowadays", "always", "usually",
+  // The INTENTION to stop, not just the report of having stopped. The list had
+  // the past tense and not the present, so "I stopped eating aloo bhujia" was
+  // read as a standing change and "I should stop eating the aloo bhujia in the
+  // evening" was read as a meal - and logged 570 kcal of the very thing the
+  // sentence was about giving up. Deciding not to eat something is the exact
+  // opposite of a record that you ate it.
+  // ONLY phrases that cannot be about anything except consumption. This array is
+  // matched against the WHOLE capture with includes(), so it has no clause context
+  // to disambiguate with - "give up", "gave up" and "cut out" were here for one
+  // revision and blocked "gave up my seat on the bus, then ate a vada pav", a real
+  // meal. The ambiguous shapes belong in lib/negation.mjs, which is scoped per
+  // clause and gated on the food predicate, which is where that context exists.
+  "stop eating", "stop having", "stop taking", "stop drinking",
+  "quit eating", "quit having", "avoid eating", "no longer eat", "no longer have",
+  // Hinglish
+  "khana band", "khana chhod", "nahi khaunga", "nahi khana",
   "my new", "no longer", "stopped eating", "stopped having",
   // Hinglish
   "ab se", "ab main", "ab mai", "roz", "rozana", "hamesha",

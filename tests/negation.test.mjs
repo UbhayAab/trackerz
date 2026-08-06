@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { isEventDenied, declaresNoWorkout, clauseDeniesEvent, clauseIsReportedSpeech, splitNegationClauses } from "../lib/negation.mjs";
 import { looksLikeGym } from "../lib/capture-intent.mjs";
 import { looksLikeFood } from "../lib/fan-out-expander.mjs";
+import { hasStandingLanguage } from "../lib/route-invariants.mjs";
 
 // A gym mention test matching the widest cue set the pipeline uses (the edge
 // function's GYM_CUE also fires on a bare "workout").
@@ -102,3 +103,57 @@ assert.equal(isEventDenied("", mentionsGym), false);
 assert.equal(isEventDenied("paid 240 zomato", mentionsGym), false);
 
 console.log("negation.test.mjs OK");
+
+// CEASING IS A DENIAL (regression, 2026-08-06, from a live phantom meal).
+//
+// "So I think yours I should stop eating the aloo bhujia in the evening right too
+// many calories for no reason" was logged as a 570 kcal meal of aloo bhujia,
+// TWICE, for 1,140 kcal the owner never ate. The sentence is a decision to STOP
+// eating the thing it names.
+//
+// It only became reachable when "aloo bhujia" was added to the food table that
+// morning: before that the words were unpriceable and salvage had nothing to
+// build a meal from. Widening the vocabulary widened this hole at the same time,
+// which is the cost of a lookup table nobody had priced in.
+{
+  const CEASE = [
+    "So I think yours I should stop eating the aloo bhujia in the evening right too many calories for no reason",
+    "I need to stop eating bhujia",
+    "I should stop having curd at night",
+    "I am going to cut out eating the evening snack",
+    "quit eating maggi",
+    "gave up drinking coke",
+  ];
+  // TWO layers cover this and the test asserts the same disjunction production
+  // runs, rather than pretending one layer does it all. isEventDenied requires a
+  // consumption verb right after the cease verb, which is what keeps "gave up my
+  // seat" safe; hasStandingLanguage catches the shapes where the food follows the
+  // cease verb directly ("giving up sugar"). Asserting only the first would have
+  // forced the regex to loosen until it swallowed the controls below.
+  for (const t of CEASE) {
+    // looksLikeFood, not () => true: the clause gate IS the disambiguation, so a
+    // test that waves it through is testing a different function than production.
+    const blocked = isEventDenied(t, looksLikeFood) || hasStandingLanguage(t);
+    assert.equal(blocked, true,
+      `a decision to STOP eating must never log a meal: ${t.slice(0, 60)}`);
+  }
+
+  // The controls matter as much. A guard that swallows real logs is worse than
+  // the bug: "stopped at the shop" contains "stopped" and is a genuine snack, and
+  // the cease pattern deliberately requires a CONSUMPTION verb right after the
+  // cease verb so it cannot fire here.
+  const REAL = [
+    "50g aloo bhujia and 2 soup sachets",
+    "stopped at the shop and had a samosa",
+    "6 whole boiled eggs",
+    "2 scoops whey protein + 500g curd",
+    "I had 3 rotis and dal",
+    "70g soya bean, 50g oats",
+    "gave up my seat on the bus, then ate a vada pav",
+  ];
+  for (const t of REAL) {
+    const blocked = isEventDenied(t, looksLikeFood) || hasStandingLanguage(t);
+    assert.equal(blocked, false, `a real meal must still log: ${t.slice(0, 60)}`);
+  }
+}
+console.log("cease-is-a-denial regressions passed");
