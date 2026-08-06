@@ -1,9 +1,27 @@
 // Vendoring crawler: downloads an esm.sh module graph and rewrites every
 // absolute esm.sh specifier to a relative same-origin path, so the result can
 // be served from this repo and precached by the service worker. Run by hand on
-// a version bump — see vendor/README.md. Not part of any build; there is none.
+// a version bump; see vendor/README.md. Not part of any build; there is none.
 //
 // Usage: node vendor/fetch-vendor.mjs <destDir> [/pkg@version]
+//
+// The packages this repo ships, and the exact command that regenerates each.
+// Keep this list in step with vendor/README.md and with the VENDOR precache
+// array in sw.js - a chunk that is vendored but not precached still works
+// online and breaks the moment the device is offline, which is the failure
+// vendoring exists to prevent.
+//
+//   node vendor/fetch-vendor.mjs vendor/supabase-js /@supabase/supabase-js@2.74.0
+//   node vendor/fetch-vendor.mjs vendor/xlsx       /xlsx@0.18.5
+//   node vendor/fetch-vendor.mjs vendor/ical.js    /ical.js@2.2.1
+//   node vendor/fetch-vendor.mjs vendor/rrule      "/rrule@2.8.1?bundle"
+//
+// The "?bundle" on rrule is load-bearing, not a preference: the plain build
+// imports "/tslib@^2.4.0?target=es2022", and a bare specifier in a vendored file
+// is a page that does not load (there is no resolver in a browser). ?bundle asks
+// esm.sh to inline that one dependency, giving a single 46,140-byte file with
+// zero imports. Quote it in the shell - "?" is a glob character.
+//
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 
@@ -19,7 +37,13 @@ if (!ROOT) {
 const seen = new Set();
 
 function localFor(urlPath) {
-  let p = urlPath.replace(/^\//, "");
+  // The query is a REQUEST flag, not part of the module's identity: "?bundle"
+  // asks esm.sh to inline the dependency graph, "?target=es2022" picks a build.
+  // Left in, it becomes part of the filename - and Windows refuses to create a
+  // file with "?" in it, so vendoring rrule@2.8.1?bundle failed outright.
+  // esm.sh already encodes the target in the chunk path (es2022/…), so dropping
+  // the query cannot collide across the one target this repo ships.
+  let p = urlPath.replace(/^\//, "").split("?")[0];
   // esm.sh's package entry is extensionless; give it a real filename. Not
   // "_"-prefixed: GitHub Pages' Jekyll pass would drop it.
   if (!/\.(mjs|js)$/.test(p)) p = p.replace(/\/$/, "") + "/index.mjs";

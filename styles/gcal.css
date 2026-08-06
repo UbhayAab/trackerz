@@ -1,0 +1,70 @@
+/* CONNECTED CALENDARS (src/ui/gcal-panel.js)
+ *
+ * The banner is deliberately the loudest thing on the Settings page. A broken
+ * OAuth grant renders as an EMPTY calendar, not an error, so the only defence is
+ * a surface the eye cannot skip. Muted styling here would defeat the feature. */
+
+.gcal-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border-left: 4px solid var(--accent, #138a5b);
+  background: color-mix(in srgb, var(--accent, #138a5b) 10%, transparent);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.gcal-banner strong { font-size: 0.98rem; }
+.gcal-banner code { word-break: break-all; }
+
+.gcal-banner-fix {
+  opacity: 0.85;
+  font-size: 0.86rem;
+}
+
+.gcal-banner-bad {
+  border-left-color: #dc2626;
+  background: color-mix(in srgb, #dc2626 14%, transparent);
+}
+
+.gcal-banner-info {
+  border-left-color: #d97706;
+  background: color-mix(in srgb, #d97706 12%, transparent);
+}
+
+.gcal-accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gcal-account {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.28));
+}
+
+.gcal-account-bad {
+  border-color: #dc2626;
+}
+
+.gcal-error-text { color: #dc2626; }
+
+.gcal-account .account-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.gcal-account .account-row span:last-child,
+.gcal-account .account-row strong { text-align: right; }
+
+@media (max-width: 520px) {
+  .gcal-account .account-row { flex-direction: column; gap: 2px; }
+  .gcal-account .account-row span:last-child,
+  .gcal-account .account-row strong { text-align: left; }
+}

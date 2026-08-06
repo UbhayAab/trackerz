@@ -15,7 +15,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 const TSC = "node_modules/typescript/bin/tsc";
-const FILES = ["supabase/functions/agent/index.ts", "supabase/functions/jarvis/index.ts"].filter(existsSync);
+const FILES = [
+  "supabase/functions/agent/index.ts",
+  "supabase/functions/jarvis/index.ts",
+  "supabase/functions/gcal/index.ts",
+].filter(existsSync);
 
 // Errors that only mean "this is Deno, not Node" - not defects in our code.
 const DENO_NOISE = /error TS2307|Cannot find name 'Deno'|Cannot find module 'https:|Cannot find module 'npm:|Cannot find module 'jsr:/;

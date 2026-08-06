@@ -23,7 +23,7 @@
 // opens a blank offline page is worse than no shortcut, so unlike every other
 // page module this one is precached explicitly rather than left to be cached on
 // first visit.
-const VERSION = "deno-v23-20260806";
+const VERSION = "deno-v24-20260806";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -62,6 +62,18 @@ const VENDOR = [
   // pulls in transitively, so a CDN hiccup blanked that entire page.
   "./vendor/xlsx/xlsx@0.18.5/index.mjs",
   "./vendor/xlsx/xlsx@0.18.5/es2022/xlsx.mjs",
+  // The calendar pair. ical.js parses and writes .ics; rrule is the RFC 5545
+  // reference used to validate what we export. Both load lazily, so ONLINE they
+  // are fine whether or not they are here - which is exactly why they were
+  // missing. Offline, dropping an .ics onto the import panel failed with
+  // "Could not load the calendar parser" on a page that otherwise looked
+  // perfectly healthy. tests/vendor-offline.test.mjs now DISCOVERS the roots
+  // under vendor/ instead of naming two of them, so a fourth library cannot
+  // repeat this.
+  "./vendor/ical.js/ical.js@2.2.1/index.mjs",
+  "./vendor/ical.js/ical.js@2.2.1/es2022/ical.mjs",
+  "./vendor/rrule/rrule@2.8.1/index.mjs",
+  "./vendor/rrule/rrule@2.8.1/es2022/rrule.bundle.mjs",
 ];
 
 self.addEventListener("install", (event) => {

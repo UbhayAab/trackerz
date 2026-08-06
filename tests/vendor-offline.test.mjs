@@ -23,9 +23,22 @@ function chunksUnder(root) {
     .sort();
 }
 
+// DISCOVER the roots rather than listing them. This used to name
+// vendor/supabase-js and vendor/xlsx as two constants, which meant adding a
+// third library precached NOTHING of it and the test still passed - the two
+// named roots were in sync, so the guard reported green while the new library
+// was missing from the service worker entirely. Offline, that is a hard failure
+// ("Could not load the calendar parser") on a page that looks fine online, which
+// is the worst place for a gap to hide.
+const VENDOR_ROOTS = readdirSync("vendor", { withFileTypes: true })
+  .filter((d) => d.isDirectory())
+  .map((d) => `vendor/${d.name}`)
+  .sort();
+assert.ok(VENDOR_ROOTS.includes(VENDOR_ROOT), "vendor/supabase-js is gone");
+assert.ok(VENDOR_ROOTS.includes(XLSX_ROOT), "vendor/xlsx is gone");
+
 const supabaseFiles = chunksUnder(VENDOR_ROOT);
-const xlsxFiles = chunksUnder(XLSX_ROOT);
-const vendorFiles = [...supabaseFiles, ...xlsxFiles].filter((f) => f !== CRAWLER).sort();
+const vendorFiles = VENDOR_ROOTS.flatMap(chunksUnder).filter((f) => f !== CRAWLER).sort();
 
 assert.ok(supabaseFiles.length >= 10, `vendored supabase graph looks truncated: ${supabaseFiles.length} files`);
 assert.ok(existsSync(ENTRY), `missing vendored entry ${ENTRY}`);
@@ -122,4 +135,4 @@ const xlsxMod = await import(pathToFileURL(XLSX_ENTRY).href);
 assert.equal(typeof xlsxMod.read, "function", "vendored xlsx entry has no read export");
 assert.equal(typeof xlsxMod.utils?.sheet_to_json, "function", "vendored xlsx entry has no utils.sheet_to_json");
 
-console.log(`vendor-offline tests passed: ${vendorFiles.length} chunks vendored + precached (supabase-js + xlsx)`);
+console.log(`vendor-offline tests passed: ${vendorFiles.length} chunks vendored + precached across ${VENDOR_ROOTS.length} roots (${VENDOR_ROOTS.map((r) => r.slice(7)).join(", ")})`);

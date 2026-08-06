@@ -145,6 +145,27 @@ assert.deepEqual(weekdayList({ weekdays: [5, 1, 3, 1] }), [1, 3, 5], "sorted, de
 assert.deepEqual(weekdayList({ weekday: [1, 5] }), [1, 5], "an array in the legacy scalar field still works");
 assert.deepEqual(weekdayList({ weekday: 3 }), [3]);
 assert.deepEqual(weekdayList({ weekdays: [9, -1, "x"] }), [], "garbage is dropped, not guessed at");
+
+// A NULL weekday is absent, not Sunday. `Number(null)` is 0, and PostgREST hands
+// back null for every unset column, so { freq: "weekly", weekday: null } - the
+// shape of every weekly row read from the database - used to read as weekday 0:
+// ruleProblem() said the rule was fine, the engine produced a run of Sundays,
+// and describeRule() narrated the invention back as "every Sunday". Absent and
+// null must answer identically or the validator is unreachable for the case that
+// actually occurs.
+assert.deepEqual(weekdayList({ weekday: null, weekdays: null }), [], "null is absent, not Sunday");
+assert.deepEqual(weekdayList({ weekday: null, weekdays: null }), weekdayList({}), "null and absent answer the same");
+assert.deepEqual(weekdayList({ weekday: "" }), [], "and an empty input value is not Sunday either");
+assert.deepEqual(weekdayList({ weekday: 0 }), [0], "an EXPLICIT Sunday still means Sunday");
+assert.deepEqual(weekdayList({ weekdays: null, weekday: 3 }), [3], "the DB shape: weekdays null, weekday set");
+{
+  const dbRow = { title: "Water the plants", freq: "weekly", weekday: null, weekdays: null,
+    day_of_month: null, month_of_year: null, rule_interval: 1, max_count: null, dtstart: "2026-08-01", until: null };
+  assert.match(ruleProblem(dbRow), /at least one weekday/, "the row must be REFUSED, in words");
+  assert.equal(nextOccurrence(dbRow, "2026-08-06"), null);
+  assert.deepEqual(occurrencesBetween(dbRow, "2026-08-06", "2026-09-05", 8), []);
+  assert.equal(dueReminders([dbRow], "2026-08-09").length, 0, "and it must never reach the brief");
+}
 assert.deepEqual(
   occurrencesBetween({ freq: "weekly", weekdays: [1, 3, 5] }, "2026-08-03", "2026-08-10"),
   ["2026-08-03", "2026-08-05", "2026-08-07", "2026-08-10"],

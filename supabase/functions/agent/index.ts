@@ -225,34 +225,6 @@ function userClient(jwt: string) {
   );
 }
 
-// -------- prompt-injection wrapper (mirrors src/agent/prompt-boundaries.js) --------
-
-const _BOUNDARY = "(previous|prior|above|earlier|instructions?|prompts?|rules?|context|system|safety|guard|everything)";
-const INJECTION_PATTERNS = [
-  new RegExp(`\\bignore\\b[\\s\\S]{0,40}?\\b${_BOUNDARY}\\b`, "i"),
-  new RegExp(`\\bdisregard\\b[\\s\\S]{0,40}?\\b${_BOUNDARY}\\b`, "i"),
-  new RegExp(`\\bforget\\b[\\s\\S]{0,40}?\\b${_BOUNDARY}\\b`, "i"),
-  /(^|\s|>)system\s*:\s*/im,
-  /you are now (a|the|an)\b/i,
-  /pretend (to be|you are)/i,
-  /jailbreak/i,
-  /(do anything now|dan mode)/i,
-  /(send|email|post|publish|leak|reveal|share) (your |the )?(system prompt|instructions|secret)/i,
-];
-
-function stripInjections(text: string): string {
-  let out = String(text);
-  for (const rx of INJECTION_PATTERNS) {
-    out = out.replace(rx, (m) => `[redacted-injection: ${m.slice(0, 40)}]`);
-  }
-  return out;
-}
-
-function wrapUserContent(text: string): string {
-  const safe = String(text).replace(/<\/?user_content>/gi, "");
-  return `<user_content>${stripInjections(safe)}</user_content>`;
-}
-
 // -------- schema validation (mirrors src/agent/tool-schemas.js) --------
 
 type Schema = {
@@ -1386,6 +1358,18 @@ var SCHEDULE_CUE = /\b(schedul|remind|check (on|in|at|whether|if)|tell me (on|at
 
 var SA_DAY = 86400000;
 
+// The COUNT ceiling, in ONE place.
+//
+// This was 500 here while `reminders_max_count_check` in the database allows
+// 1..400. A model emitting count 450 therefore passed this clamp cleanly and
+// then died on the check constraint, taking the whole capture down with it - a
+// validator that accepts what the next layer rejects is worse than no validator,
+// because it moves the failure somewhere nobody is reading.
+//
+// tests/schedule-args.test.mjs reads the number back out of the migration and
+// fails if the two ever disagree again.
+var SA_MAX_COUNT = 400;
+
 /** "18:30" / "6:30 pm" / "0930" -> "HH:MM", or null. */
 function hhmm(v) {
   if (v == null) return null;
@@ -1537,7 +1521,7 @@ function reminderColumns(args, opts) {
     weekdays: weekdays && weekdays.length ? weekdays : null,
     nth_weekday: nth.nth,
     until: isDateKey(a.until) ? String(a.until) : null,
-    max_count: clampInt(a.count, 1, 500),
+    max_count: clampInt(a.count, 1, SA_MAX_COUNT),
     // An interval rule needs a phase. Anchor it to what was said, else to the
     // first occurrence, else to today - never null, because a null anchor makes
     // "every other week" mean "whichever week the server evaluates it in".
@@ -1620,7 +1604,7 @@ function taskRow(args, opts) {
       day_of_month: clampInt(a.day_of_month, 1, 31),
       interval: clampInt(a.interval, 1, 52),
       until: isDateKey(a.until) ? String(a.until) : null,
-      count: clampInt(a.count, 1, 500),
+      count: clampInt(a.count, 1, SA_MAX_COUNT),
       at_time: time,
       dtstart: key,
     },

@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import {
-  hhmm, clampInt, isDateKey, NTH_WEEKDAY_RE, SCHEDULE_CUE, parseNthWeekday,
+  hhmm, clampInt, isDateKey, NTH_WEEKDAY_RE, SCHEDULE_CUE, parseNthWeekday, SA_MAX_COUNT,
   saAddDays, saWeekdayOf, saDayKey, saMinuteOfDay, zonedToUtcIso,
   reminderColumns, firstFireKey, taskRow,
 } from "../lib/schedule-args.mjs";
@@ -233,6 +233,26 @@ assert.equal(firstFireKey({ freq: "daily" }, TODAY), TODAY);
   // No hour at all defaults to a civilised one rather than midnight.
   const t = taskRow({ prompt: "x" }, { today: TODAY, nowMinutes: 3 * 60, tz: IST });
   assert.equal(saMinuteOfDay(t.fire_at, IST), 9 * 60);
+}
+
+// ---- the COUNT ceiling matches the database, or writes die on a constraint ----
+// This clamp said 500 while reminders_max_count_check allowed 400, so count 450
+// passed validation here and then failed the INSERT. A validator that accepts
+// what the next layer rejects moves the failure somewhere nobody reads.
+{
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const sql = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql"))
+    .map((f) => readFileSync(`supabase/migrations/${f}`, "utf8")).join("\n");
+  // Both spellings, because the migration says `between 1 and 400` and a later
+  // one could just as easily say `<= 400`. A guard that only knows one dialect
+  // fails on a rewrite that changed nothing.
+  const m = sql.match(/reminders_max_count_check[\s\S]{0,300}?max_count\s*(?:between\s*\d+\s*and\s*|<=\s*)(\d+)/i);
+  assert.ok(m, "could not find the max_count check constraint in any migration");
+  assert.equal(SA_MAX_COUNT, Number(m[1]),
+    `the clamp (${SA_MAX_COUNT}) and the database check (${m[1]}) disagree - a capture in between passes here and dies on the INSERT`);
+  assert.equal(reminderColumns({ title: "X", freq: "weekly", weekday: 1, count: SA_MAX_COUNT + 1 }, { today: TODAY }).max_count, null,
+    "a count past the database limit must be dropped, not written through to fail the insert");
+  assert.equal(reminderColumns({ title: "X", freq: "weekly", weekday: 1, count: SA_MAX_COUNT }, { today: TODAY }).max_count, SA_MAX_COUNT);
 }
 
 // ---- SCHEDULE_CUE: grounding for a prompt the model wrote itself ----

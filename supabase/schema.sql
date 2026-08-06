@@ -1161,3 +1161,250 @@ begin
 end$caljcron$;
 
 select cron.schedule('jarvis_tasks', '* * * * *', $jt$select public.jarvis_ping('task')$jt$);
+
+-- ============================================================================
+-- GOOGLE CALENDAR SYNC (20260806000040_gcal_sync.sql)
+--
+-- Mirrored here because tests/schema-contract.test.mjs requires schema.sql to be
+-- the single source of truth: every table a migration creates must also be
+-- defined here. The migration carries the full reasoning; the short version:
+--
+--   * We write ONLY to a calendar we created ourselves (the OAuth grant uses
+--     `calendar.app.created`, which cannot reach the user's real calendars).
+--   * Everything we read from their other calendars lands in
+--     calendar_events_raw, read-only, and nothing writes back.
+--   * A remote delete is ONLY ever an explicit tombstone. Never inferred from
+--     absence - a dropped sync token and a deleted event look identical, and
+--     acting on the second interpretation wipes calendars.
+--   * Three loop guards, all of them: local_hash/remote_hash (content),
+--     etag (version echo) and the X-TRACKERZ-ORIGIN extended property
+--     (authorship). lib/gcal-sync.mjs argues why no two are enough.
+--   * Refresh tokens live in calendar_secrets, which uses the app_secrets
+--     posture exactly: RLS on, NO policies, so only service_role can read it.
+--   * sync_broken_since exists because the failure mode of this integration is
+--     an EMPTY CALENDAR that looks fine, not an error page.
+-- ============================================================================
+
+create table if not exists public.calendar_accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  provider text not null default 'google'
+    check (provider in ('google', 'microsoft', 'caldav', 'ics')),
+  external_account_email text,
+  calendar_id text,
+  calendar_summary text,
+  sync_token text,
+  sync_token_updated_at timestamptz,
+  last_full_sync_at timestamptz,
+  mirror_calendar_id text not null default 'primary',
+  mirror_sync_token text,
+  channel_id text,
+  channel_resource_id text,
+  channel_expiry timestamptz,
+  scopes text[] not null default '{}'::text[],
+  status text not null default 'connected'
+    check (status in ('connected', 'disconnected', 'needs_reauth')),
+  last_sync_at timestamptz,
+  last_push_at timestamptz,
+  sync_broken_since timestamptz,
+  sync_broken_reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint calendar_accounts_identity unique (user_id, provider, external_account_email)
+);
+alter table public.calendar_accounts add column if not exists mirror_calendar_id text not null default 'primary';
+alter table public.calendar_accounts add column if not exists mirror_sync_token text;
+create index if not exists ix_calendar_accounts_user on public.calendar_accounts(user_id, provider);
+create index if not exists ix_calendar_accounts_channel on public.calendar_accounts(channel_id) where channel_id is not null;
+create index if not exists ix_calendar_accounts_renew on public.calendar_accounts(channel_expiry) where status = 'connected';
+
+create table if not exists public.calendar_links (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id uuid not null references public.calendar_accounts(id) on delete cascade,
+  reminder_id uuid references public.reminders(id) on delete cascade,
+  event_id text not null,
+  calendar_id text,
+  etag text,
+  local_hash text,
+  remote_hash text,
+  origin text not null default 'local' check (origin in ('local', 'remote')),
+  last_pushed_at timestamptz,
+  last_pulled_at timestamptz,
+  remote_deleted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint calendar_links_event_once unique (account_id, event_id)
+);
+create unique index if not exists ux_calendar_links_reminder
+  on public.calendar_links(account_id, reminder_id) where reminder_id is not null;
+create index if not exists ix_calendar_links_user on public.calendar_links(user_id, updated_at desc);
+
+create table if not exists public.calendar_events_raw (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id uuid not null references public.calendar_accounts(id) on delete cascade,
+  calendar_id text not null,
+  event_id text not null,
+  etag text,
+  status text,
+  summary text,
+  description text,
+  location text,
+  organizer_email text,
+  attendees jsonb not null default '[]'::jsonb,
+  starts_at timestamptz,
+  ends_at timestamptz,
+  all_day boolean not null default false,
+  start_date date,
+  recurrence text[],
+  recurring_event_id text,
+  html_link text,
+  tombstoned_at timestamptz,
+  remote_updated_at timestamptz,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  constraint calendar_events_raw_once unique (account_id, event_id)
+);
+create index if not exists ix_calendar_events_raw_window
+  on public.calendar_events_raw(user_id, starts_at) where tombstoned_at is null;
+create index if not exists ix_calendar_events_raw_account
+  on public.calendar_events_raw(account_id, last_seen_at desc);
+
+create table if not exists public.calendar_sync_jobs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id uuid not null references public.calendar_accounts(id) on delete cascade,
+  reason text not null default 'webhook' check (reason in ('webhook', 'manual', 'cron', 'reconnect')),
+  status text not null default 'pending' check (status in ('pending', 'running', 'done', 'failed')),
+  resource_state text,
+  message_number bigint,
+  attempts int not null default 0,
+  claimed_at timestamptz,
+  finished_at timestamptz,
+  error text,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists ux_calendar_sync_jobs_pending
+  on public.calendar_sync_jobs(account_id) where status = 'pending';
+create index if not exists ix_calendar_sync_jobs_user on public.calendar_sync_jobs(user_id, created_at desc);
+
+-- calendar_secrets / calendar_oauth_states: the app_secrets posture. RLS ON with
+-- NO POLICIES denies every role that respects RLS and leaves only the
+-- RLS-bypassing service_role, which exists solely inside the edge function. Do
+-- not add an owner policy here - the owner is a browser, and a browser must
+-- never be able to read a refresh token.
+create table if not exists public.calendar_secrets (
+  account_id uuid primary key references public.calendar_accounts(id) on delete cascade,
+  refresh_token text,
+  access_token text,
+  access_token_expires_at timestamptz,
+  channel_token text,
+  updated_at timestamptz not null default now()
+);
+alter table public.calendar_secrets enable row level security;
+revoke all on table public.calendar_secrets from anon, authenticated;
+
+create table if not exists public.calendar_oauth_states (
+  state text primary key,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  provider text not null default 'google',
+  redirect_to text,
+  scopes text[] not null default '{}'::text[],
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default now() + interval '15 minutes',
+  used_at timestamptz
+);
+alter table public.calendar_oauth_states enable row level security;
+revoke all on table public.calendar_oauth_states from anon, authenticated;
+create index if not exists ix_calendar_oauth_states_expiry on public.calendar_oauth_states(expires_at);
+
+create or replace function public.claim_calendar_sync_jobs(p_limit int default 10)
+returns setof public.calendar_sync_jobs
+language plpgsql security definer set search_path = public
+as $claimcal$
+begin
+  update public.calendar_sync_jobs
+     set status = 'pending'
+   where status = 'running' and claimed_at is not null and claimed_at < now() - interval '10 minutes';
+
+  return query
+  with picked as (
+    select id from public.calendar_sync_jobs
+     where status = 'pending'
+     order by created_at
+     for update skip locked
+     limit greatest(1, least(p_limit, 50))
+  )
+  update public.calendar_sync_jobs j
+     set status = 'running', claimed_at = now(), attempts = j.attempts + 1
+    from picked
+   where j.id = picked.id
+  returning j.*;
+end$claimcal$;
+
+revoke all on function public.claim_calendar_sync_jobs(int) from public, anon, authenticated;
+
+-- RLS. calendar_accounts is FULL (the user connects and disconnects it). The
+-- other three are SELECT-only from the browser: they are written by the edge
+-- function under the service role, and a browser that can UPDATE a sync_token or
+-- a tombstone can corrupt the sync in ways no test would catch.
+alter table public.calendar_accounts enable row level security;
+drop policy if exists "Users manage own rows" on public.calendar_accounts;
+create policy "Users manage own rows" on public.calendar_accounts
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+do $calrls$
+declare t text;
+begin
+  for t in select unnest(array['calendar_links', 'calendar_events_raw', 'calendar_sync_jobs'])
+  loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "Users manage own rows" on public.%I', t);
+    execute format('drop policy if exists "Users read own rows" on public.%I', t);
+    execute format('create policy "Users read own rows" on public.%I for select using (auth.uid() = user_id)', t);
+  end loop;
+end$calrls$;
+
+-- The scheduler rails. gcal_drain every 5 minutes runs whatever the webhook
+-- enqueued PLUS a safety-net poll for accounts whose push channel died without
+-- telling us; gcal_renew re-registers watch channels daily, because Google
+-- expires them at ~30 days and does not renew them - a calendar with no renew
+-- job goes quiet exactly one month after it starts working.
+create or replace function public.gcal_ping(action text)
+returns bigint
+language plpgsql security definer set search_path = public
+as $gping$
+declare
+  secret text;
+  req_id bigint;
+begin
+  select value into secret from public.app_secrets where name = 'JARVIS_CRON_SECRET';
+  if secret is null then
+    raise warning 'gcal_ping: JARVIS_CRON_SECRET missing from app_secrets - skipping %', action;
+    return null;
+  end if;
+  select net.http_post(
+    url := 'https://yyoewdcijplkhxleejtm.supabase.co/functions/v1/gcal',
+    body := jsonb_build_object('action', action),
+    headers := jsonb_build_object('content-type', 'application/json', 'x-jarvis-secret', secret),
+    timeout_milliseconds := 60000
+  ) into req_id;
+  return req_id;
+end$gping$;
+
+revoke all on function public.gcal_ping(text) from public, anon, authenticated;
+
+do $gcron$
+declare j record;
+begin
+  for j in select jobid from cron.job where jobname in ('gcal_drain', 'gcal_renew')
+  loop
+    perform cron.unschedule(j.jobid);
+  end loop;
+end$gcron$;
+
+select cron.schedule('gcal_drain', '*/5 * * * *', $gd$select public.gcal_ping('drain')$gd$);
+select cron.schedule('gcal_renew', '50 20 * * *', $gr$select public.gcal_ping('renew')$gr$);
+
+notify pgrst, 'reload schema';

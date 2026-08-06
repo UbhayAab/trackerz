@@ -1,0 +1,108 @@
+/* Mirror another calendar (.ics import/export).
+   Reuses the bank-statement importer's dropzone / import-summary / map-chip
+   classes from components.css so the two importers read as one feature; only
+   the rule list and the problem list are new here.
+   Every colour comes from styles/tokens.css - a hardcoded fallback for a dark
+   theme is how the first draft rendered the rule text white on white. */
+
+.cal-import {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.cal-import-head h3 {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-md);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+
+.cal-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* One imported rule per line: what it is called, and what it MEANS in English.
+   The rule text is describeRule() run on the exact row that will be written,
+   so it can never describe something else. */
+.cal-import-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.cal-import-rows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.cal-import-title {
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+}
+
+.cal-import-rule {
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+}
+
+/* A row that would never fire. Loud on purpose: a stored reminder that never
+   rings and never explains itself is the failure this feature guards against. */
+.cal-import-bad {
+  color: var(--risk);
+  font-size: var(--fs-xs);
+  font-weight: var(--weight-medium);
+}
+
+.cal-import-more {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+/* Every problem is listed, never counted and hidden. Warnings collapse into a
+   details element that starts OPEN, so it is skimmable but not a secret. */
+.cal-import-problems {
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-4);
+  font-size: var(--fs-xs);
+  line-height: var(--lh);
+  color: var(--ink-soft);
+}
+
+.cal-import-problems li + li {
+  margin-top: var(--sp-1);
+}
+
+.cal-import-problems b {
+  color: var(--ink);
+}
+
+.cal-import-warnings {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--panel-warm);
+}
+
+.cal-import-warnings > summary {
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.cal-import[data-state="parsing"] .cal-import-preview,
+.cal-import[data-state="writing"] .cal-import-preview {
+  opacity: 0.6;
+}
