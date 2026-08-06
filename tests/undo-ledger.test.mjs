@@ -189,4 +189,75 @@ assert.equal(describeUndo({ errors: ["x"] }), "Nothing to undo.");
   }
 }
 
+// ---------------------------------------------------------------------------
+// THE AMENDMENT ROUND TRIP.
+//
+// The interleaving proof above is written by hand. This one runs the SAME shape
+// through the real producer - lib/amend-target.mjs, the module that builds the
+// plan the server stores and the client executes - so the payload under test is
+// the payload production writes, not a hand-shaped facsimile of it.
+//
+// The owner's case: a 30 g aloo bhujia snack corrected to 50 g at 15:14, an
+// unrelated edit at 15:30, and the undo at 16:00.
+// ---------------------------------------------------------------------------
+{
+  const { amendWritePlan } = await import("../lib/amend-target.mjs");
+
+  const rowBefore = {
+    id: "f-bhujia", table: "food_logs",
+    description: "30g aloo bhujia and 2 soup sachets", meal_slot: "snack",
+    calories_estimate: 205, protein_g: 4,
+  };
+
+  // 15:14 - the correction.
+  const plan = amendWritePlan({
+    name: "amend_log_candidate",
+    args: { target_kind: "food", set: { description: "50g aloo bhujia and 2 soup sachets", calories_estimate: 365, protein_g: 8 } },
+    row: rowBefore,
+  });
+  assert.equal(plan.op, "update");
+  const payload = undoPayloadFor({
+    op: "update", table: plan.table, id: plan.id,
+    before: plan.before, after: plan.values, columns: plan.columns,
+  });
+  assert.equal(isUndoable(payload), true);
+  assert.deepEqual([...undoColumns(payload)].sort(), ["calories_estimate", "description", "protein_g"]);
+
+  // 15:30 - a later, legitimate edit moves the snack to a different slot and
+  // fixes a typo the amendment did not touch.
+  const rowAfterAmend = { ...rowBefore, ...plan.values };
+  const rowAt1530 = { ...rowAfterAmend, meal_slot: "dinner", meal_name: "Evening snack" };
+
+  // 16:00 - undo the amendment only.
+  const step = invert(payload);
+  const restored = { ...rowAt1530, ...step.values };
+  assert.equal(restored.description, "30g aloo bhujia and 2 soup sachets", "the correction is reversed");
+  assert.equal(restored.calories_estimate, 205);
+  assert.equal(restored.protein_g, 4);
+  assert.equal(restored.meal_slot, "dinner", "the 15:30 slot change SURVIVES the undo");
+  assert.equal(restored.meal_name, "Evening snack", "and so does the 15:30 name");
+  assert.equal(Object.keys(step.values).length, 3, "exactly the three columns the amendment wrote");
+
+  // And the undo of a DELETE is a restore, never a re-insert of a phantom.
+  const delPlan = amendWritePlan({ name: "delete_log_candidate", args: { target_kind: "food" }, row: rowBefore });
+  const delPayload = undoPayloadFor({ op: "delete", table: delPlan.table, id: delPlan.id, before: delPlan.before });
+  assert.equal(isUndoable(delPayload), true);
+  assert.equal(invert(delPayload).op, "restore");
+  assert.deepEqual(invert(delPayload).values, { deleted_at: null });
+  assert.equal(describeUndo(delPayload), "Put the deleted food log back.");
+  assert.match(describeUndo(payload), /^Put .* on the food log back/);
+
+  // An amendment plan with no before-image is NOT undoable, and says why. An
+  // edit that cannot be put back must never be offered as reversible.
+  assert.equal(isUndoable(undoPayloadFor({ op: "update", table: "food_logs", id: "f1", after: { protein_g: 8 }, columns: ["protein_g"] })), false);
+  assert.equal(undoBlockReason(undoPayloadFor({ op: "update", table: "food_logs", id: "f1", after: { protein_g: 8 }, columns: ["protein_g"] })), "no_before_image");
+
+  // Every table an amendment can reach is soft-deletable, so a delete there is
+  // always a tombstone that a restore can clear.
+  const { AMEND_TABLE_FOR_KIND } = await import("../lib/amend-target.mjs");
+  for (const table of Object.values(AMEND_TABLE_FOR_KIND)) {
+    assert.ok(SOFT_DELETABLE_TABLES.includes(table), `${table} is amendable but not soft-deletable`);
+  }
+}
+
 console.log("undo-ledger tests passed");

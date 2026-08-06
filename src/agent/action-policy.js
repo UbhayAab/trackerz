@@ -18,12 +18,25 @@ export function decideActionPolicy(action) {
   const reasons = [];
 
   if (!tool) reasons.push("unknown_tool");
-  if (tool?.destructive) reasons.push("destructive_blocked");
+  if (tool?.destructive) reasons.push("destructive");
   if (!action.evidenceId) reasons.push("missing_evidence");
   if (confidence < confidencePolicy.review) reasons.push("low_confidence");
   if (action.risk === "high") reasons.push("high_risk");
 
-  if (reasons.includes("unknown_tool") || reasons.includes("destructive_blocked")) {
+  // An UNKNOWN tool is still blocked outright, and that is the case this branch
+  // was really protecting: a name nobody classified has no tier, no schema and no
+  // handler.
+  //
+  // A REGISTERED destructive tool is no longer blocked. It used to be, because
+  // there was nowhere else to put it - the app had `block` and `auto_apply` and
+  // nothing in between, so "change the row I logged at 15:14" could only be
+  // committed silently or refused. `confirm` exists now: mutationGate returns
+  // "hard" for every destructive tool, which means a diff card and one tap, and
+  // mutationRisk marks it softDeleteOnly so the write is a tombstone rather than
+  // a removal. Blocking here would mean amend/delete can never reach the user at
+  // all, which is not safety - it is the old behaviour where a correction wrote a
+  // SECOND row and the day counted both.
+  if (reasons.includes("unknown_tool")) {
     return { mode: "block", tier: "destructive", gate: "blocked", reasons };
   }
 

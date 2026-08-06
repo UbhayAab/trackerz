@@ -385,12 +385,27 @@ main > section + section { margin-top: var(--sp-3); }
    and makes it look "zoomed in". Nothing should be able to exceed the viewport
    width; long unbroken strings (emails, UIDs, URLs) wrap instead of stretching.
    ========================================================================== */
+/* These two lines are a NET, not the fix, and they are why the smoke test used
+   to report `horizontalOverflow: false` while the owner was looking at content
+   running off his phone: `overflow-x: hidden` on the root propagates to the
+   viewport, so document.documentElement.scrollWidth is CLAMPED to clientWidth
+   and can never exceed it, whatever the page actually lays out at. Measured on
+   pages/diagnostics.html at 320px: documentElement.scrollWidth read 320 while
+   the real content width was 390 - 70px of the page clipped, invisibly, with a
+   green check over it. Everything below this pair, and every minmax(0, 1fr) in
+   these stylesheets, exists so the net is never the thing doing the work.
+   scripts/smoke-ui.mjs now switches both off before it measures. */
 html, body { max-width: 100%; overflow-x: hidden; }
 .app-shell, .page-shell { width: 100%; max-width: 100%; overflow-x: clip; }
 main, .command-grid, .dashboard-grid, .summary-rail { min-width: 0; }
-/* Topbar children must be allowed to shrink so a long title/email can't push width. */
-.topbar { gap: var(--sp-2); }
-.topbar > div { min-width: 0; }
+/* Topbar children must be allowed to shrink so a long title/email can't push
+   width. `> *`, not `> div`: the theme toggle and account chip are injected at
+   runtime by src/ui/theme.js into a .topbar-actions span on some pages and a
+   div on others, and only one of those was covered - measured 309px of topbar
+   inside a 300px shell on pages/audit.html at 320px. */
+.topbar { gap: var(--sp-2); flex-wrap: wrap; }
+.topbar > * { min-width: 0; }
+.topbar-actions, .topbar-links { flex: 0 1 auto; flex-wrap: wrap; }
 .topbar h1, .topbar-title, .topbar .eyebrow { overflow-wrap: anywhere; }
 /* Account/identity strings (settings) wrap rather than stretch the layout. */
 #accountEmail, #accountUid { overflow-wrap: anywhere; word-break: break-all; }

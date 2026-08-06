@@ -26,6 +26,8 @@ export const APPLIER_WRITE_TOOLS = [
   "set_target_candidate",
   "remember_fact",
   "update_plan_candidate",
+  "amend_log_candidate",
+  "delete_log_candidate",
 ];
 
 export function buildRowForTool(action, userId) {
@@ -170,6 +172,40 @@ export function buildRowForTool(action, userId) {
         provenance: args._provenance || "unknown",
         updated_at: new Date().toISOString(),
       } };
+    // ---- the two tools that change a row that already exists ----------------
+    //
+    // These do NOT build a row from the arguments. The arguments name a phrase
+    // and a date; the ROW they refer to was resolved on the server, against the
+    // closed set of rows inside that date window, and the resulting plan was
+    // stamped onto the action as `_amend` before the user ever saw it. This
+    // function reads that plan and nothing else.
+    //
+    // That is the whole point. If the client re-resolved "the 30 g aloo bhujia"
+    // at confirm time it could land on a different row than the diff card the
+    // user was looking at when they tapped - a preview and a write that disagree,
+    // which is exactly what ingestStatements() exists to prevent for imports.
+    // A missing or unresolved plan returns null, and applyProposedAction refuses
+    // to mark the action applied, rather than reporting a write that never
+    // happened.
+    case "amend_log_candidate": {
+      const plan = args._amend;
+      if (!plan || plan.op !== "update" || !plan.table || !plan.id || !plan.columns?.length) return null;
+      return {
+        table: plan.table, id: plan.id, op: "update",
+        row: plan.values, columns: plan.columns, before: plan.before || null,
+      };
+    }
+    case "delete_log_candidate": {
+      const del = args._amend;
+      if (!del || del.op !== "soft_delete" || !del.table || !del.id) return null;
+      // A tombstone, never a removal: `deleted_at` is stamped at APPLY time, not
+      // when the plan was made, because the 30-day purge clock starts from the
+      // moment the user actually said yes.
+      return {
+        table: del.table, id: del.id, op: "soft_delete",
+        row: { deleted_at: new Date().toISOString() }, columns: ["deleted_at"], before: del.before || null,
+      };
+    }
     default:
       return null; // non-write tools (request_user_review, link_duplicate_candidates)
   }

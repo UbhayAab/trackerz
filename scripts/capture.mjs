@@ -132,6 +132,16 @@ if (out.warning) console.log(`  warning: ${out.warning}`);
 if (out.provenanceViolations?.length) {
   console.log(`  REFUSED on provenance: ${JSON.stringify(out.provenanceViolations)}`);
 }
+// WHAT AN AMENDMENT RESOLVED TO. An amend/delete writes nothing until a tap, so
+// without this line the run prints "(nothing)" and reads identical to a capture
+// the agent ignored - which is exactly the silence this repo keeps rediscovering.
+for (const a of out.amendments || []) {
+  const win = a.window ? ` in ${a.window.from}..${a.window.to}` : "";
+  console.log(`  ${a.tool}: ${a.status}${win}  ref=${JSON.stringify(a.targetRef)}${a.reason ? ` reason=${a.reason}` : ""}`);
+  if (a.plan) console.log(`     -> ${a.plan.op} ${a.plan.table}#${a.plan.id} columns=[${(a.plan.columns || []).join(", ")}] (awaiting confirm)`);
+  if (a.choices?.length) console.log(`     -> which one? ${a.choices.map((c) => c.label).join(" | ")}`);
+  if (a.dropped?.length) console.log(`     -> fields refused: ${a.dropped.join(", ")}`);
+}
 
 console.log("\nROWS THAT LANDED");
 let landed = 0;
@@ -175,11 +185,16 @@ for (const a of failedActions) console.log(`  ERRORED         ${a.tool_name}`);
 
 if (!landed) {
   const answered = applied.rows.some((a) => a.tool_name === "answer_question");
+  // An amendment writes nothing HERE by design - it is destructive tier, so it
+  // is stored as `proposed` and applied by a tap on the diff card. Saying "no
+  // rows" about it would report a working feature as a failure.
+  const amending = applied.rows.some((a) => a.tool_name === "amend_log_candidate" || a.tool_name === "delete_log_candidate");
   const nonWriting = applied.rows.length > 0 && !failedActions.length;
   console.log(
     answered ? "  (nothing written - this capture was a QUESTION and was answered)"
-      : nonWriting ? "  (nothing written - every tool this capture produced was non-writing)"
-        : "  (nothing - this capture really did produce no rows)",
+      : amending ? "  (nothing written YET - an amendment waits for the diff card's tap; see the plan above)"
+        : nonWriting ? "  (nothing written - every tool this capture produced was non-writing)"
+          : "  (nothing - this capture really did produce no rows)",
   );
 }
 

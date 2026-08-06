@@ -18,6 +18,14 @@ const BLOCKS = [
   // - the worst possible place for the two to disagree.
   { lib: "lib/mutation-risk.mjs", edge: AGENT, start: "MUTATION-RISK MIRROR START", end: "MUTATION-RISK MIRROR END" },
   { lib: "lib/schedule-args.mjs", edge: AGENT, start: "SCHEDULE-ARGS MIRROR START", end: "SCHEDULE-ARGS MIRROR END" },
+  // "which row did they mean" and "which day did they mean". The edge is where an
+  // amendment is RESOLVED - the browser never sees a row id and never should - so
+  // a drifted copy here means the server edits a different row than the diff card
+  // the user approved was describing. REFERENT-RESOLVER must be copied before
+  // AMEND-TARGET reads it; both go after SCHEDULE-ARGS, whose zone helpers they
+  // reuse rather than re-deriving.
+  { lib: "lib/referent-resolver.mjs", edge: AGENT, start: "REFERENT-RESOLVER MIRROR START", end: "REFERENT-RESOLVER MIRROR END" },
+  { lib: "lib/amend-target.mjs", edge: AGENT, start: "AMEND-TARGET MIRROR START", end: "AMEND-TARGET MIRROR END" },
   // Per-source capability bounds. The edge is where the model's output is turned
   // into rows, so this is the copy that decides whether a screenshot may rewrite
   // the standing plan. A drifted copy here means the server grants a capability
@@ -87,6 +95,62 @@ for (const [edgeFile, blocks] of byEdge) {
     writeFileSync(AGENT, next);
     totalChanged += 1;
     console.log(`regenerated FOOD_WORDS (${FOOD_WORDS.length} terms) -> ${AGENT}`);
+  }
+}
+
+// FOOD_TABLE + FOOD_STOPWORDS, for the same reason and by the same method.
+//
+// These two were HAND-COPIED into the edge function and drifted the moment
+// lib/food-nutrition.mjs was edited: on 2026-08-06 the lib grew `aloo bhujia`,
+// `instant soup` and seven other entries and the edge did not, so the server -
+// which is the copy whose totals actually reach the user, because it overrides
+// the model - kept pricing a 50 g bhujia snack off a model guess. Nothing
+// detected it except tests/food-mirror.test.mjs, and only for one phrase.
+//
+// The edge's shape is a subset of the lib's: no `category` and no `unit`, both of
+// which exist for the browser's own UI and are dead weight in Deno. Regenerating
+// rather than copying is what makes "add a food and re-run sync-mirror" true of
+// the TABLE and not only of the salvage cue list derived from it.
+{
+  const { FOOD_TABLE } = await import("../lib/food-nutrition.mjs");
+  // STOPWORDS is module-private in lib/food-nutrition.mjs, so it is read out of
+  // the SOURCE rather than imported. Extraction, not a second copy: the literal
+  // in the edge is rebuilt from the literal in the lib on every sync, which is
+  // the same guarantee an import would give.
+  const libFood = readFileSync("lib/food-nutrition.mjs", "utf8");
+  const stopStart = libFood.indexOf("const STOPWORDS = new Set([");
+  const stopEnd = libFood.indexOf("]);", stopStart);
+  if (stopStart < 0 || stopEnd < 0) throw new Error("STOPWORDS literal not found in lib/food-nutrition.mjs");
+  const STOPWORDS = new Set(
+    [...libFood.slice(stopStart, stopEnd).matchAll(/"([^"]*)"/g)].map((m) => m[1]),
+  );
+  let edge = readFileSync(AGENT, "utf8");
+
+  // Emitted in the edge's own hand-written style - `{ key: "egg", kind: ... }` -
+  // rather than as JSON, because tests/food-mirror.test.mjs reads both tables
+  // with the same regex and a generator that produced a different shape would
+  // pass the numeric corpus while the structural checks silently matched nothing.
+  const rows = FOOD_TABLE.map((e) => {
+    const parts = [];
+    for (const [k, v] of Object.entries(e)) {
+      if (k === "category" || k === "unit") continue; // browser-only fields
+      parts.push(`${k}: ${JSON.stringify(v).replace(/","/g, '", "')}`);
+    }
+    return `  { ${parts.join(", ")} },`;
+  }).join("\n");
+  const tableRx = /^const FOOD_TABLE: any\[\] = \[[\s\S]*?^\];$/m;
+  if (!tableRx.test(edge)) throw new Error(`FOOD_TABLE literal not found in ${AGENT}`);
+  edge = edge.replace(tableRx, `const FOOD_TABLE: any[] = [\n${rows}\n];`);
+
+  const stopRx = /^const FOOD_STOPWORDS = new Set<string>\(\[[\s\S]*?\]\);$/m;
+  if (!stopRx.test(edge)) throw new Error(`FOOD_STOPWORDS literal not found in ${AGENT}`);
+  edge = edge.replace(stopRx, `const FOOD_STOPWORDS = new Set<string>(${JSON.stringify([...STOPWORDS])});`);
+
+  const before = readFileSync(AGENT, "utf8");
+  if (edge !== before) {
+    writeFileSync(AGENT, edge);
+    totalChanged += 1;
+    console.log(`regenerated FOOD_TABLE (${FOOD_TABLE.length} foods) + FOOD_STOPWORDS (${STOPWORDS.size} words) -> ${AGENT}`);
   }
 }
 

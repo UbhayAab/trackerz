@@ -8,6 +8,13 @@ import { deleteRow, revertTargetEvent, rejectAiAction, applyProposedAction } fro
 import { getState } from "../state/app-state.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { showToast } from "./toast.js";
+import { renderAmendCard, renderAmendChooser, bindDiffCard } from "./diff-card.js";
+
+// The two tools that CHANGE or REMOVE a row that already exists, rather than
+// adding one. They are the only actions in this feed where one tap is not
+// enough: everything else is an insert whose worst case is a row with a ✕ next
+// to it, and these rewrite a number the user has already read.
+const AMEND_TOOLS = new Set(["amend_log_candidate", "delete_log_candidate"]);
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => (
@@ -83,6 +90,69 @@ async function runRowAction(rowEl, label, write) {
   }
 }
 
+// Render the confirm surface for one amendment under its feed row.
+//
+// Three outcomes, and only the first is a button that writes:
+//   resolved  -> the diff card, then one tap applies the stored plan.
+//   ambiguous -> a chooser naming up to three rows. Deliberately NOT wired to a
+//                write yet: picking a row means re-resolving server-side, and a
+//                chooser that silently picked for you is the guess this whole
+//                feature refuses to make. It tells the user which rows matched
+//                so they can say which one they meant.
+//   anything else -> the reason, in a sentence. Never silence.
+function showAmendCard(rowEl, action) {
+  const args = action?.arguments || {};
+  const status = args._amend_status || "unresolved";
+  const host = document.createElement("div");
+  host.className = "add-amend-card";
+  rowEl.after(host);
+
+  if (status === "resolved" && args._amend) {
+    const win = args._amend_window;
+    host.innerHTML = renderAmendCard(args._amend, {
+      summary: `${args.target_ref ? `"${args.target_ref}"` : "this entry"}${win?.label ? ` · ${win.label}` : ""}`,
+      id: `amendCard-${action.id}`,
+    });
+    bindDiffCard(host, {
+      onConfirm: async () => {
+        host.remove();
+        await runRowAction(rowEl, args._amend.op === "soft_delete" ? "Delete" : "Change", () => applyProposedAction(action));
+      },
+      onCancel: () => host.remove(),
+    });
+    return;
+  }
+
+  if (status === "ambiguous") {
+    host.innerHTML = renderAmendChooser((args._amend_choices || []).map((c) => c.label), {
+      question: `Which one did you mean by ${args.target_ref ? `"${args.target_ref}"` : "that"}?`,
+      id: `amendChooser-${action.id}`,
+    });
+    bindDiffCard(host, {
+      onChoose: () => {
+        host.remove();
+        showToast("Say which one - retype the correction naming that entry.", { kind: "info", duration: 5000 });
+      },
+      onCancel: () => host.remove(),
+    });
+    return;
+  }
+
+  const win = args._amend_window;
+  const where = win?.label ? ` on ${win.label}` : "";
+  const why = {
+    not_found: `I could not find ${args.target_ref ? `"${args.target_ref}"` : "that entry"}${where}.`,
+    no_rows_in_window: `Nothing is logged${where} to change.`,
+    no_change: "That entry already says exactly that - nothing to change.",
+    budget_exhausted: "That is more deletions than one day allows. Delete the rest by hand.",
+    window_too_wide: "That date range is too wide to amend safely - name one day.",
+    lookup_failed: "I could not read that day's entries, so nothing was changed.",
+    unknown_kind: "I could not tell which tracker that entry is in.",
+  }[status] || `That correction did not resolve to an entry (${status}).`;
+  host.innerHTML = `<section class="command-panel diff-card"><p class="small">${esc(why)}</p></section>`;
+  showToast(why, { kind: "error", duration: 6000 });
+}
+
 let bound = false;
 export function bindAdditionsFeed() {
   if (bound) return;
@@ -106,6 +176,18 @@ export function bindAdditionsFeed() {
       const action = (getState().aiActions || []).find((a) => a && a.id === rowEl.dataset.addId);
       if (!action) {
         showToast("That capture is no longer in the queue - refresh and try again.", { kind: "error" });
+        return;
+      }
+      // THE DIFF CARD IS THE SAFETY SURFACE. An amendment does not apply on this
+      // tap - it shows what it would change, old struck and dimmed, new in the
+      // accent colour, calories and protein first. The second tap applies it.
+      //
+      // The card is rendered from the plan the SERVER resolved (`_amend`), the
+      // same object buildRowForTool executes, so what is approved and what lands
+      // cannot disagree. An unresolved amendment shows the reason instead - a
+      // chooser when two rows matched, a sentence when none did.
+      if (AMEND_TOOLS.has(action.tool_name)) {
+        showAmendCard(rowEl, action);
         return;
       }
       await runRowAction(rowEl, "Add", () => applyProposedAction(action));

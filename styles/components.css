@@ -486,14 +486,27 @@
   gap: 6px;
 }
 
+/* Check name on the left, verdict on the right. The names are sentences
+   ("Edge function reachable", "Health Connect bridge present"), and a flex item
+   will not shrink below its own min-content: measured at 320px the row laid out
+   at 363px and .app-shell's overflow-x:clip ate the last 63px of every verdict,
+   silently, which on a DIAGNOSTICS page is the worst possible place to hide
+   text. Wrap and let both halves shrink. */
 .diag-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 4px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 0.9rem;
+}
+
+.diag-row > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .diag-status {

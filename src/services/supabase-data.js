@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "./supabase-client.js";
 import { getCurrentSession } from "./auth.js";
 import { buildRowForTool } from "./action-applier.js";
+import { applyAmendment } from "./undo-service.js";
 import { instantiate } from "../domain/diet/meal-templates.js";
 import { clampSleepSpan } from "../../lib/sleep-window.mjs";
 import { rowForRepeat } from "../../lib/meal-repeats.mjs";
@@ -957,6 +958,39 @@ export async function applyProposedAction(action) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
   const built = buildRowForTool(action, userId);
+
+  // AN AMENDMENT IS NOT AN INSERT. buildRowForTool returns a plan with an `op`
+  // for the two destructive tools, and running it through the insert path below
+  // would add a SECOND row - the exact bug amend_log_candidate exists to fix.
+  //
+  // A missing plan is reported, never applied. Without this branch the action
+  // would be marked `applied` with a null record id: the audit trail claiming a
+  // write that never happened, which is the failure this file's own comments
+  // keep naming.
+  if (built && built.op) {
+    const result = await applyAmendment(built);
+    if (!result.ok) throw new Error(`amend_failed:${result.reason}`);
+    // The audit row. Append-only and never itself deleted - it is the only
+    // record that a row the user is reading today is not the row they wrote.
+    await supabase.from("audit_log").insert({
+      user_id: userId,
+      action: built.op === "soft_delete" ? "ai_delete_log" : "ai_amend_log",
+      target_table: built.table, target_id: built.id,
+      before: built.before || null,
+      after: built.op === "soft_delete" ? null : built.row,
+      source: "user",
+    });
+    const { error: amendErr } = await supabase.from("ai_actions").update({
+      status: "applied",
+      applied_at: new Date().toISOString(),
+      applied_record_table: built.table,
+      applied_record_id: built.id,
+      undo_payload: result.undo,
+    }).eq("id", action.id);
+    if (amendErr) throw amendErr;
+    return { id: action.id, appliedTable: built.table, appliedId: built.id, op: built.op };
+  }
+
   let appliedTable = null;
   let appliedId = null;
   const before = built ? await beforeImageFor(supabase, userId, action) : null;
@@ -1409,6 +1443,17 @@ export async function deleteAllUserData() {
   const userId = requireUserId();
   const errors = [];
   for (const table of USER_DATA_TABLES) {
+    // audit_log is APPEND-ONLY at the database level (migration
+    // 20260806000070): it has no DELETE policy, because an audit trail an
+    // ordinary action can erase is not one - and this app has already shipped an
+    // undo that deleted the record of what it undid. The forget-me path is the
+    // single legitimate erasure, so it goes through the one named door instead
+    // of a standing permission.
+    if (table === "audit_log") {
+      const { error } = await supabase.rpc("erase_audit_log");
+      if (error) errors.push(`${table}: ${error.message}`);
+      continue;
+    }
     const { error } = await supabase.from(table).delete().eq("user_id", userId);
     if (error) errors.push(`${table}: ${error.message}`);
   }
