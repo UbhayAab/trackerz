@@ -30,6 +30,10 @@ export const toolRegistry = [
   { name: "create_sleep_candidate", domain: "wellness", write: true, destructive: false },
   { name: "create_note_candidate", domain: "all", write: true, destructive: false },
   { name: "create_reminder_candidate", domain: "all", write: true, destructive: false },
+  // The app scheduling itself. A reminder replays a sentence on a date; this
+  // reads the day's rows at fire time and may decide to stay silent. It writes
+  // an agent_tasks row, so write:true - the row IS the schedule.
+  { name: "schedule_task_candidate", domain: "all", write: true, destructive: false },
   { name: "set_target_candidate", domain: "all", write: true, destructive: false },
   { name: "remember_fact", domain: "all", write: true, destructive: false },
   // write:false, not true. The edge function keeps this OUT of WRITE_TOOLS and

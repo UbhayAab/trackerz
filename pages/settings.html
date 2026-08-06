@@ -96,6 +96,7 @@
             <label class="settings-row"><span>Jarvis engine (close-out 00:05 · brief 07:00 · nudge 20:30)</span><input id="nightlySummaryToggle" type="checkbox" checked /></label>
             <label class="settings-row"><span>Email the morning brief</span><input id="emailBriefToggle" type="checkbox" checked /></label>
             <label class="settings-row"><span>Notify this device (Web Push)</span><input id="pushBriefToggle" type="checkbox" /></label>
+            <label class="settings-row"><span>Let it run its own scheduled checks</span><input id="autonomyToggle" type="checkbox" /></label>
           </div>
           <div class="data-actions">
             <button id="enablePushBtn" class="primary-button" type="button">Enable notifications</button>
@@ -103,6 +104,7 @@
             <button id="briefNowBtn" class="primary-button" type="button">Brief me now</button>
           </div>
           <p id="pushStatus" class="agent-detail">Notifications on this device: checking…</p>
+          <p class="agent-detail">Scheduled checks are things you ask it to look at later - "every Sunday evening review my spending". They can read your data, answer, and leave a note. They can never change a plan, a target or a saved fact, never delete anything, and never spend from your capture budget. Off means the server refuses to run them at all.</p>
           <p id="jarvisDetail" class="agent-detail">Runs on the server even when the app is closed: the day is closed out just after midnight, the morning brief lands at 7:00 with yesterday closed + today's plan + safe-to-spend, and the evening nudge flags what's still fixable. Quiet hours 22:30-06:45.</p>
           <p id="settingsStatus" class="agent-detail"></p>
         </section>

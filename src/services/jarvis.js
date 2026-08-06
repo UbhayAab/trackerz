@@ -17,7 +17,7 @@ export async function fetchJarvisProfile() {
   const userId = await requireUserId(supabase);
   const { data, error } = await supabase
     .from("profiles")
-    .select("briefing_enabled, email_brief, push_enabled, quiet_hours, timezone, display_name")
+    .select("briefing_enabled, email_brief, push_enabled, quiet_hours, timezone, display_name, autonomy_enabled")
     .eq("id", userId)
     .single();
   if (error) throw error;

@@ -57,6 +57,7 @@ const DEEPSEEK_IN_USD = 0.55, DEEPSEEK_OUT_USD = 2.2;
 // It writes nothing; it carries the reply back to the capture screen.
 const ALLOWED_TOOLS = new Set([
   "create_reminder_candidate",
+  "schedule_task_candidate",
   "create_expense_candidate",
   "create_income_candidate",
   "create_transfer_candidate",
@@ -83,6 +84,7 @@ const ALLOWED_TOOLS = new Set([
 // review so a high-confidence call can never be marked "applied" with no row.
 const WRITE_TOOLS = new Set([
   "create_reminder_candidate",
+  "schedule_task_candidate",
   "create_expense_candidate",
   "create_income_candidate",
   "create_transfer_candidate",
@@ -150,12 +152,23 @@ Rules:
 - PLAN UPDATE (ONE-SHOT DELTA): for a SMALL change to an existing plan - add / drop / swap ONE meal or exercise, or nudge a day's target - do NOT re-send the whole plan. Emit update_plan_candidate with a DELTA payload carrying an "op" (the app folds it onto the current plan): diet ops { op:"add_meal", meal:{name,slot,time,calories,protein_g,carbs_g,fat_g} } | { op:"remove_meal", match:"banana" | a slot } | { op:"replace_meal", match, meal:{...} } | { op:"set_targets", targets:{calories,protein_g,...} }; gym ops { op:"replace_workout", workout:{name,kind,items:[...],duration_min} } | { op:"add_exercise", exercise:"Pull-ups 3×8" } | { op:"remove_exercise", match:"bench" } | { op:"replace_exercise", match:"bench", exercise:"Incline DB press 2×10" } (swap ONE exercise in place, keep the rest). Examples: "add a salad bowl at 4pm to my diet" -> { kind:"diet", scope: today's date, payload:{ op:"add_meal", meal:{name:"Salad bowl", slot:"snack", time:"16:00", ...} } }; "swap today's leg day for cardio" -> { kind:"gym", scope: today, payload:{ op:"replace_workout", workout:{name:"Cardio", kind:"cardio", items:["30 min treadmill"]} } }; "drop the banana snack today" -> { op:"remove_meal", match:"banana" }. IMPORTANT: delta ops are ONLY for a date scope (a specific date / date list). A PERMANENT change must be a FULL payload (send the whole plan), never a delta.
 - LOG THAT CONTRADICTS THE PLAN: if the user LOGS an activity/meal that clearly differs from the day's planned one (memory PLAN_TODAY says leg day but they say "I did cardio today"; planned dinner was salad but they "had biryani"), emit BOTH (1) the real log (create_workout_log_candidate / create_food_log_candidate) AND (2) a same-day update_plan_candidate delta ({ op:"replace_workout", ... } or { op:"replace_meal", ... }, scope: that date) so the plan reflects what actually happened and the checklist item ticks. Only do this for a genuine mismatch - if the log matches the plan, just log it.
 - NOTES / ASPIRATIONS / TODOS: a plan, intention, reminder, or goal that is NOT a logged event is a note → create_note_candidate { body, kind:"note"|"aspiration"|"todo"|"idea", domain:"money"|"diet"|"gym"|"wellness"|"general", due_on?:"YYYY-MM-DD" }. e.g. "remind me to book the dentist Friday" → todo; "I want to save more this year" → aspiration.
-- REMINDERS / DATES THAT REPEAT: anything the user wants to be TOLD about on a date - a birthday, an anniversary, a bill, a filing deadline, an appointment, a recurring chore - is create_reminder_candidate { title, kind:"task"|"birthday"|"anniversary"|"bill"|"filing"|"appointment"|"other", freq:"once"|"daily"|"weekly"|"monthly"|"quarterly"|"yearly", day_of_month?:1-31, month_of_year?:1-12, weekday?:0-6 (0=Sunday), on_date?:"YYYY-MM-DD", lead_days?:0-60, note? }. NOT a note - a note has one date and is gone once it passes; a reminder has a RULE and fires again.
+- REMINDERS / DATES THAT REPEAT: anything the user wants to be TOLD about on a date - a birthday, an anniversary, a bill, a filing deadline, an appointment, a recurring chore - is create_reminder_candidate { title, kind:"task"|"birthday"|"anniversary"|"bill"|"filing"|"appointment"|"other", freq:"once"|"daily"|"weekly"|"monthly"|"quarterly"|"yearly", day_of_month?:1-31, month_of_year?:1-12, weekday?:0-6 (0=Sunday), on_date?:"YYYY-MM-DD", lead_days?:0-60, note?, at_time?:"HH:MM", interval?:2-52, weekdays?:[0-6], nth_weekday?, until?:"YYYY-MM-DD", count?:1-500, dtstart?:"YYYY-MM-DD" }. NOT a note - a note has one date and is gone once it passes; a reminder has a RULE and fires again.
+  * at_time is a 24-hour "HH:MM" in the user's local time and you SHOULD set it whenever the user says an hour. "gym at 6am every day" is freq:"daily", at_time:"06:00". "call mom at 9pm on Sundays" is freq:"weekly", weekday:0, at_time:"21:00". Omit at_time only when no hour was said - the reminder then rides the morning brief.
+  * interval is "every Nth". "every other Wednesday" is freq:"weekly", weekday:3, interval:2. "every 3 months on the 15th" is freq:"monthly", day_of_month:15, interval:3. When you set interval you SHOULD also set dtstart to the first date the cycle is anchored to, otherwise the phase is guessed from today.
+  * weekdays is a LIST for a rule that fires on several days: "Mon, Wed and Fri" is freq:"weekly", weekdays:[1,3,5]. Use weekday (singular) for exactly one day.
+  * nth_weekday is an ordinal weekday inside the month, written as a number-and-day string: "3TU" is the third Tuesday, "-1FR" is the LAST Friday. "team review on the last Friday of every month" is freq:"monthly", nth_weekday:"-1FR". Days are SU MO TU WE TH FR SA.
+  * until ends the rule on a date; count ends it after N fires. "every Monday until 30 September" sets until:"2026-09-30". "the next 6 Mondays" sets count:6. Set at most one of them.
   * A DATE THAT BELONGS TO A PERSON OR A YEARLY EVENT REPEATS EVERY YEAR. "my birthday is 14 August" / "her birth date is 14th Aug" / "anniversary on 2 March" is freq:"yearly", month_of_year, day_of_month - NEVER freq:"once". Stating a birth date is not scheduling a single event; it is a fact that recurs for every year that follows.
   * "the 10th of every 3rd month" / "quarterly, deadline 10 Jan, Apr, Jul, Oct" is freq:"quarterly" with month_of_year set to the FIRST month of the cycle (1 for Jan/Apr/Jul/Oct) and day_of_month 10.
   * "rent on the 5th" is freq:"monthly", day_of_month:5. "every Monday" is freq:"weekly", weekday:1. "dentist on 12 Sep" with no repetition is freq:"once", on_date.
   * lead_days is how much WARNING it needs, and you may omit it: a filing or bill defaults to 7 days, a birthday or anniversary to 2, everything else to same-day. Set it explicitly only when the user says so ("tell me a week before").
   * Emit the reminder INSTEAD of a note when the user is asking to be reminded. Emit BOTH only when the capture also carries a thought that the reminder title does not hold.
+- SCHEDULED CHECKS THE APP DOES ITSELF: when the user wants YOU to go and LOOK at their data later and decide whether there is anything worth saying, that is schedule_task_candidate { prompt, intent:"check"|"answer"|"remind"|"review", at_time?:"HH:MM", on_date?:"YYYY-MM-DD", freq?:"once"|"daily"|"weekly"|"monthly", weekday?:0-6, weekdays?:[0-6], day_of_month?:1-31, interval?:2-52, until?:"YYYY-MM-DD", count?:1-500 }. The difference from a reminder is WHO does the work: a reminder repeats a sentence the user already wrote, a scheduled task reads the logs at that moment and may decide to stay SILENT.
+  * "on Friday evening check whether I hit my protein target this week" -> { intent:"check", prompt:"Check whether protein intake this week hit the target.", freq:"weekly", weekday:5, at_time:"19:00" }.
+  * "every Sunday night look at my spending and tell me if I am over budget" -> { intent:"review", prompt:"Review this week's spending against the budget.", freq:"weekly", weekday:0, at_time:"21:00" }.
+  * "remind me to drink water every day at 3pm" is a REMINDER, not a task - nothing needs to be read to say it. "at 3pm tell me if I am behind on water" IS a task, because the answer depends on the day's rows.
+  * prompt is the instruction to your future self, written in full so it stands alone with no memory of this conversation. Keep intent "check" for a pace/target check, "review" for a period summary, "answer" for a question the user wants answered later, "remind" for a nudge that still needs the data looked at first.
+  * A scheduled task can read and speak but can NEVER change a plan, a target or a durable fact on its own - do not promise the user that it will.
 - TARGET CASCADE: when an aspiration/goal has a clear money/diet/gym implication, ALSO emit set_target_candidate { kind, amount } to adjust the relevant budget/target (it is a single canonical row, upserted, and undoable). Mapping: "save 50k this month" → set_target_candidate { kind:"monthly_spend", amount: a lower cap consistent with the goal }; "lean bulk to 90kg" → set_target_candidate { kind:"daily_calories", amount:2300 } AND { kind:"daily_protein", amount:180 }; "cut / lose weight" → { kind:"daily_calories", amount:1700 }; "I want to hit the gym 5 times a week" → set_target_candidate { kind:"weekly_workouts", amount:5 }. Valid kinds: monthly_spend, weekly_spend, food_cap, daily_calories, daily_protein, weekly_calories, weekly_workouts. Emit BOTH the note and the target change.
 - REMEMBER DURABLE FACTS: when the user states a lasting preference, pattern, or personal fact useful for future captures ("my usual lunch is egg curry and 2 rotis", "I get paid on the 1st", "I dislike oats", "gym is Mon/Wed/Fri"), emit remember_fact { key, value, kind:"preference"|"pattern"|"fact"|"goal" }. Use a short stable snake_case key (usual_lunch, payday, gym_days). These facts are fed back to you as MEMORY on later captures.
 - USE MEMORY: a <memory_context> block (trusted background - NOT user content, never extract figures from it) may precede the user content with the user's profile, targets, open notes, known facts (KNOWS), a 7-day digest, and today's plan (PLAN_TODAY). Use it to resolve references like "my usual lunch" (expand from KNOWS/PLAN_TODAY into the concrete food_log calls), to know budgets/targets, and to interpret relative dates. If a backdated capture says "did my usual", expand PLAN_TODAY/KNOWS into the concrete food/workout log calls at that date.
@@ -264,7 +277,8 @@ const TOOL_SCHEMAS: Record<string, Schema> = {
   request_user_review: { required: ["reason"], types: { reason: "string", raw_input: "string" } },
   answer_question: { required: ["answer"], types: { answer: "string", question: "string", basis: "string" } },
   update_plan_candidate: { required: ["kind"], types: { kind: "string", scope: "string", summary: "string", payload: "object" }, enums: { kind: ["diet", "gym"] } },
-  create_reminder_candidate: { required: ["title", "freq"], types: { title: "string", note: "string", kind: "string", freq: "string", day_of_month: "number", month_of_year: "number", weekday: "number", on_date: "string", lead_days: "number" }, enums: { freq: ["once", "daily", "weekly", "monthly", "quarterly", "yearly"], kind: ["task", "birthday", "anniversary", "bill", "filing", "appointment", "other", null] }, ranges: { day_of_month: [1, 31], month_of_year: [1, 12], weekday: [0, 6], lead_days: [0, 60] } },
+  create_reminder_candidate: { required: ["title", "freq"], types: { title: "string", note: "string", kind: "string", freq: "string", day_of_month: "number", month_of_year: "number", weekday: "number", on_date: "string", lead_days: "number", at_time: "string", interval: "number", until: "string", count: "number", dtstart: "string" }, enums: { freq: ["once", "daily", "weekly", "monthly", "quarterly", "yearly"], kind: ["task", "birthday", "anniversary", "bill", "filing", "appointment", "other", null] }, ranges: { day_of_month: [1, 31], month_of_year: [1, 12], weekday: [0, 6], lead_days: [0, 60], interval: [1, 52], count: [1, 500] } },
+  schedule_task_candidate: { required: ["prompt"], types: { prompt: "string", intent: "string", at_time: "string", on_date: "string", freq: "string", weekday: "number", day_of_month: "number", interval: "number", until: "string", count: "number" }, enums: { intent: ["check", "answer", "remind", "review", null], freq: ["once", "daily", "weekly", "monthly", null] }, ranges: { weekday: [0, 6], day_of_month: [1, 31], interval: [1, 52], count: [1, 500] } },
   create_note_candidate: { required: ["body"], types: { body: "string", kind: "string", domain: "string", status: "string", due_on: "string", occurred_at: "iso" }, enums: { kind: ["note", "aspiration", "todo", "idea", null], domain: ["money", "diet", "gym", "wellness", "general", null], status: ["open", "done", "archived", null] } },
   set_target_candidate: { required: ["kind", "amount"], types: { kind: "string", amount: "positive_number", reason: "string" }, enums: { kind: ["monthly_spend", "weekly_spend", "food_cap", "daily_calories", "daily_protein", "weekly_calories", "weekly_workouts"] } },
   remember_fact: { required: ["key", "value"], types: { key: "string", value: "string", kind: "string", confidence: "number" }, enums: { kind: ["preference", "pattern", "fact", "goal", null] }, ranges: { confidence: [0, 1] } },
@@ -1333,6 +1347,289 @@ function isStandingChange(tc: any): boolean {
   return !scope || scope === "permanent";
 }
 
+// ==== SCHEDULE-ARGS MIRROR START (byte-identical in lib/schedule-args.mjs) ====
+
+// "3TU" = third Tuesday, "-1FR" = last Friday. RFC 5545 BYDAY, minus the comma
+// list we deliberately do not accept from a model.
+var NTH_WEEKDAY_RE = /^-?[1-5](SU|MO|TU|WE|TH|FR|SA)$/;
+var SA_DAY_CODES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+
+/**
+ * The RFC form a model naturally writes, split into the two integers the
+ * database and lib/reminders.mjs actually use.
+ *
+ * `reminders.nth_weekday` is an `int` column and the engine reads the weekday
+ * from the SEPARATE weekday/weekdays field. Sending "-1FR" straight through
+ * would have failed the insert on a type error. Accepting both forms and
+ * normalising here is strictly better than forbidding the ergonomic one: the
+ * model writes what it would write anyway, and exactly one shape reaches the DB.
+ */
+function parseNthWeekday(v) {
+  if (v == null || v === "") return { nth: null, weekday: null };
+  const n = typeof v === "number" ? v : (/^-?\d+$/.test(String(v).trim()) ? Number(v) : null);
+  if (n !== null) {
+    return Number.isInteger(n) && n !== 0 && n >= -5 && n <= 5
+      ? { nth: n, weekday: null }
+      : { nth: null, weekday: null };
+  }
+  const s = String(v).trim().toUpperCase();
+  if (!NTH_WEEKDAY_RE.test(s)) return { nth: null, weekday: null };
+  return { nth: Number(s.slice(0, -2)), weekday: SA_DAY_CODES.indexOf(s.slice(-2)) };
+}
+
+// Evidence that SCHEDULING was asked for. The prompt of a scheduled task is
+// written BY the model, so it can never be required to echo the user's words -
+// grounding here has to be about the ACT, not the content. Without this a
+// hallucinated task is a push notification at 9am about something nobody asked
+// for, which is the most expensive kind of wrong this app can be.
+var SCHEDULE_CUE = /\b(schedul|remind|check (on|in|at|whether|if)|tell me (on|at|in|later|tomorrow|next)|every (day|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|other|[0-9])|each (day|week|month)|tomorrow|next (week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|at [0-9]{1,2}\s*(am|pm|:)|daily|weekly|monthly|later today|end of (the )?(day|week|month))/i;
+
+var SA_DAY = 86400000;
+
+/** "18:30" / "6:30 pm" / "0930" -> "HH:MM", or null. */
+function hhmm(v) {
+  if (v == null) return null;
+  const s = String(v).trim().toLowerCase();
+  if (!s) return null;
+  const m = s.match(/^(\d{1,2})\s*(?::\s*(\d{2}))?\s*(am|pm)?$/) || s.match(/^(\d{2})(\d{2})$/);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = Number(m[2] || 0);
+  const ap = m[3];
+  if (!Number.isFinite(h) || !Number.isFinite(min) || min > 59) return null;
+  if (ap === "pm" && h < 12) h += 12;
+  if (ap === "am" && h === 12) h = 0;
+  if (h > 23) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+/** An integer inside [lo, hi], or null. Never coerces a bad value to a bound. */
+function clampInt(v, lo, hi) {
+  const n = typeof v === "string" ? Number(v) : v;
+  if (typeof n !== "number" || !Number.isFinite(n)) return null;
+  const i = Math.trunc(n);
+  return i >= lo && i <= hi ? i : null;
+}
+
+/** A real YYYY-MM-DD, checked against the calendar (2026-02-30 is not one). */
+function isDateKey(v) {
+  const s = String(v || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  if (m < 1 || m > 12 || d < 1) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+/**
+ * Day-key arithmetic through UTC midnight, which has no DST to fall into.
+ *
+ * The key is assembled from UTC parts rather than sliced off an ISO string.
+ * Same answer here, because the input is already a bare date at midnight - but
+ * the sliced form is the shape tests/tz.test.mjs bans on sight, and an
+ * exception that has to be explained every time it is read is worth four lines
+ * of arithmetic to avoid.
+ */
+function saAddDays(key, n) {
+  const [y, m, d] = String(key).split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d) + n * SA_DAY);
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** 0=Sunday, matching the `weekday` column and JS getUTCDay. */
+function saWeekdayOf(key) {
+  const [y, m, d] = String(key).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+// Wall-clock offset of `tz` at a given instant, in ms. Derived from Intl rather
+// than hardcoded to +05:30 so that a user in another zone is not silently
+// scheduled 5.5 hours off - the cost is one formatToParts.
+function saOffsetMs(utcMs, tz) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(new Date(utcMs));
+  const g = (t) => Number(parts.find((p) => p.type === t)?.value);
+  const asUtc = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour") % 24, g("minute"), g("second"));
+  return asUtc - utcMs;
+}
+
+// The read direction. lib/tz.mjs owns these for the browser; the agent function
+// cannot import it, so the mirror carries its own pair and
+// tests/schedule-args.test.mjs asserts they agree with lib/tz.mjs across a year
+// of instants. A duplicate that is checked is a cache; one that is not is a bug
+// waiting for the day the two answers differ.
+var SA_DEFAULT_TZ = "Asia/Kolkata";
+
+/** YYYY-MM-DD for an instant, in `tz`. Never the UTC-sliced form. */
+function saDayKey(instant, tz) {
+  const d = instant instanceof Date ? instant : new Date(instant);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz || SA_DEFAULT_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+}
+
+/** Minutes since local midnight for an instant, in `tz`. */
+function saMinuteOfDay(instant, tz) {
+  const d = instant instanceof Date ? instant : new Date(instant);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz || SA_DEFAULT_TZ, hour12: false, hour: "2-digit", minute: "2-digit",
+  }).formatToParts(d);
+  const g = (t) => Number(parts.find((p) => p.type === t)?.value);
+  return (g("hour") % 24) * 60 + g("minute");
+}
+
+/**
+ * A local wall time in `tz` as a UTC ISO instant.
+ *
+ * Two passes: the first offset is read at the wrong instant by up to the offset
+ * itself, which only matters within a few hours of a DST transition - and India
+ * has none, so the second pass is here for the zones this will meet later.
+ */
+function zonedToUtcIso(dayKey, time, tz) {
+  const [y, m, d] = String(dayKey).split("-").map(Number);
+  const [h, mi] = String(time || "09:00").split(":").map(Number);
+  const guess = Date.UTC(y, m - 1, d, h || 0, mi || 0);
+  let ms = guess - saOffsetMs(guess, tz);
+  ms = guess - saOffsetMs(ms, tz);
+  return new Date(ms).toISOString();
+}
+
+/**
+ * The `reminders` columns for one create_reminder_candidate call.
+ *
+ * Returns rule PARTS only. Nothing here decides WHEN it fires - that is
+ * lib/reminders.mjs, running inside jarvis, and keeping the decision in exactly
+ * one place is why a reminder written by the agent and one written by hand
+ * cannot behave differently.
+ */
+function reminderColumns(args, opts) {
+  const a = args || {};
+  const o = opts || {};
+  const today = o.today || "1970-01-01";
+  const kind = a.kind || "task";
+  const weekdays = Array.isArray(a.weekdays)
+    ? a.weekdays.map((d) => clampInt(d, 0, 6)).filter((d) => d !== null)
+    : null;
+  const interval = clampInt(a.interval, 1, 52);
+  const onDate = isDateKey(a.on_date) ? String(a.on_date) : null;
+  const nth = parseNthWeekday(a.nth_weekday);
+  // "last Friday" carries its own weekday. Only borrow it when the model did not
+  // say one outright - an explicit weekday is the more direct statement of the
+  // two and must win.
+  const weekday = clampInt(a.weekday, 0, 6) ?? ((weekdays && weekdays.length) ? null : nth.weekday);
+  return {
+    title: String(a.title || "").slice(0, 200),
+    note: a.note ? String(a.note).slice(0, 500) : null,
+    kind,
+    freq: String(a.freq || "").toLowerCase(),
+    day_of_month: clampInt(a.day_of_month, 1, 31),
+    month_of_year: clampInt(a.month_of_year, 1, 12),
+    weekday,
+    on_date: onDate,
+    // A filing wants a week of warning, a birthday a day. Default by kind rather
+    // than 0, because a same-day-only tax reminder is useless.
+    lead_days: clampInt(a.lead_days, 0, 60) ?? (kind === "filing" || kind === "bill" ? 7 : kind === "birthday" || kind === "anniversary" ? 2 : 0),
+    at_time: hhmm(a.at_time),
+    rule_interval: interval,
+    weekdays: weekdays && weekdays.length ? weekdays : null,
+    nth_weekday: nth.nth,
+    until: isDateKey(a.until) ? String(a.until) : null,
+    max_count: clampInt(a.count, 1, 500),
+    // An interval rule needs a phase. Anchor it to what was said, else to the
+    // first occurrence, else to today - never null, because a null anchor makes
+    // "every other week" mean "whichever week the server evaluates it in".
+    dtstart: isDateKey(a.dtstart) ? String(a.dtstart) : (onDate || today),
+    timezone: o.tz || "Asia/Kolkata",
+  };
+}
+
+/**
+ * The first day this rule can fire, at or after `today`.
+ *
+ * Deliberately narrow: it answers "when is the FIRST one", not "when is the
+ * next one after that". The every-minute runner re-arms recurrences through the
+ * full engine, so anything cleverer here would be a second implementation of
+ * occurrence arithmetic - and the one bug this whole phase exists to fix was two
+ * layers disagreeing about a date.
+ */
+function firstFireKey(a, today) {
+  if (isDateKey(a.on_date) && String(a.on_date) >= today) return String(a.on_date);
+  const freq = String(a.freq || "once").toLowerCase();
+  const wds = Array.isArray(a.weekdays)
+    ? a.weekdays.map((d) => clampInt(d, 0, 6)).filter((d) => d !== null)
+    : [];
+  const wd = clampInt(a.weekday, 0, 6);
+  const want = wds.length ? wds : (wd !== null ? [wd] : []);
+  if (want.length) {
+    for (let i = 0; i < 7; i++) {
+      const k = saAddDays(today, i);
+      if (want.indexOf(saWeekdayOf(k)) >= 0) return k;
+    }
+  }
+  const dom = clampInt(a.day_of_month, 1, 31);
+  if (dom !== null) {
+    // Walk forward a day at a time rather than constructing a date: it lands on
+    // the right month with no clamping question, and 62 iterations is nothing.
+    for (let i = 0; i < 62; i++) {
+      const k = saAddDays(today, i);
+      if (Number(k.slice(8, 10)) === dom) return k;
+    }
+  }
+  if (freq === "once" && isDateKey(a.on_date)) return String(a.on_date);
+  return today;
+}
+
+/**
+ * The `agent_tasks` row for one schedule_task_candidate call.
+ *
+ * `nowMinutes` is minutes-since-local-midnight at write time. It exists for one
+ * case: "check at 3pm" said at 4pm means TOMORROW at 3pm. Firing it three
+ * seconds later, on a schedule the user just set for the future, is the kind of
+ * wrong that makes someone turn the feature off.
+ */
+function taskRow(args, opts) {
+  const a = args || {};
+  const o = opts || {};
+  const today = o.today || "1970-01-01";
+  const tz = o.tz || "Asia/Kolkata";
+  const time = hhmm(a.at_time) || "09:00";
+  const freq = String(a.freq || "once").toLowerCase();
+
+  let key = firstFireKey(a, today);
+  const timed = hhmm(a.at_time) !== null;
+  const explicitDay = isDateKey(a.on_date) || clampInt(a.weekday, 0, 6) !== null
+    || (Array.isArray(a.weekdays) && a.weekdays.length) || clampInt(a.day_of_month, 1, 31) !== null;
+  const past = timed && typeof o.nowMinutes === "number"
+    && (Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))) <= o.nowMinutes;
+  if (key === today && past && !explicitDay) key = saAddDays(today, 1);
+
+  const weekdays = Array.isArray(a.weekdays)
+    ? a.weekdays.map((d) => clampInt(d, 0, 6)).filter((d) => d !== null)
+    : null;
+
+  return {
+    fire_at: zonedToUtcIso(key, time, tz),
+    tz,
+    recurrence: freq === "once" ? null : {
+      freq,
+      weekday: clampInt(a.weekday, 0, 6),
+      weekdays: weekdays && weekdays.length ? weekdays : null,
+      day_of_month: clampInt(a.day_of_month, 1, 31),
+      interval: clampInt(a.interval, 1, 52),
+      until: isDateKey(a.until) ? String(a.until) : null,
+      count: clampInt(a.count, 1, 500),
+      at_time: time,
+      dtstart: key,
+    },
+    intent: ["check", "answer", "remind", "review"].indexOf(String(a.intent)) >= 0 ? String(a.intent) : "check",
+    prompt: String(a.prompt || "").slice(0, 2000),
+  };
+}
+// ==== SCHEDULE-ARGS MIRROR END ====
+
 // ==== MUTATION-RISK MIRROR START (byte-identical in lib/mutation-risk.mjs) ====
 var MUTATION_TIERS = ["reversible", "consequential", "destructive", "external"];
 
@@ -1357,6 +1654,12 @@ var CONSEQUENTIAL_TOOLS = [
   // A reminder is a rule that fires again; a wrong one is a wrong notification
   // every year until someone notices.
   "create_reminder_candidate",
+  // A scheduled task is the only tool that makes the app act while nobody is
+  // looking. It is heavier than a reminder, not lighter: a reminder repeats a
+  // sentence the user wrote, a task spends money and reads the whole day's data
+  // on a clock. Deliberately NOT its own "external" tier - a fourth tier that
+  // behaves identically to consequential is a name, not a control.
+  "schedule_task_candidate",
   // NOT in the registry today (removed as decoration - it had no schema and no
   // applyTool case). Pre-classified so that re-adding it cannot land on the auto
   // path by omission: it commits a previously proposed action, so it inherits
@@ -3181,6 +3484,12 @@ function isGrounded(toolName: string, args: any = {}, evidence = ""): boolean {
       return hasWordOverlap(args.body, ev);
     case "create_reminder_candidate":
       return hasWordOverlap(args.title, ev);
+    case "schedule_task_candidate":
+      // A task the app runs on its own later, so a hallucinated one is a
+      // notification about something the user never asked for. The prompt is
+      // written BY the model, so it cannot be required to echo the evidence -
+      // what must be grounded is that scheduling was actually asked for.
+      return SCHEDULE_CUE.test(String(ev || ""));
     default:
       return true;
   }
@@ -3353,21 +3662,29 @@ async function applyTool(supabase: ReturnType<typeof adminClient>, userId: strin
       // A RECURRING calendar fact, not an event that happened. Stored as rule
       // PARTS so lib/reminders.mjs can compute the next occurrence with integer
       // arithmetic and never parse a date or touch a timezone.
-      const freq = String(args.freq || "").toLowerCase();
-      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.trunc(v) : null);
       return supabase.from("reminders").insert({
         user_id: userId, ingestion_id: ingestionId,
-        title: String(args.title || "").slice(0, 200),
-        note: args.note ? String(args.note).slice(0, 500) : null,
-        kind: args.kind || "task",
-        freq,
-        day_of_month: num(args.day_of_month),
-        month_of_year: num(args.month_of_year),
-        weekday: num(args.weekday),
-        on_date: args.on_date || null,
-        // A filing wants a week of warning, a birthday a day. Default by kind
-        // rather than 0, because a same-day-only tax reminder is useless.
-        lead_days: num(args.lead_days) ?? (args.kind === "filing" || args.kind === "bill" ? 7 : args.kind === "birthday" || args.kind === "anniversary" ? 2 : 0),
+        ...reminderColumns(args, { today: saDayKey(occurredAt, SA_DEFAULT_TZ), tz: SA_DEFAULT_TZ }),
+      }).select().single();
+    }
+    case "schedule_task_candidate": {
+      // The app scheduling ITSELF. Distinct from a reminder in one way that
+      // matters: a reminder is a sentence replayed on a date, this reads the
+      // data at fire time and may decide there is nothing worth saying.
+      return supabase.from("agent_tasks").insert({
+        user_id: userId,
+        ...taskRow(args, {
+          today: saDayKey(occurredAt, SA_DEFAULT_TZ),
+          nowMinutes: saMinuteOfDay(occurredAt, SA_DEFAULT_TZ),
+          tz: SA_DEFAULT_TZ,
+        }),
+        created_by: "agent",
+        origin_ingestion_id: ingestionId,
+        // Depth 1 means a run of THIS task may not schedule another. A capture is
+        // still a human act, but the row it creates is written by the model, and
+        // the loop this cap exists to stop is model-scheduling-model.
+        depth: 1,
+        dedupe_key: `cap:${ingestionId}`,
       }).select().single();
     }
     case "create_note_candidate":
@@ -3618,6 +3935,7 @@ function tableForTool(name: string): string | null {
     case "create_wellness_note_candidate": return "wellness_logs";
     case "update_plan_candidate": return "user_plans";
     case "create_reminder_candidate": return "reminders";
+    case "schedule_task_candidate": return "agent_tasks";
     case "create_note_candidate": return "notes";
     case "set_target_candidate": return "budgets";
     case "remember_fact": return "memory_facts";

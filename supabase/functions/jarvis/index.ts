@@ -2421,9 +2421,22 @@ async function executeTask(admin: any, profile: Profile, task: any, now: Date, t
     if (runId) {
       await admin.from("agent_task_runs").update({ ...fields, finished_at: new Date().toISOString() }).eq("id", runId);
     }
+    const fails = failed ? Number(task.consecutive_failures || 0) + 1 : 0;
+    // The breaker trips HERE, on the failure that reaches the limit - not on the
+    // next attempt. Waiting a tick would mean one more run of a task that has
+    // already failed three times in a row, and the user seeing nothing until
+    // then. Re-enabling from Settings clears the count.
+    if (fails >= AUTONOMY_MAX_FAILURES) {
+      await admin.from("agent_tasks").update({
+        status: "disabled", consecutive_failures: fails,
+        disabled_reason: `${fails} consecutive failures - switched off, re-enable in Settings`,
+        runs: Number(task.runs || 0) + 1, last_run_at: now.toISOString(), updated_at: now.toISOString(),
+      }).eq("id", task.id);
+      return;
+    }
     await advanceTask(admin, task, now, zone, {
       runs: Number(task.runs || 0) + 1,
-      consecutive_failures: failed ? Number(task.consecutive_failures || 0) + 1 : 0,
+      consecutive_failures: fails,
     });
   };
 

@@ -7,9 +7,11 @@
 
 import { goalDef } from "../domain/goals.js";
 import { sleepWindowFromArgs } from "../../lib/sleep-window.mjs";
+import { reminderColumns, taskRow, saDayKey, saMinuteOfDay, SA_DEFAULT_TZ } from "../../lib/schedule-args.mjs";
 
 export const APPLIER_WRITE_TOOLS = [
   "create_reminder_candidate",
+  "schedule_task_candidate",
   "create_expense_candidate",
   "create_income_candidate",
   "create_transfer_candidate",
@@ -113,27 +115,34 @@ export function buildRowForTool(action, userId) {
         domain: args.domain || "general", status: args.status || "open",
         due_on: args.due_on || null, occurred_at: occurredAt,
       } };
-    case "create_reminder_candidate": {
+    case "create_reminder_candidate":
       // A recurring calendar fact. No occurred_at: a reminder is not something
       // that happened, it is a rule about dates that have not arrived yet.
-      const int = (v) => (typeof v === "number" && Number.isFinite(v) ? Math.trunc(v) : null);
-      const kind = args.kind || "task";
+      //
+      // Both this and the edge function call reminderColumns(), rather than each
+      // keeping its own column list. The old hand-written copy here already
+      // silently dropped at_time, interval, weekdays, nth_weekday, until and
+      // count - so approving a proposed reminder by hand produced a DIFFERENT,
+      // weaker rule than letting it auto-apply, which is the one thing the
+      // header comment of this file promises cannot happen.
       return { table: "reminders", row: {
         ...base,
-        title: String(args.title || "").slice(0, 200),
-        note: args.note ? String(args.note).slice(0, 500) : null,
-        kind,
-        freq: String(args.freq || "").toLowerCase(),
-        day_of_month: int(args.day_of_month),
-        month_of_year: int(args.month_of_year),
-        weekday: int(args.weekday),
-        on_date: args.on_date || null,
-        // A filing wants a week of warning, a birthday a day or two. Defaulting
-        // to 0 would make a tax reminder arrive on the deadline itself.
-        lead_days: int(args.lead_days)
-          ?? (kind === "filing" || kind === "bill" ? 7 : kind === "birthday" || kind === "anniversary" ? 2 : 0),
+        ...reminderColumns(args, { today: saDayKey(occurredAt, SA_DEFAULT_TZ), tz: SA_DEFAULT_TZ }),
       } };
-    }
+    case "schedule_task_candidate":
+      // The app scheduling itself. Same shared builder for the same reason.
+      return { table: "agent_tasks", row: {
+        user_id: userId,
+        ...taskRow(args, {
+          today: saDayKey(occurredAt, SA_DEFAULT_TZ),
+          nowMinutes: saMinuteOfDay(occurredAt, SA_DEFAULT_TZ),
+          tz: SA_DEFAULT_TZ,
+        }),
+        created_by: "agent",
+        origin_ingestion_id: ingestionId,
+        depth: 1,
+        dedupe_key: ingestionId ? `cap:${ingestionId}` : null,
+      } };
     case "set_target_candidate":
       // Upsert the single canonical budget row for this goal kind (see goals.js).
       return { table: "budgets", conflictTarget: "user_id,kind", row: {
