@@ -547,7 +547,10 @@ create index if not exists reminders_user_active_idx on public.reminders (user_i
 create table if not exists public.briefings (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
-  kind text not null check (kind in ('morning','evening','closeout','weekly')),
+  -- 'midday' was added by the fourth slot but never permitted here until
+  -- 20260806000021, so runMidday could not have written a row even once the
+  -- action allowlist let it through. See that migration for the full story.
+  kind text not null check (kind in ('morning','midday','evening','closeout','weekly')),
   for_date date not null,
   body text not null,
   payload jsonb not null default '{}'::jsonb,
