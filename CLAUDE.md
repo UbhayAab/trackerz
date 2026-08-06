@@ -75,12 +75,20 @@ GitHub Pages deploy is automatic on push to `main` via `.github/workflows/pages.
 
 ### Test files outside `npm test`
 
-These exist but are not in the `npm test` suite and must be run individually:
+Only these. Everything else in `tests/` is in the chain, and the list below drifted
+badly once (it still named seven files that had been folded into CI, including both
+prompt-injection suites, which is how a "we do not run that one" belief outlives the
+fact) - so check `package.json` before trusting it:
 
-- `tests/diet-domain.test.mjs`, `tests/diet-reconcile.test.mjs`, `tests/money-intelligence.test.mjs`, `tests/wellness-domain.test.mjs` - domain logic
-- `tests/dedupe-matrix.test.mjs`, `tests/period-aggregator.test.mjs` - analytics
-- `tests/fuzz-corpus.test.mjs`, `tests/safety.test.mjs` - fuzzing and safety invariants
-- `tests/e2e-live-db.test.mjs`, `tests/e2e-gemini-vision.test.mjs` - require live Supabase/Gemini credentials
+- `tests/e2e-live-db.test.mjs`, `tests/e2e-gemini-vision.test.mjs` - require live
+  Supabase/Gemini credentials and cost money, so they stay opt-in.
+
+To find the truth at any time:
+
+```powershell
+node -e "const p=require('./package.json');const fs=require('fs');const inSuite=new Set([...p.scripts.test.matchAll(/tests\/([a-z0-9-]+)\.test\.mjs/g)].map(m=>m[1]));console.log(fs.readdirSync('tests').filter(f=>f.endsWith('.test.mjs')).map(f=>f.replace('.test.mjs','')).filter(f=>!inSuite.has(f)).join('
+')||'(all registered)')"
+```
 
 ## Architecture
 

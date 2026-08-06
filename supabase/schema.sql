@@ -510,6 +510,13 @@ create table if not exists public.memory_facts (
   kind text not null default 'fact' check (kind in ('preference','pattern','fact','goal')),
   confidence numeric(5,4) not null default 0.7,
   source text not null default 'ai',
+  -- WHICH EVIDENCE SPAN justified this fact (20260806000060). These rows are
+  -- replayed into every later prompt, so a fact the model derived from a
+  -- photographed menu must never read back as something the owner said.
+  -- typed/voice = the owner; ocr/vision/sms/calendar = untrusted; null = written
+  -- before the column existed. See lib/provenance.mjs.
+  provenance text check (provenance is null or provenance in
+    ('typed', 'voice', 'ocr', 'vision', 'sms', 'calendar', 'memory', 'unknown')),
   updated_at timestamptz not null default now(),
   -- Soft delete (20260806000022). A tombstone, not a removal: every read
   -- filters `deleted_at is null`; only the 30-day purge hard-deletes.

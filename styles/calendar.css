@@ -1,96 +1,115 @@
-/* CALENDAR - the month grid and agenda rendered by src/ui/calendar-panel.js.
+/* CALENDAR - the agenda, week and month rendered by src/ui/calendar-panel.js.
  *
- * Lives inside the existing #remindersStrip card on Home, so it inherits that
- * card's surface and only has to describe the grid itself. Sized for a 320px
- * phone first: seven columns of a 7-column grid at 320px minus the card padding
- * leaves ~38px per cell, which is why the day number is 0.8rem and the event
- * marker is a dot rather than a label. */
+ * Sits in the existing #remindersStrip section on Home, flush with the page
+ * rather than inside a card of its own. That is a measurement, not a taste:
+ * .app-shell is padding-inline 10px under 520px, so a 320px phone leaves 300px,
+ * and a card's own padding would take another 20-24 off the seven month columns
+ * that need every pixel. Seven cells inside 300px are 41px wide; there is no
+ * arrangement that reaches 44, so the cells are 41 x 46 and every control that
+ * is a target in its own right - toggles, arrows, week rows, day headings - is
+ * at least 44px tall.
+ *
+ * COLOUR ONLY EVER REPEATS WHAT A SHAPE ALREADY SAID. Item types carry a glyph
+ * (src/ui/calendar-panel.js KIND_ICON), and the month cell marks a timed item
+ * with a filled dot and an all-day one with a ring, so the grid still reads in
+ * grayscale and to a colourblind eye.
+ *
+ * TOKENS ONLY. The previous version of this file reached for --surface-2,
+ * --warn and --danger, none of which exist in styles/tokens.css - so every one
+ * of them silently fell through to its hardcoded fallback, and the fallbacks
+ * were dark-theme rgba values being painted onto a light background. Everything
+ * here uses a token that is defined in BOTH themes.
+ *
+ * MOTION IS OPT-IN. The reduced case is the default and the only transitions in
+ * the file are inside a prefers-reduced-motion: no-preference block. */
+
+/* ---- head: label + the three views -------------------------------------- */
 
 .cal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-2);
 }
 
 .cal-toggle {
   display: inline-flex;
-  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
-  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
   overflow: hidden;
+  background: var(--panel);
 }
 
 .cal-toggle button {
   appearance: none;
   border: 0;
   background: transparent;
-  color: inherit;
+  color: var(--muted);
   font: inherit;
-  font-size: 0.75rem;
-  padding: 0.25rem 0.7rem;
+  font-size: var(--fs-xs);
+  /* 44px: this is a real target and it has the room. */
+  min-height: 44px;
+  padding: 0 var(--sp-3);
   cursor: pointer;
-  opacity: 0.65;
 }
 
 .cal-toggle button.is-on {
-  background: var(--accent, #138a5b);
-  color: #fff;
-  opacity: 1;
+  background: var(--accent);
+  /* --panel is white in light and near-black in dark, so one token gives a
+     readable label on the accent fill in both themes. */
+  color: var(--panel);
+  font-weight: var(--weight-semibold);
 }
 
-/* ---- agenda ------------------------------------------------------------- */
+/* ---- shared: the range header used by week and month --------------------- */
 
-.cal-agenda,
-.cal-agenda-items,
-.cal-day-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.cal-agenda-day + .cal-agenda-day {
-  margin-top: 0.6rem;
-}
-
-.cal-agenda-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin: 0 0 0.25rem;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.7;
-}
-
-.cal-agenda-day.is-today .cal-agenda-head {
-  color: var(--accent, #138a5b);
-  opacity: 1;
-}
-
-.cal-agenda-away {
-  font-size: 0.7rem;
-  text-transform: none;
-  letter-spacing: 0;
-  opacity: 0.75;
-}
-
-.cal-agenda-item,
-.cal-day-list li {
+.cal-range-head {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  border-radius: 0.6rem;
-  background: var(--surface-2, rgba(255, 255, 255, 0.04));
-  font-size: 0.9rem;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--weight-semibold);
 }
 
-.cal-agenda-item + .cal-agenda-item,
-.cal-day-list li + li {
-  margin-top: 0.3rem;
+.cal-nav {
+  appearance: none;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+  min-width: 44px;
+  min-height: 44px;
+  font-size: var(--fs-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ---- items: one row per thing, in agenda, week chips and day detail ------ */
+
+.cal-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding: var(--sp-2) 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  font-size: var(--fs-sm);
+  min-height: 44px;
+}
+
+.cal-item + .cal-item {
+  margin-top: var(--sp-1);
+}
+
+.cal-icon {
+  flex: 0 0 auto;
+  font-size: var(--fs-md);
+  line-height: 1;
 }
 
 .cal-title {
@@ -104,102 +123,312 @@
 .cal-time {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
-  font-size: 0.75rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 999px;
-  background: var(--accent-soft, rgba(19, 138, 91, 0.16));
+  font-size: var(--fs-xs);
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* A reminder with no clock is not a reminder at midnight. It reads differently
+   on purpose - no accent, because there is no time to point at. */
+.cal-time.is-allday {
+  background: var(--chip);
+  color: var(--muted);
 }
 
 .cal-rule {
   flex-basis: 100%;
-  font-size: 0.7rem;
-  opacity: 0.65;
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
-.cal-empty {
-  margin: 0.4rem 0 0;
-  font-size: 0.85rem;
-  opacity: 0.65;
+.cal-empty,
+.cal-foot {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
 }
 
-/* ---- month grid --------------------------------------------------------- */
-
-.cal-month-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.35rem;
-  font-size: 0.9rem;
-}
-
-.cal-nav {
+.cal-retry {
   appearance: none;
-  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
-  background: transparent;
-  color: inherit;
-  border-radius: 0.5rem;
-  /* 34px is the smallest a thumb reliably hits, and these arrows are the one
-     control in the grid a user taps repeatedly. */
-  min-width: 2.1rem;
-  min-height: 2.1rem;
-  font-size: 1rem;
-  line-height: 1;
+  margin-top: var(--sp-2);
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
-.cal-weekdays,
+.cal-linklike {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0 var(--sp-1);
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---- agenda -------------------------------------------------------------- */
+
+.cal-agenda,
+.cal-agenda-items,
+.cal-day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cal-agenda-day + .cal-agenda-day {
+  margin-top: var(--sp-2);
+}
+
+.cal-agenda-head {
+  appearance: none;
+  border: 0;
+  background: none;
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 0 2px;
+  /* The day heading is how you open a day, so it is a target, not a caption. */
+  min-height: 44px;
+  font: inherit;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.cal-agenda-day.is-today .cal-agenda-head,
+.cal-agenda-head.is-open {
+  color: var(--accent);
+  font-weight: var(--weight-semibold);
+}
+
+.cal-agenda-away {
+  font-size: var(--fs-xs);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+/* ---- week: a day per row, the hour left to right ------------------------- */
+
+.cal-week {
+  margin-top: var(--sp-1);
+}
+
+/* The axis sits over the rail, so it is inset by exactly the day column plus its
+   gap (34 + 8). Three labels on a 3-column grid put the middle one at true 50%,
+   which a space-between flex row does not. */
+.cal-axis {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  margin: var(--sp-2) 0 2px 42px;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.cal-axis span:nth-child(2) { text-align: center; }
+.cal-axis span:nth-child(3) { text-align: right; }
+
+.cal-wrows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cal-wrow {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 46px;
+  padding: var(--sp-1) 6px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cal-wrow.is-empty { background: transparent; }
+.cal-wrow.is-past { opacity: 0.55; }
+.cal-wrow.is-today { border-color: var(--accent); }
+.cal-wrow.is-selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.cal-wday {
+  flex: 0 0 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+}
+.cal-wday b {
+  font-size: var(--fs-xs);
+  font-weight: var(--weight-medium);
+  color: var(--muted);
+}
+.cal-wday i {
+  font-style: normal;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.cal-wrow.is-today .cal-wday b,
+.cal-wrow.is-today .cal-wday i { color: var(--accent); font-weight: var(--weight-bold); }
+
+.cal-wtrack {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* All-day items never touch the rail. They are chips above it, so nothing on the
+   hour axis is there without a real hour behind it. */
+.cal-wallday {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.cal-wchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+  font-size: var(--fs-xs);
+}
+
+.cal-wrail {
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: 3px;
+  /* Three hairlines at 0 / 50 / 100% - the same three the axis labels name. */
+  background:
+    linear-gradient(var(--line), var(--line)) 0 0 / 1px 100% no-repeat,
+    linear-gradient(var(--line), var(--line)) 50% 0 / 1px 100% no-repeat,
+    linear-gradient(var(--line), var(--line)) 100% 0 / 1px 100% no-repeat,
+    var(--panel-2);
+}
+
+/* 17px tall with a 12px glyph and a 20px floor: measured at 320px, a block any
+   smaller renders the emoji as an unreadable smudge, and the glyph is the whole
+   reason the rail can be read without colour. */
+.cal-wblock {
+  position: absolute;
+  height: 17px;
+  min-width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* An item outside the drawn window is marked rather than moved: it is pinned to
+   the edge it fell off, and the dashed border says the position is a clamp. */
+.cal-wblock.is-clipped { border-style: dashed; }
+
+/* ---- month grid ---------------------------------------------------------- */
+
+.cal-month { margin-top: var(--sp-1); }
+
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-top: var(--sp-2);
+}
+
+.cal-weekdays span {
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  padding-bottom: 2px;
+}
+
 .cal-grid {
+  display: grid;
+  gap: 2px;
+}
+
+.cal-row {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 2px;
 }
 
-.cal-weekdays span {
-  text-align: center;
-  font-size: 0.65rem;
-  opacity: 0.55;
-  padding-bottom: 0.15rem;
-}
-
 .cal-cell {
   appearance: none;
-  border: 0;
-  background: var(--surface-2, rgba(255, 255, 255, 0.04));
-  color: inherit;
+  border: 1px solid transparent;
+  background: var(--panel);
+  color: var(--ink);
   font: inherit;
-  font-size: 0.8rem;
-  /* Square-ish cells without a fixed height, so the six-row grid keeps its
-     shape from 320px to a desktop card. */
-  aspect-ratio: 1 / 1;
-  border-radius: 0.4rem;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  /* 46px tall rather than square: a square cell at 300px is 41px, and height is
+     the one dimension seven columns do not have to fight over. */
+  min-height: 46px;
+  border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   cursor: pointer;
   position: relative;
 }
 
 .cal-cell.is-blank {
   background: transparent;
+  border-color: transparent;
   cursor: default;
 }
 
-.cal-cell.is-past {
-  opacity: 0.45;
-}
+.cal-cell.is-past { color: var(--muted); }
 
 .cal-cell.is-today {
-  outline: 1px solid var(--accent, #138a5b);
-  font-weight: 700;
+  border-color: var(--accent);
+  font-weight: var(--weight-bold);
+  color: var(--accent);
 }
 
 .cal-cell.is-selected {
-  background: var(--accent, #138a5b);
-  color: #fff;
-  opacity: 1;
+  background: var(--accent);
+  color: var(--panel);
+  border-color: var(--accent);
 }
 
 .cal-dots {
@@ -209,36 +438,155 @@
 }
 
 .cal-dots i {
-  width: 3px;
-  height: 3px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--accent, #138a5b);
   display: block;
+  box-sizing: border-box;
 }
 
-.cal-cell.is-selected .cal-dots i {
-  background: #fff;
+/* Filled = it has a time. Ring = it only has a date. A shape difference, so the
+   distinction survives a grayscale screenshot. */
+.cal-dots i.is-timed { background: var(--accent); }
+.cal-dots i.is-allday { border: 1px solid var(--accent); background: transparent; }
+
+.cal-cell.is-selected .cal-dots i.is-timed { background: var(--panel); }
+.cal-cell.is-selected .cal-dots i.is-allday { border-color: var(--panel); }
+
+/* ---- the day detail ------------------------------------------------------ */
+
+.cal-detail {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
 }
 
-.cal-day-list {
-  margin-top: 0.5rem;
+.cal-detail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.cal-detail-head span {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.cal-close {
+  appearance: none;
+  margin-left: auto;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cal-day-list { margin-top: var(--sp-2); }
+
+/* The detail is where you went to READ the thing, so its title wraps instead of
+   truncating. Everywhere else a long title ellipsises to keep the row one line. */
+.cal-item.is-detail { align-items: flex-start; }
+.cal-item.is-detail .cal-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  /* A title is whatever the user dictated, and a 120-character word has no break
+     opportunity in it. Measured at 320px: without this the detail row's content
+     ran to 734px and the shell clipped it silently. */
+  overflow-wrap: anywhere;
+}
+
+/* ---- the run log of a scheduled check ------------------------------------ */
+
+.cal-runs-note {
+  flex-basis: 100%;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.cal-runs-note.is-bad { color: var(--risk); }
+
+.cal-runs {
+  flex-basis: 100%;
+  list-style: none;
+  margin: var(--sp-1) 0 0;
+  padding: 0;
+  font-size: var(--fs-xs);
+}
+
+.cal-runs li {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cal-runs li b { font-weight: var(--weight-semibold); }
+.cal-runs li[data-status="failed"] b,
+.cal-runs li[data-status="blocked"] b { color: var(--risk); }
+.cal-runs li[data-status="silent"] b { color: var(--muted); }
+.cal-runs li[data-status="spoke"] b { color: var(--accent); }
+
+.cal-run-when {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.cal-run-note {
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- focus: visible, and the same everywhere ----------------------------- */
+
+.cal-toggle button:focus-visible,
+.cal-nav:focus-visible,
+.cal-cell:focus-visible,
+.cal-wrow:focus-visible,
+.cal-agenda-head:focus-visible,
+.cal-close:focus-visible,
+.cal-retry:focus-visible,
+.cal-linklike:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ---- the manage list's extra rule detail (Settings) ---------------------- */
 
 .reminder-next {
   font-variant-numeric: tabular-nums;
-  opacity: 0.75;
+  color: var(--muted);
 }
 
 .reminder-warn {
   display: block;
-  font-size: 0.7rem;
-  color: var(--warn, #d98324);
+  font-size: var(--fs-xs);
+  color: var(--sun);
 }
 
+.reminder-subhead {
+  margin: var(--sp-4) 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* ---- motion, opt-in ------------------------------------------------------ */
+
 @media (prefers-reduced-motion: no-preference) {
-  .cal-cell {
-    transition: background-color 120ms ease;
+  .cal-cell,
+  .cal-wrow,
+  .cal-toggle button {
+    transition: background-color var(--dur-fast) var(--ease-standard),
+                border-color var(--dur-fast) var(--ease-standard);
   }
 }

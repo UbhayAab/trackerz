@@ -673,7 +673,7 @@
     },
     {
       "file": "src/ui/reminders-panel.js",
-      "reason": "Reads fetchReminders(). A failed read renders the 'no reminders' empty state, which is a claim about the user's calendar rather than a report about a failed request. Real gap; the file is owned by another workstream in this phase."
+      "reason": "STALE AS WRITTEN, kept because the grep still matches. As of the 2026-08-06 calendar work this file DOES surface both of its reads: fetchCalendarReminders() and fetchAgentTasks() fail independently, each keeps its message, and renderCalendar() draws a named failure with a retry instead of an empty calendar (tests/calendar-ui.test.mjs asserts that branch). It stays listed only because it uses none of the five tokens ERROR_BRANCH greps for - the follow-up is to route it through lib/failure.mjs, not to add an error branch it already has."
     },
     {
       "file": "src/ui/spend-chips.js",

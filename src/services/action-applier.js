@@ -161,6 +161,13 @@ export function buildRowForTool(action, userId) {
         kind: args.kind || "fact",
         confidence: typeof args.confidence === "number" ? args.confidence : 0.7,
         source: "ai",
+        // Where the fact came from, stamped on the tool call by
+        // enforceCapabilities (lib/provenance.mjs) when the agent ran. A fact
+        // the user taps "Add it" on must land with the SAME provenance it was
+        // proposed with - otherwise a screenshot-derived fact is laundered into
+        // an unattributed one by the act of confirming it. "unknown" rather than
+        // "typed" when the stamp is missing: fail closed.
+        provenance: args._provenance || "unknown",
         updated_at: new Date().toISOString(),
       } };
     default:
