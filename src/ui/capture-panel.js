@@ -7,7 +7,7 @@ import { renderSpendSuggestion, clearSpendSuggestion } from "./spend-suggestion.
 import { renderAnswer, clearAnswer, answerFrom, bindAnswerCard } from "./answer-card.js";
 import { classifyRequestKind } from "../../lib/request-router.mjs";
 import { startDictation, isLiveTranscriptionSupported, collapseStutter } from "../services/speech.js";
-import { enqueueCapture } from "../services/offline-queue.js";
+import { enqueueCapture, markSending, markSent, markFailed } from "../services/offline-queue.js";
 import { recordLatency, bucketFor } from "../services/latency-stats.js";
 import { showToast } from "./toast.js";
 
@@ -151,15 +151,42 @@ async function handleSubmit() {
     state.activeJob = { key: "queued", label: "Queued", detail: "Capture received.", stageIndex: 0, startedAt, bucket };
   });
 
+  // OUTBOX FIRST, always - before any network call, and regardless of what
+  // navigator.onLine claims.
+  //
+  // That flag is the reason captures used to die. It reports whether an
+  // interface is up, not whether anything is reachable, so in a metro tunnel or
+  // a basement it stays TRUE while every request hangs. Those hangs landed in
+  // the catch, and resetForm() in the finally erased the words. The one path
+  // that reliably destroyed a capture was the one hit furthest from a keyboard.
+  //
+  // Writing here first also means an app kill mid-flight is survivable: the item
+  // is on disk in `sending`, and recoverOutbox() on the next boot hands it back
+  // to the retry machine.
+  let outboxId = null;
+  try {
+    outboxId = await enqueueCapture({
+      text: [text, submitted.transcript].filter(Boolean).join("\n"),
+      files: allFiles,
+      captureType,
+    });
+  } catch (err) {
+    // Storage itself is unavailable (private mode, quota, a tab holding an old
+    // DB version). Say so rather than proceeding as if the capture were safe.
+    console.error("[capture] outbox unavailable:", err);
+    showToast("This browser won't let me save locally - don't close the app until this finishes.", { kind: "error", duration: 6000 });
+  }
+
   if (!navigator.onLine) {
-    await enqueueCapture({ text: [text, submitted.transcript].filter(Boolean).join("\n"), files: allFiles, captureType });
     updateOptimistic(optimisticId, { status: "queued", detail: "Offline - saved on this phone, will send when you're back online." });
     updateState((state) => {
       state.activeJob = null;
-      state.parseLog.unshift("Offline: capture stored in IndexedDB queue.");
+      state.parseLog.unshift("Offline: capture waiting in the outbox.");
     });
     return;
   }
+
+  if (outboxId) await markSending(outboxId).catch(() => null);
 
   clearSpendSuggestion();
   clearAnswer();
@@ -206,6 +233,9 @@ async function handleSubmit() {
       status: "done",
       detail: answered ? "Answered - nothing was logged." : "Saved. Review the action queue.",
     });
+    // It landed. Release it from the outbox - the domain rows are the record
+    // now, and a lingering item would sit in the queue depth forever.
+    if (outboxId) await markSent(outboxId, result?.ingestion?.id || null).catch(() => null);
     // Only a run that actually completed teaches the curve. Failures and
     // timeouts are not observations of how long success takes.
     recordLatency(bucket, Date.now() - startedAt);
@@ -218,41 +248,50 @@ async function handleSubmit() {
     });
   } catch (err) {
     const msg = err?.message || String(err);
-    // The box was cleared on submit, so a failure here would otherwise DESTROY
-    // the capture: the old code ran resetForm() in `finally` and the text was
-    // simply gone. Queue it, so the only way to lose a capture is to discard it
-    // deliberately. (Phase 3 moves every capture through the outbox by default;
-    // this is the same guarantee, reached the short way.)
-    let queued = false;
-    try {
-      await enqueueCapture({
-        text: [submitted.text, submitted.transcript].filter(Boolean).join("\n"),
-        files: submitted.files,
-        captureType: submitted.captureType,
-      });
-      queued = true;
-    } catch (queueErr) {
-      // Both paths failed. Put the words back in the box rather than swallow
-      // them - but never clobber something the user has typed since.
+    // The item is ALREADY in the outbox - it was written before the network call
+    // - so this must hand it back to the retry machine, not enqueue a second
+    // copy. The state machine decides whether it retries (offline, timeout, 5xx,
+    // captive portal) or stops and asks (401, 402, 400), because retrying a
+    // signed-out session forever drains the battery and retrying an
+    // over-budget capture just spends more money.
+    let outcome = null;
+    if (outboxId) outcome = await markFailed(outboxId, err).catch(() => null);
+
+    if (!outboxId) {
+      // The outbox was never available. Put the words back rather than swallow
+      // them, but never clobber something typed since.
       const box = $("#captureText");
       if (box && !box.value.trim()) {
         box.value = [submitted.text, submitted.transcript].filter(Boolean).join("\n");
         renderRoutePreview();
       }
-      console.error("[capture-panel] capture failed AND could not be queued:", queueErr);
     }
-    updateOptimistic(optimisticId, {
-      status: queued ? "queued" : "error",
-      detail: queued ? `Couldn't send (${msg}) - saved on this phone, will retry.` : msg,
-    });
-    showToast(
-      queued ? "Couldn't send - saved on this phone, will retry." : `Capture failed - ${msg}`,
-      { kind: "error", duration: 6000 },
-    );
+
+    const willRetry = outcome?.state === "failed";
+    const detail = willRetry
+      ? `Couldn't send (${msg}) - saved on this phone, retrying.`
+      : outcome?.state === "dead"
+        ? `Couldn't send - ${describeDeath(outcome)}`
+        : msg;
+    updateOptimistic(optimisticId, { status: willRetry ? "queued" : "error", detail });
+    showToast(willRetry ? "Couldn't send - saved on this phone, retrying." : detail,
+      { kind: "error", duration: 6000 });
     updateState((state) => {
       state.activeJob = null;
-      state.parseLog.unshift(`Capture failed: ${msg}${queued ? " (queued for retry)" : ""}`);
+      state.parseLog.unshift(`Capture failed: ${msg}${willRetry ? " (queued for retry)" : ""}`);
     });
+  }
+}
+
+// Why a capture stopped trying, in words that say what to DO about it. "Capture
+// failed - [object Object]" tells the user nothing and is how a lost capture
+// becomes a re-submit and a duplicate row.
+function describeDeath(item) {
+  switch (item?.lastErrorKind) {
+    case "auth": return "you're signed out. Sign in, then tap Retry.";
+    case "cap": return "today's AI budget is used up. It'll keep until tomorrow.";
+    case "rejected": return "the server couldn't read that one.";
+    default: return `${item?.lastError || "unknown error"}. Tap Retry.`;
   }
 }
 

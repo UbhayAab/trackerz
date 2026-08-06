@@ -4,19 +4,23 @@
 import { aggregatePeriods, dailySeries } from "../analytics/period-aggregator.js";
 import { composeInsights } from "../analytics/insights-feed.js";
 import { activeProteinTarget, activeCalorieTarget } from "../domain/goals.js";
+import { fmtMetric } from "../utils/formatters.js";
 
+// Both tile formatters route through fmtMetric, so an absent value (null) AND a
+// failed read (an Err result) render the same honest "-" instead of a number the
+// user would read as measured. fmtMetric never calls the inner formatter with an
+// absent value, so neither of these needs its own null branch.
 function fmt(n, { currency = false } = {}) {
-  if (n === null || n === undefined) return "-";
-  if (currency) return `₹${Math.round(n).toLocaleString("en-IN")}`;
-  return Math.round(n).toLocaleString("en-IN");
+  return fmtMetric(n, (v) => (currency
+    ? `₹${Math.round(v).toLocaleString("en-IN")}`
+    : Math.round(v).toLocaleString("en-IN")));
 }
 
 // A value with a unit suffix that stays clean when the value is absent: renders
 // "7.2h" with data, plain "-" (not "-h") without. This is what stops the
 // analytics page reporting "Sleep 0h" for a night it never measured.
 function fmtUnit(n, unit) {
-  if (n === null || n === undefined) return "-";
-  return `${Math.round(n * 10) / 10}${unit}`;
+  return fmtMetric(n, (v) => `${Math.round(v * 10) / 10}${unit}`);
 }
 
 function fmtDelta(p) {
@@ -36,7 +40,15 @@ export function renderDashboards({ ledger = [], foodLogs = [], wellnessLogs = []
   if (!root) return;
   const agg = aggregatePeriods({ ledger, foodLogs, wellnessLogs, bodyMetrics, sleepSessions, today });
   const insights = composeInsights({ aggregates: agg, budgets, subscriptions, ledger, today });
-  const series = dailySeries({ rows: ledger.filter((r) => r.direction === "expense"), today, days: 30, valueOf: (r) => Math.abs(Number(r.amount || 0)) });
+  // valueOf returns null (not 0) for a row with no usable amount, so dailySeries
+  // marks that day unmeasured and the sparkline gaps it instead of drawing a
+  // confident Rs 0 for a day we simply never captured.
+  const series = dailySeries({
+    rows: ledger.filter((r) => r.direction === "expense"),
+    today,
+    days: 30,
+    valueOf: (r) => (r.amount === null || r.amount === undefined || !isFinite(Number(r.amount)) ? null : Math.abs(Number(r.amount))),
+  });
 
   // Charts. Protein/calories are GAPPED (null on days with no food log) so we
   // never draw a flat zero line for a day we simply did not capture. Spend keeps
@@ -95,7 +107,11 @@ export function renderDashboards({ ledger = [], foodLogs = [], wellnessLogs = []
         <h3>Spend · last 30 days</h3>
         ${series.some((p) => p.value > 0)
           ? `<svg viewBox="0 0 300 60" class="sparkline" preserveAspectRatio="none" aria-label="30-day spend sparkline">${renderSparkline(series)}</svg>`
-          : `<p class="chart-empty muted small">No spend recorded in the last 30 days.</p>`}
+          // "nothing captured" and "captured, and it was zero" are different
+          // facts about the last 30 days, so they get different sentences.
+          : series.some((p) => p.measured)
+            ? `<p class="chart-empty muted small">No spend recorded in the last 30 days.</p>`
+            : `<p class="chart-empty muted small">No spend captured yet in the last 30 days - nothing measured to chart.</p>`}
       </div>
     </div>
   `;
@@ -119,12 +135,49 @@ function tile(label, value, delta = "", deltaCls = "") {
   `;
 }
 
+// The spend sparkline. `dailySeries` marks a day with no rows as
+// { value: null, measured: false }; those points are GAPPED, not drawn at the
+// baseline. Plotting them at zero is what made a three-day-old account look like
+// it had spent nothing for 27 days, and there is no way for a reader to tell
+// that flat line from real restraint.
 function renderSparkline(series) {
   if (!series.length) return "";
-  const max = Math.max(1, ...series.map((p) => p.value));
+  const measured = series.filter((p) => p.value !== null && p.value !== undefined && isFinite(p.value));
+  if (!measured.length) return "";
+  const max = Math.max(1, ...measured.map((p) => p.value));
   const stepX = 300 / Math.max(1, series.length - 1);
-  const points = series.map((p, i) => `${i * stepX},${60 - (p.value / max) * 56 - 2}`).join(" ");
-  return `<polygon class="spark-fill" points="${points} ${(series.length - 1) * stepX},60 0,60"/><polyline class="spark-line" fill="none" stroke-width="2" points="${points}" />`;
+  const yOf = (v) => 60 - (v / max) * 56 - 2;
+
+  // Break the line wherever the data stops.
+  const segments = [];
+  let cur = [];
+  series.forEach((p, i) => {
+    if (p.value === null || p.value === undefined || !isFinite(p.value)) {
+      if (cur.length) { segments.push(cur); cur = []; }
+      return;
+    }
+    cur.push(`${i * stepX},${yOf(p.value)}`);
+  });
+  if (cur.length) segments.push(cur);
+
+  const fills = segments
+    .filter((s) => s.length > 1)
+    .map((s) => {
+      const firstX = s[0].split(",")[0];
+      const lastX = s[s.length - 1].split(",")[0];
+      return `<polygon class="spark-fill" points="${s.join(" ")} ${lastX},60 ${firstX},60"/>`;
+    })
+    .join("");
+  const lines = segments
+    .filter((s) => s.length > 1)
+    .map((s) => `<polyline class="spark-line" fill="none" stroke-width="2" points="${s.join(" ")}" />`)
+    .join("");
+  // A lone measured day has no line to draw; dot it so it is not invisible.
+  const dots = segments
+    .filter((s) => s.length === 1)
+    .map((s) => { const [cx, cy] = s[0].split(","); return `<circle class="spark-line" cx="${cx}" cy="${cy}" r="2" />`; })
+    .join("");
+  return `${fills}${lines}${dots}`;
 }
 
 // A daily series that GAPS empty days (value === null) instead of coercing them

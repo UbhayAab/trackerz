@@ -9,6 +9,7 @@ import { subscribe, getState } from "../state/app-state.js";
 import { bootWithAuth } from "./bootstrap.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { registerServiceWorker, bindInstallPrompt, bindOnlineDrain } from "../services/pwa.js";
+import { recoverOutbox, drainOfflineQueue } from "../services/offline-queue.js";
 import { runCapture } from "../services/agent-runner.js";
 import { ensureTodayBriefing, watchTodayBriefings } from "../services/briefing.js";
 import { renderBriefingStrip } from "../ui/briefing-strip.js";
@@ -51,6 +52,14 @@ bootWithAuth(async () => {
   bindDietPlan();
   renderDietPlan();
   bindOnlineDrain(runCapture);
+  // A crash is not an event the running code observes. Anything left mid-flight
+  // when the app was killed - Android reclaims the WebView aggressively, and the
+  // camera Activity is a common trigger - sits in `sending` and would never be
+  // sent or surfaced. Hand it back to the retry machine, then drain: on a
+  // connection that never actually dropped, the `online` event never fires.
+  recoverOutbox()
+    .then((n) => (n ? drainOfflineQueue(runCapture) : null))
+    .catch((err) => console.error("[outbox] boot recovery failed:", err));
   await hydrateStateFromSupabase();
   // Proactive briefing: the jarvis edge fn writes it server-side on schedule -
   // show the freshest row (client-generating only as offline fallback), and

@@ -27,9 +27,16 @@
     }
   },
   "shortcuts": [
-    { "name": "Capture", "short_name": "Capture", "url": "./index.html" },
-    { "name": "Money", "short_name": "Money", "url": "./pages/money.html" },
-    { "name": "Insights", "short_name": "Insights", "url": "./pages/analytics.html" }
+    {
+      "name": "Log 250 ml water",
+      "short_name": "+250 ml",
+      "description": "Log one glass of water without opening the app",
+      "url": "./quick-log.html?do=water&ml=250",
+      "icons": [{ "src": "./icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    { "name": "Capture", "short_name": "Capture", "description": "Drop text, a photo or your voice into Deno", "url": "./index.html" },
+    { "name": "Money", "short_name": "Money", "description": "This month's spend and budget", "url": "./pages/money.html" },
+    { "name": "Insights", "short_name": "Insights", "description": "Trends across money, diet and wellness", "url": "./pages/analytics.html" }
   ],
   "categories": ["finance", "lifestyle", "productivity", "health"]
 }

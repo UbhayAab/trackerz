@@ -17,12 +17,21 @@
 // is only purged on activate when it changes, so a stale VERSION serves the old
 // precached index.html and src/ indefinitely. It sat at v21 from 2026-07-25 while
 // the app changed underneath it for twelve days.
-const VERSION = "deno-v22-20260806";
+// v23 adds quick-log.html + its module. That page is the target of the manifest
+// shortcut, the Android home-screen widget and the Quick Settings tile - the
+// three surfaces whose whole promise is "one tap logs water". A shortcut that
+// opens a blank offline page is worse than no shortcut, so unlike every other
+// page module this one is precached explicitly rather than left to be cached on
+// first visit.
+const VERSION = "deno-v23-20260806";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./manifest.webmanifest",
+  "./quick-log.html",
+  "./src/pages/quick-log.js",
+  "./lib/water.mjs",
   "./pages/money.html",
   "./pages/gym.html",
   "./pages/analytics.html",
@@ -129,9 +138,9 @@ self.addEventListener("fetch", (event) => {
 
 // Store the shared payload, then redirect to the receiving page.
 //
-// The IndexedDB name/store/record shape MUST match src/services/offline-queue.js
-// (trackerz_offline / captures / {text, files:[{name,type,blob}], captureType,
-// queuedAt, ingestionId}) - that is the queue share-target.js reads back.
+// The IndexedDB name/store/record shape MUST match src/services/outbox-store.js
+// (trackerz_offline / captures / v2 outbox item) - that is the queue
+// share-target.js reads back.
 // Redirect happens even on a storage failure, with ?shareerror set, so the user
 // lands on a page that can explain itself instead of a browser error.
 async function handleShareTarget(req) {
@@ -145,12 +154,24 @@ async function handleShareTarget(req) {
     const files = form.getAll("media").filter((f) => f && typeof f === "object" && "size" in f && f.size > 0);
 
     if (text || files.length) {
+      const now = Date.now();
+      // The id IS the idempotency key, minted here and stable across every
+      // retry. A fresh id per attempt is what let one purchase become three
+      // ledger rows on 2026-07-09.
+      const id = (self.crypto?.randomUUID?.() || `cap_${now}_${Math.random().toString(36).slice(2, 10)}`);
       await idbAddCapture({
+        id,
+        clientKey: id,
+        state: "pending",
+        attempts: 0,
+        createdAt: now,
+        nextAttemptAt: now,
         text,
         files: files.map((f) => ({ name: f.name || "shared", type: f.type || "application/octet-stream", blob: f })),
         captureType: "auto",
-        queuedAt: Date.now(),
         ingestionId: null,
+        lastError: null,
+        lastErrorKind: null,
       });
     }
     return Response.redirect(dest.href, 303);
@@ -165,18 +186,26 @@ async function handleShareTarget(req) {
 // in agreement.
 function idbAddCapture(record) {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open("trackerz_offline", 1);
+    const open = indexedDB.open("trackerz_offline", 2);
     open.onupgradeneeded = () => {
       const db = open.result;
       if (!db.objectStoreNames.contains("captures")) {
-        db.createObjectStore("captures", { keyPath: "id", autoIncrement: true });
+        // keyPath "id", NOT autoIncrement: the id is a client-generated UUID
+        // that doubles as the idempotency key.
+        const store = db.createObjectStore("captures", { keyPath: "id" });
+        store.createIndex("by_state", "state");
+        store.createIndex("by_next", "nextAttemptAt");
       }
     };
+    // A page holding v1 open blocks the upgrade. Reject rather than hang: the
+    // caller redirects with ?shareerror so the user sees why.
+    open.onblocked = () => reject(new Error("idb_blocked"));
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
       const db = open.result;
       const tx = db.transaction("captures", "readwrite");
-      const add = tx.objectStore("captures").add(record);
+      // put, not add: the record carries its own primary key now.
+      const add = tx.objectStore("captures").put(record);
       add.onerror = () => reject(add.error);
       tx.oncomplete = () => { db.close(); resolve(add.result); };
       tx.onerror = () => reject(tx.error);

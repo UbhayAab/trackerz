@@ -113,8 +113,41 @@ assert.match(runner, /ingestionId \? await loadIngestion/, "a retry must reuse t
 
 // --- 5. the offline queue retries into the same ingestion -------------------
 
-assert.match(queue, /ingestionId: row\.ingestionId \|\| null/, "a drained capture must retry into the ingestion a previous drain created");
-assert.match(queue, /export async function rememberIngestionId/);
-assert.match(queue, /cleanupError/, "a capture that landed but failed local cleanup must not be reported as failed");
+// Assert the BEHAVIOUR, not a variable name. The queue became the outbox and
+// the loop variable was renamed; the guarantee is unchanged and is what matters.
+assert.match(queue, /ingestionId: item\.ingestionId \|\| null/,
+  "a drained capture must retry into the ingestion a previous drain created");
+assert.match(queue, /onIngestion:/,
+  "the drain must be told the ingestion id the moment it exists, not after the round trip");
+assert.match(queue, /async function pinIngestion/,
+  "the ingestion id must be persisted, or a crash mid-drain retries into a second capture");
+
+// Every capture is now durable BEFORE the network call, not only when
+// navigator.onLine happens to be false. That flag reports whether an interface
+// is up, not whether anything is reachable: in a tunnel it stays true while
+// requests hang, and those hangs used to reach a catch that erased the text.
+const panel = readFileSync("src/ui/capture-panel.js", "utf8");
+const enqueueAt = panel.indexOf("await enqueueCapture(");
+const invokeAt = panel.indexOf("await runCapture(");
+assert.ok(enqueueAt !== -1 && invokeAt !== -1 && enqueueAt < invokeAt,
+  "the capture must be written to the outbox BEFORE the agent call, so a crash or a hang cannot lose it");
+assert.ok(!/if \(!navigator\.onLine\) \{\s*await enqueueCapture/.test(panel),
+  "enqueuing must not be gated on navigator.onLine");
+
+// A failure hands the existing item back to the retry machine. Enqueuing again
+// here would store the same capture twice and send it twice.
+assert.match(panel, /await markFailed\(outboxId, err\)/,
+  "a failed foreground attempt must mark the existing outbox item, not enqueue a duplicate");
+assert.match(panel, /await markSent\(outboxId/,
+  "a landed capture must be released from the outbox, or it retries forever");
+
+// Interrupted work must be recoverable on the next boot.
+const store = readFileSync("src/services/outbox-store.js", "utf8");
+assert.match(store, /export async function recoverInterrupted/,
+  "an app killed mid-send leaves an item in `sending` that nothing would ever retry");
+assert.match(store, /onblocked/,
+  "a tab holding an older DB version must reject, not hang forever");
+assert.match(store, /migrateV1Row/,
+  "captures queued before the outbox upgrade must survive the upgrade");
 
 console.log("capture idempotency tests passed: fingerprint is clock-free and text/media derived; guard precedes the pipeline; no unique constraint; client verifies before claiming failure");

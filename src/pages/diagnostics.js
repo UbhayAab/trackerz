@@ -5,6 +5,12 @@ import { isLiveTranscriptionSupported } from "../services/speech.js";
 import { hasSupabaseConfig } from "../config.js";
 import { runCapture } from "../services/agent-runner.js";
 import { renderNav } from "../ui/navigation.js";
+// describeError used to live in this file and was the only correct error
+// flattener in the app - it is the one place that unwraps a FunctionsHttpError's
+// Response body instead of printing "[object Object]". It now lives in
+// lib/failure.mjs so every surface gets the same quality, and diagnostics
+// imports it rather than keeping a private copy that can drift.
+import { describeError } from "../../lib/failure.mjs";
 
 bootWithAuth(async () => {
   renderNav();
@@ -89,48 +95,6 @@ function paint(cell, { status, detail }) {
   cell.textContent = text.length > 200 ? `${text.slice(0, 200)}…` : text;
   cell.title = text; // full error survives the visual truncation
   cell.className = `diag-status ${status}`;
-}
-
-/**
- * Supabase reports failures as plain objects, not Errors: PostgrestError carries
- * code/details/hint, StorageError carries a status, and FunctionsHttpError hides
- * the real reason in a Response body. Flattening all of it is the difference
- * between an actionable row and "[object Object]".
- */
-async function describeError(err) {
-  if (!err) return "unknown error";
-  if (typeof err === "string") return err;
-  const parts = [];
-  if (err.message) parts.push(String(err.message));
-  if (err.code) parts.push(`code ${err.code}`);
-  if (err.status || err.context?.status) parts.push(`http ${err.status || err.context.status}`);
-  if (err.details) parts.push(String(err.details));
-  if (err.hint) parts.push(`hint: ${err.hint}`);
-  const body = await readErrorBody(err);
-  if (body) parts.push(body);
-  if (!parts.length) parts.push(stringifyUnknown(err));
-  return parts.join(" - ");
-}
-
-async function readErrorBody(err) {
-  const ctx = err.context;
-  if (!ctx || typeof ctx.text !== "function") return "";
-  try {
-    const text = (await ctx.text()).trim();
-    return text.slice(0, 300);
-  } catch {
-    return ""; // body already consumed or not readable; the rest of the detail still stands
-  }
-}
-
-function stringifyUnknown(err) {
-  try {
-    const json = JSON.stringify(err);
-    if (json && json !== "{}") return json;
-  } catch {
-    // fall through to String()
-  }
-  return String(err);
 }
 
 async function pingSupabase() {

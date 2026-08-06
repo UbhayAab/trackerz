@@ -15,7 +15,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const sw = readFileSync("sw.js", "utf8");
-const queue = readFileSync("src/services/offline-queue.js", "utf8");
+// The schema moved to outbox-store.js when the queue became the outbox: every
+// capture now goes through it, not just the ones taken while offline.
+const queue = readFileSync("src/services/outbox-store.js", "utf8");
 const manifest = JSON.parse(readFileSync("manifest.webmanifest", "utf8"));
 const page = readFileSync("src/pages/share-target.js", "utf8");
 
@@ -56,15 +58,29 @@ assert.ok(
   sw.includes(`"${store}"`),
   `sw.js writes to a different object store than offline-queue.js ("${store}")`
 );
+// keyPath "id" with NO autoIncrement: the id is a client-generated UUID that
+// doubles as the idempotency key, so a retry reuses it rather than minting a
+// second capture. An auto-incremented key cannot do that.
 assert.ok(
-  /keyPath: "id", autoIncrement: true/.test(sw),
-  "sw.js store definition must match offline-queue.js (keyPath id, autoIncrement)"
+  /keyPath: "id" \}/.test(sw),
+  "sw.js store definition must match outbox-store.js (keyPath id, no autoIncrement)"
 );
+assert.ok(
+  !/autoIncrement:\s*true/.test(sw),
+  "an auto-incremented key cannot serve as an idempotency key"
+);
+const swVersion = sw.match(/indexedDB\.open\("trackerz_offline",\s*(\d+)\)/)?.[1];
+const storeVersion = queue.match(/const DB_VERSION = (\d+)/)?.[1];
+assert.equal(swVersion, storeVersion,
+  `sw.js opens database version ${swVersion} but outbox-store.js declares ${storeVersion} - the lower one triggers an upgrade the other does not expect`);
 
-// The record shape the page reads back: text + files[{name,type,blob}].
-for (const field of ["text", "files", "captureType", "queuedAt", "ingestionId"]) {
+// The record shape the page and the drainer read back.
+for (const field of ["text", "files", "captureType", "ingestionId", "clientKey", "state", "attempts", "createdAt", "nextAttemptAt"]) {
   assert.ok(new RegExp(`\\b${field}\\b`).test(sw), `sw.js record is missing "${field}"`);
 }
+// A shared file must arrive already retryable, not in some state the drainer
+// skips - otherwise sharing into the app queues something that never sends.
+assert.ok(/state:\s*"pending"/.test(sw), "a shared capture must be queued as pending");
 for (const field of ["name", "type", "blob"]) {
   assert.ok(new RegExp(`${field}:`).test(sw), `sw.js file record is missing "${field}"`);
 }
