@@ -26,7 +26,12 @@ import { config as loadEnv } from "dotenv";
 loadEnv({ path: ".env.local" });
 
 const slug = process.argv[2] || "agent";
-const VERIFY_JWT = { agent: true, jarvis: false };
+// `gcal` is verify_jwt=false for the same reason jarvis is, plus two of its own:
+// Google's OAuth redirect (/gcal/callback) and its events.watch webhook
+// (/gcal/webhook) both arrive with no JWT and never can. Auth is enforced
+// in-function - a user JWT for the user-facing actions, the x-jarvis-secret cron
+// header for drain/renew, and a per-channel token for the webhook.
+const VERIFY_JWT = { agent: true, jarvis: false, gcal: false };
 if (!(slug in VERIFY_JWT)) bail(`Unknown function slug "${slug}" - add it to VERIFY_JWT in this script.`);
 
 const ref = process.env.SUPABASE_PROJECT_REF;

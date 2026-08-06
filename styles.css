@@ -13,6 +13,8 @@
 @import "./styles/quick-log.css";
 @import "./styles/meal-chips.css";
 @import "./styles/calendar.css";
+@import "./styles/gcal.css";
+@import "./styles/calendar-import.css";
 @import "./styles/analytics-insights.css";
 @import "./styles/diet-insights.css";
 @import "./styles/money-insights.css";

@@ -61,6 +61,12 @@
           <p class="agent-detail">Deno keeps every user's data RLS-isolated. Linking more providers gives you alternate sign-in paths without splitting your data.</p>
         </section>
 
+        <!-- Connected calendars (src/ui/gcal-panel.js). Empty on purpose: the
+             panel builds its own markup, so it can render an honest
+             "not set up yet" / "sync broken" state rather than a shell that
+             looks connected while nothing is. -->
+        <section class="command-panel" id="gcalPanel"></section>
+
         <section class="command-panel" id="healthPanel"></section>
 
         <section class="command-panel" id="spendCapturePanel"></section>
