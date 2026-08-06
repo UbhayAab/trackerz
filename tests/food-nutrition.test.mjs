@@ -127,7 +127,15 @@ function approx(actual, expected, tol, msg) {
 {
   for (const e of FOOD_TABLE) {
     assert.ok(e.calories >= 0 && e.calories <= 1000, `${e.key} calories in range (${e.calories})`);
-    assert.ok(e.protein_g >= 0 && e.protein_g <= 35, `${e.key} protein in range`);
+    // The ceiling is per UNIT, and the unit differs by kind. A "count" entry is
+    // one serving, where 35 g of protein is already a large plate. A "gram" entry
+    // is priced per 100 g of the raw food, and dry high-protein staples genuinely
+    // exceed 35: soya chunks are 52 g per 100 g, which is the real number and the
+    // reason this assertion first fired. Capping both at 35 would force a
+    // knowingly wrong figure into the table to keep a test quiet.
+    const ceiling = e.kind === "gram" ? 90 : 35;
+    assert.ok(e.protein_g >= 0 && e.protein_g <= ceiling,
+      `${e.key} protein in range (${e.protein_g} g per ${e.unit}, ceiling ${ceiling})`);
     assert.ok(Array.isArray(e.aliases) && e.aliases.length >= 1, `${e.key} has aliases`);
     assert.ok(["count", "gram", "ml"].includes(e.kind), `${e.key} has a valid kind`);
   }
