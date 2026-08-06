@@ -379,6 +379,36 @@ function hydrationLogRow(rows) {
 // and this is the running total, which is the only thing this panel ever needed to
 // say. The target comes from the same schedule the quick row derives its goal from,
 // so the two numbers cannot disagree.
+// PREP TONIGHT, or nothing.
+//
+// This used to render five fixed sentences from a JS template - soak 50 g dry
+// soybeans, chill 200 g hung curd - every night, forever, whatever the owner
+// actually ate. It survived the phantom-meal fix because nobody looked at it: it
+// is the same bug one section further down the page.
+//
+// Two honest states now. If tomorrow's plan is real, every line is derived from a
+// meal that is genuinely on it, and "nothing to prep" is a real answer worth
+// saying. If tomorrow is still the built-in scaffold, the section does not render
+// at all, because a checklist generated from a placeholder is fiction that looks
+// like a measurement.
+function prepSection(plan, state) {
+  if (!plan.tomorrowIsReal) return "";
+  const items = plan.prepForTomorrow || [];
+  const head = `📋 Prep tonight <span class="diet-detail">for ${escapeHtml(plan.tomorrowName)}</span>`;
+  if (!items.length) {
+    return `
+    <div class="diet-section diet-prep">
+      <p class="diet-head">${head}</p>
+      <p class="diet-detail">Nothing on tomorrow's plan needs doing tonight.</p>
+    </div>`;
+  }
+  return `
+    <div class="diet-section diet-prep">
+      <p class="diet-head">${head}</p>
+      ${items.map((p) => item(plan, state, { id: p.id, time: "", name: p.text, detail: p.from ? `for ${p.from}` : "" })).join("")}
+    </div>`;
+}
+
 function waterSummary(plan) {
   // The SAME goal the quick row shows. This used to sum the scaffold slots on its
   // own, which was fine while the goal was hardcoded and wrong the moment it
@@ -394,6 +424,17 @@ function waterSummary(plan) {
   // A failed read must not render as a confident "0 ml".
   const unreadable = _dayLoad.status === "error";
 
+  // TODAY has a water control at the top of this very page: a tappable drop that
+  // shows the same total, the same goal and the same fill. Rendering it twice on
+  // one screen is not redundancy, it is a second thing to keep in sync - and this
+  // copy had already drifted once (3 L against 3.45 L, same screen, same number).
+  // The one that stays is the one you can TAP. A section whose entire body is a
+  // duplicate figure plus "use the buttons at the top of this page" is furniture.
+  //
+  // A PAST day still needs it, because the quick row is today-only and there is
+  // otherwise nowhere to see what was drunk on Tuesday.
+  if (isViewingToday() && !unreadable) return "";
+
   return `
     <div class="diet-section diet-water">
       <p class="diet-head">💧 Water <span class="diet-detail">${
@@ -402,13 +443,9 @@ function waterSummary(plan) {
           : `${fmt(total)} of ${fmt(goal)}${unknown ? ` · ${unknown} entr${unknown > 1 ? "ies" : "y"} with no amount` : ""}`
       }</span></p>
       ${unreadable ? "" : `<div class="water-meter" aria-hidden="true"><span style="width:${pct}%"></span></div>`}
-      <p class="diet-detail water-hint">${
-        isViewingToday()
-          ? "Add water with the + buttons in the quick row at the top of this page."
-          : "Past days are read-only here."
-      }</p>
     </div>`;
 }
+
 
 // What was ACTUALLY logged on the view date - the answer to "show me yesterday".
 // Distinguishes: rows / genuinely empty / still loading / failed to load.
@@ -507,10 +544,7 @@ export function renderDietPlan(appState) {
 
     ${waterSummary(plan)}
 
-    <div class="diet-section diet-prep">
-      <p class="diet-head">📋 Prep tonight - for tomorrow (${plan.tomorrowName} · ${plan.tomorrowDietLabel})</p>
-      ${plan.prepForTomorrow.map((p) => item(plan, state, { id: p.id, time: "", name: p.text })).join("")}
-    </div>
+    ${prepSection(plan, state)}
   `;
 
   // When fresh app state arrives (e.g. a capture just landed) and we're on today,
