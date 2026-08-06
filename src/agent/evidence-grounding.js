@@ -151,7 +151,16 @@ export function isGrounded(toolName, args = {}, evidence = "") {
     case "remember_fact":
       // Durable memory is replayed into EVERY later prompt, so a fabricated fact
       // does not decay with the capture that made it - it compounds.
-      return hasWordOverlap(args.value, ev);
+      //
+      // The value is often a bare figure ("monthly_budget" -> "500000"), and
+      // hasWordOverlap tokenises on [a-z] only, so EVERY numeric fact used to
+      // read as ungrounded. That was not merely a stale low_evidence tag: the
+      // provenance gate asks this function WHICH span supports a call, and a
+      // numeric fact that grounds in nothing grounds equally in nothing on
+      // both sides - so a budget figure lifted out of a photograph could not be
+      // attributed to the photograph. Same rule as a target: the number has to
+      // appear in what the model actually read.
+      return hasWordOverlap(args.value, ev) || evidenceHasNumber(args.value, ev);
     case "create_note_candidate":
       return hasWordOverlap(args.body, ev);
     case "create_reminder_candidate":

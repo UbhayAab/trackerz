@@ -95,6 +95,22 @@ export function longDayHeading(key) {
   return `${WEEK_LONG[weekdayOf(key)]} ${p.d} ${MONTH_NAMES[p.m - 1]} ${p.y}`;
 }
 
+// whenLabel() only knows the future - it is written for "your GST filing is due
+// in 3 days" - and a calendar you can page BACKWARDS through will hand it a
+// negative, which it renders as "in -4 days". A day detail opened on last Sunday
+// has to read as English, so the past is spelled out here rather than left to a
+// function that was never asked the question.
+export function awayLabel(today, key) {
+  const n = daysBetween(today, key);
+  if (n == null) return "";
+  if (n >= 0) return whenLabel(n);
+  const back = -n;
+  if (back === 1) return "yesterday";
+  if (back < 14) return `${back} days ago`;
+  if (back < 60) return `${Math.round(back / 7)} weeks ago`;
+  return `${Math.round(back / 30)} months ago`;
+}
+
 export function monthLabel(year, month) {
   return `${MONTH_NAMES[month - 1]} ${year}`;
 }
@@ -328,18 +344,27 @@ export function renderAgenda(rows, today, { days = 21, limitDays = 8, selected =
       : `<p class="cal-empty">Nothing scheduled in the next ${days} days.</p>`;
   }
   const more = all.length - keys.length;
+  // Nothing was truncated, so the agenda has shown everything it knows about -
+  // and the next real thing is BEYOND the window. Naming it is the difference
+  // between "one birthday and then who knows" and a calendar you can trust: the
+  // owner's live data is exactly this shape, a birthday inside the window and a
+  // GST filing two months past it.
+  const beyond = more > 0 ? null : upcoming(rows || [], addDays(to, 1), { limit: 1, withinDays: 4000 })[0];
+  const foot = more > 0
+    ? `<p class="cal-foot">${more} more ${more === 1 ? "day" : "days"} in the next ${days}.</p>`
+    : beyond
+      ? `<p class="cal-foot">Nothing else until ${escapeHtml(beyond.title)} on ${escapeHtml(dayHeading(beyond.next_due_on, today))}, ${escapeHtml(awayLabel(today, beyond.next_due_on))}.</p>`
+      : "";
   return `<ul class="cal-agenda">${keys.map((key) => `
     <li class="cal-agenda-day${key === today ? " is-today" : ""}">
       <button type="button" class="cal-agenda-head${key === selected ? " is-open" : ""}" data-day="${key}"
         aria-expanded="${key === selected}"
         aria-label="${escapeHtml(longDayHeading(key))}, ${escapeHtml(daySummary(byDay[key]))}">
         <span class="cal-agenda-when">${escapeHtml(dayHeading(key, today))}</span>
-        <span class="cal-agenda-away">${escapeHtml(whenLabel(daysBetween(today, key)))}</span>
+        <span class="cal-agenda-away">${escapeHtml(awayLabel(today, key))}</span>
       </button>
       <ul class="cal-agenda-items">${byDay[key].map(itemLine).join("")}</ul>
-    </li>`).join("")}</ul>${
-    more > 0 ? `<p class="cal-foot">${more} more ${more === 1 ? "day" : "days"} in the next ${days}.</p>` : ""
-  }`;
+    </li>`).join("")}</ul>${foot}`;
 }
 
 // ---- the week: a day per row, the hour left to right ------------------------
@@ -380,9 +405,9 @@ export function renderWeek(rows, { anchor, today, selected = null } = {}) {
     // The rail is only drawn when the week HAS a clock in it. An axis over seven
     // empty rails is furniture that teaches you to stop reading it.
     const rail = win.hasTimed
-      ? `<span class="cal-wrail" style="height:${lanes * 14 + 6}px">${blocks.map((b) => `
+      ? `<span class="cal-wrail" style="height:${lanes * 19 + 2}px">${blocks.map((b) => `
           <span class="cal-wblock${b.clipped ? " is-clipped" : ""}" data-kind="${escapeHtml(b.item.kind || "task")}"
-            style="left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%;top:${b.lane * 14}px"
+            style="left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%;top:${b.lane * 19 + 1}px"
             aria-hidden="true">${iconFor(b.item)}</span>`).join("")}</span>`
       : "";
 
@@ -430,9 +455,13 @@ export function renderMonth(rows, { year, month, today, selected = null, focus =
 
   // Roving tabindex: exactly one cell in the grid is tabbable, and the arrow keys
   // move it. Seven-and-forty stops on the way past a calendar is not navigation.
-  const focusKey = cells.some((c) => c.key === focus) ? focus
-    : cells.some((c) => c.key === selected) ? selected
-      : cells.some((c) => c.key === today) ? today
+  // `c.key` is null on the padding cells, so every candidate has to be checked
+  // for truthiness first: without it a null focus "matches" a blank and the grid
+  // renders with nothing tabbable at all - a keyboard trap in reverse.
+  const inGrid = (k) => Boolean(k) && cells.some((c) => c.key === k);
+  const focusKey = inGrid(focus) ? focus
+    : inGrid(selected) ? selected
+      : inGrid(today) ? today
         : first;
 
   const cellHtml = (c) => {
@@ -489,7 +518,7 @@ export function renderDayDetail(items, key, today, { rows = [], runs = {} } = {}
   const list = items || [];
   const head = `<div class="cal-detail-head">
       <strong>${escapeHtml(longDayHeading(key))}</strong>
-      <span>${escapeHtml(whenLabel(daysBetween(today, key)))}</span>
+      <span>${escapeHtml(awayLabel(today, key))}</span>
       <button type="button" class="cal-close" data-cal-act="close-day" aria-label="Close ${escapeHtml(longDayHeading(key))}">✕</button>
     </div>`;
   if (!list.length) return `<div class="cal-detail">${head}${emptyDayNote(key, today, rows)}</div>`;
@@ -571,7 +600,7 @@ export function renderCalendar(state, rows, today, opts = {}) {
   const view = VIEWS.includes(state && state.view) ? state.view : "agenda";
   const head = `
     <div class="cal-head">
-      <p class="chips-label" id="calHeading">Coming up</p>
+      <p class="chips-label">Coming up</p>
       <div class="cal-toggle" role="group" aria-label="Calendar view">
         ${VIEWS.map((v) => `<button type="button" data-view="${v}" class="${view === v ? "is-on" : ""}" aria-pressed="${view === v}">${v[0].toUpperCase()}${v.slice(1)}</button>`).join("")}
       </div>
@@ -710,17 +739,22 @@ export function bindCalendar(el, getState, onChange, handlers = {}) {
         // screen rather than on a date that is no longer drawn.
         onChange({ ...state, year, month, selected: null, focus: toKey(year, month, 1) });
       }
+      refocus(`button[data-step="${nav.dataset.step}"]`);
       return;
     }
     const cell = ev.target.closest("button[data-day]");
     if (cell) {
       const key = cell.dataset.day;
       onChange({ ...state, selected: state.selected === key ? null : key, focus: key });
+      refocus(`button[data-day="${key}"]`);
     }
   });
 
   el.addEventListener("keydown", (ev) => {
-    const cell = ev.target.closest && ev.target.closest("button[data-day]");
+    // Only the grid and the week rows navigate by arrow. The agenda's day
+    // headings are also button[data-day], and swallowing ArrowDown there would
+    // stop the page scrolling to reach the list the heading belongs to.
+    const cell = ev.target.closest && ev.target.closest("button.cal-cell[data-day], button.cal-wrow[data-day]");
     if (!cell) return;
     const action = KEY_ACTIONS[ev.key];
     if (!action) return;
@@ -730,11 +764,7 @@ export function bindCalendar(el, getState, onChange, handlers = {}) {
     const p = parseKey(next);
     if (!p) return;
     onChange({ ...state, focus: next, year: p.y, month: p.m, anchor: next });
-    // The caller re-rendered synchronously, so the new cell exists now. Without
-    // this the arrow keys move the highlight and leave the focus ring behind on
-    // a button that no longer means anything.
-    const moved = el.querySelector(`button[data-day="${next}"]`);
-    if (moved) moved.focus();
+    refocus(`button[data-day="${next}"]`);
   });
 }
 

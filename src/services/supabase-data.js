@@ -622,7 +622,7 @@ export async function fetchMemoryFacts({ limit = 50 } = {}) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("memory_facts")
-    .select("id, key, value, kind, confidence, source, updated_at")
+    .select("id, key, value, kind, confidence, source, provenance, updated_at")
     .is("deleted_at", null)
     .order("confidence", { ascending: false })
     .limit(limit);
@@ -933,7 +933,7 @@ export async function applyAiAction(actionId) {
 // nothing to put back. Mirrors UPSERT_TOOLS in supabase/functions/agent/index.ts.
 const UPSERT_TOOLS = {
   set_target_candidate: { table: "budgets", keyColumn: "kind", argKey: "kind", columns: ["amount", "period", "starts_on"] },
-  remember_fact: { table: "memory_facts", keyColumn: "key", argKey: "key", columns: ["value", "kind", "confidence", "source"] },
+  remember_fact: { table: "memory_facts", keyColumn: "key", argKey: "key", columns: ["value", "kind", "confidence", "source", "provenance"] },
 };
 
 async function beforeImageFor(supabase, userId, action) {

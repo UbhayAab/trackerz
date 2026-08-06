@@ -8,6 +8,7 @@
 // Usage:
 //   node scripts/capture.mjs "6 boiled eggs and 500ml curd"
 //   node scripts/capture.mjs --dry "no gym today"     # local salvage only, no writes
+//   node scripts/capture.mjs --source=ocr "..."       # as if read off a photo
 //   node scripts/capture.mjs --undo <ingestionId>     # remove everything a capture wrote
 import { config as loadEnv } from "dotenv";
 import { connectDb } from "./db-connect.mjs";
@@ -23,6 +24,12 @@ const EMAIL = "ubhayvatsaanand@gmail.com";
 
 const args = process.argv.slice(2);
 const DRY = args.includes("--dry");
+// Declare where the text came from, so the per-source capability gate can be
+// exercised from the command line. Without this the only way to test that an
+// OCR'd instruction is refused is to actually photograph one, which nobody does,
+// which is how a security gate rots into a thing that is believed rather than
+// checked.
+const SOURCE = (args.find((a) => a.startsWith("--source=")) || "").slice(9) || null;
 const undoAt = args.indexOf("--undo");
 const text = args.filter((a) => !a.startsWith("--"))[undoAt >= 0 ? 1 : 0] || "";
 
@@ -111,7 +118,7 @@ const ingestionId = ing.rows[0].id;
 const res = await fetch(`${S}/functions/v1/agent`, {
   method: "POST",
   headers: { "content-type": "application/json", apikey: ANON, authorization: `Bearer ${session.access_token}` },
-  body: JSON.stringify({ ingestionId, text, mode: "auto" }),
+  body: JSON.stringify({ ingestionId, text, mode: "auto", ...(SOURCE ? { source: SOURCE } : {}) }),
 });
 const out = await res.json();
 
@@ -122,6 +129,9 @@ for (const tc of out.toolCalls || []) {
 }
 if (out.rejectedDetail?.length) console.log(`  rejected: ${JSON.stringify(out.rejectedDetail)}`);
 if (out.warning) console.log(`  warning: ${out.warning}`);
+if (out.provenanceViolations?.length) {
+  console.log(`  REFUSED on provenance: ${JSON.stringify(out.provenanceViolations)}`);
+}
 
 console.log("\nROWS THAT LANDED");
 let landed = 0;

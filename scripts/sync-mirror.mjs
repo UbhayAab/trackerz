@@ -18,6 +18,17 @@ const BLOCKS = [
   // - the worst possible place for the two to disagree.
   { lib: "lib/mutation-risk.mjs", edge: AGENT, start: "MUTATION-RISK MIRROR START", end: "MUTATION-RISK MIRROR END" },
   { lib: "lib/schedule-args.mjs", edge: AGENT, start: "SCHEDULE-ARGS MIRROR START", end: "SCHEDULE-ARGS MIRROR END" },
+  // Per-source capability bounds. The edge is where the model's output is turned
+  // into rows, so this is the copy that decides whether a screenshot may rewrite
+  // the standing plan. A drifted copy here means the server grants a capability
+  // the client's own preview would have refused.
+  { lib: "lib/provenance.mjs", edge: AGENT, start: "PROVENANCE MIRROR START", end: "PROVENANCE MIRROR END" },
+  // The untrusted-input policy and the injection lexicon. This one is not lib/:
+  // the source of truth is the browser module, which had its regexes hand-copied
+  // into the edge function for months and its five policy sentences copied
+  // nowhere at all - SYSTEM_PROMPT did not contain a word of them until they
+  // became a mirror block that the prompt is literally built from.
+  { lib: "src/agent/prompt-boundaries.js", edge: AGENT, start: "PROMPT-BOUNDARY MIRROR START", end: "PROMPT-BOUNDARY MIRROR END" },
 ];
 
 function block(src, file, START, END) {
