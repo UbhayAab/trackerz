@@ -13,6 +13,7 @@ import { reconcileExercises } from "../domain/diet/reconcile.js";
 import { logWorkoutSession, logBodyMetric, deleteRow } from "../services/supabase-data.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { refreshAfterWrite } from "./refresh.js";
 import { goalDisplayValue } from "../domain/goals.js";
 
 const WORKOUT_HOST = "#workoutLog";
@@ -224,7 +225,7 @@ async function logExercise(exKey) {
     const rec = await logWorkoutSession({ description: name, intensity: muscle, sets: setRows });
     day[exKey] = { ...day[exKey], done: true, weight, recordId: rec.id };
     saveDay(key, day);
-    await hydrateStateFromSupabase().catch(() => {});
+    await refreshAfterWrite("the set");
   } catch { /* keep the local check */ }
 }
 
@@ -240,7 +241,7 @@ async function unlogExercise(exKey) {
   // Only remove a row this panel logged manually - never delete the user's captured
   // workout just because they un-ticked an auto-suggestion.
   if (prev?.recordId && canSync()) {
-    try { await deleteRow("workout_logs", prev.recordId); await hydrateStateFromSupabase().catch(() => {}); } catch { /* best effort */ }
+    try { await deleteRow("workout_logs", prev.recordId); await refreshAfterWrite("the set"); } catch { /* best effort */ }
   }
 }
 
@@ -279,7 +280,7 @@ export function bindWorkoutPanel() {
     try {
       await logBodyMetric({ metric_type: inp.dataset.metric, value, unit: inp.dataset.unit });
       inp.value = "";
-      await hydrateStateFromSupabase().catch(() => {});
+      await refreshAfterWrite("the set");
     } catch { /* best effort */ }
   });
 }

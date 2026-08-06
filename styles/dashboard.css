@@ -344,6 +344,21 @@
   background: linear-gradient(180deg, var(--wellness), var(--money));
 }
 
+/* A day with NOTHING LOGGED is drawn as a gap, never as a zero-height bar.
+   A flat bar and an absent day look identical, and the app then reads as "your
+   intake collapsed" for a week you were simply on holiday. The dashes say
+   "no data" without competing with the real bars for attention. */
+.bar-nodata .bar-gap {
+  width: 100%;
+  min-height: 8px;
+  height: 8px;
+  border-radius: 6px;
+  border-top: 2px dashed var(--line);
+  opacity: 0.7;
+}
+
+.bar-nodata span { opacity: 0.55; }
+
 .bar span {
   color: var(--muted);
   font-size: 0.72rem;

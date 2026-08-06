@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import { decideActionPolicy } from "../src/agent/action-policy.js";
+import { decideActionPolicy, autonomousViolations } from "../src/agent/action-policy.js";
 import { buildSystemBoundary } from "../src/agent/prompt-boundaries.js";
 import { chooseModelRoute } from "../src/agent/model-router.js";
+import { toolRegistry } from "../src/agent/tool-registry.js";
+import {
+  mutationTier, mutationGate, mutationRisk, canAutoApply, tierRank, MUTATION_TIERS, UNDO_TOAST_MS,
+} from "../lib/mutation-risk.mjs";
 
 assert.equal(
   decideActionPolicy({
@@ -80,3 +84,121 @@ console.log("agent policy tests passed");
 }
 
 console.log("tool-argument repair tests passed");
+
+// ---------------------------------------------------------------------------
+// RISK TIERS + the confirm gate.
+//
+// Before this, decideActionPolicy returned only `block | auto_apply`, so a
+// permanent plan rewrite at 0.95 confidence and a 100 ml water log were treated
+// identically: both committed silently. The tier decides now, not the confidence.
+// ---------------------------------------------------------------------------
+{
+  const A = (name, args) => ({ name, confidence: 0.9, evidenceId: "ev_1", arguments: args || {} });
+
+  // --- the full tier matrix, tool by tool ---
+  const EXPECTED = [
+    // reversible: one row, one tap to delete. Auto-applies, unchanged.
+    ["create_expense_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_income_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_transfer_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_statement_row_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_food_log_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_workout_log_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_body_metric_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_wellness_note_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_hydration_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_sleep_candidate", {}, "reversible", "auto", "auto_apply"],
+    ["create_note_candidate", {}, "reversible", "auto", "auto_apply"],
+    // non-writing tools ride the auto path with them
+    ["request_user_review", {}, "reversible", "auto", "auto_apply"],
+    ["answer_question", {}, "reversible", "auto", "auto_apply"],
+    // consequential: rewrites the standing setup. Confirm.
+    ["set_target_candidate", { kind: "daily_protein", amount: 180 }, "consequential", "hard", "confirm"],
+    ["remember_fact", { key: "usual_lunch", value: "egg curry" }, "consequential", "hard", "confirm"],
+    ["create_reminder_candidate", { title: "Mom's birthday", freq: "yearly" }, "consequential", "hard", "confirm"],
+    ["update_plan_candidate", { kind: "diet", scope: "permanent" }, "consequential", "hard", "confirm"],
+    // an ABSENT scope reads as permanent, because applyTool defaults it that way
+    ["update_plan_candidate", { kind: "diet" }, "consequential", "hard", "confirm"],
+    // destructive: a merge deletes the loser of a duplicate pair
+    ["link_duplicate_candidates", {}, "destructive", "hard", "confirm"],
+  ];
+  for (const [name, args, tier, gate, mode] of EXPECTED) {
+    const action = A(name, args);
+    assert.equal(mutationTier(action), tier, `${name} tier`);
+    assert.equal(mutationGate(action), gate, `${name} gate`);
+    assert.equal(decideActionPolicy(action).mode, mode, `${name} mode`);
+  }
+
+  // The refinement that keeps the fast path fast: a DATE-SCOPED plan delta stays
+  // reversible - it applies now with a 15-second undo toast, because the
+  // LOG-THAT-CONTRADICTS-THE-PLAN rule emits one of these alongside a real log
+  // and gating it would stall an ordinary capture.
+  const dated = A("update_plan_candidate", { kind: "gym", scope: "2026-08-06", payload: { op: "replace_workout" } });
+  assert.equal(mutationTier(dated), "reversible");
+  assert.equal(mutationGate(dated), "soft");
+  const datedDecision = decideActionPolicy(dated);
+  assert.equal(datedDecision.mode, "auto_apply", "a one-day plan change is not gated");
+  assert.equal(datedDecision.undoToastMs, UNDO_TOAST_MS, "but it carries an undo toast");
+  assert.equal(mutationRisk(dated).undoToastMs, 15000);
+
+  // A comma-separated date list ("next 4 Mondays") is still dated, not permanent.
+  assert.equal(mutationTier(A("update_plan_candidate", { scope: "2026-08-10,2026-08-17" })), "reversible");
+
+  // --- fail closed -----------------------------------------------------------
+  // A tool nobody classified is DESTRUCTIVE, not reversible. Adding a tool
+  // without a tier entry must cost a confirmation, never a silent write.
+  assert.equal(mutationTier({ name: "obliterate_everything" }), "destructive");
+  assert.equal(mutationTier({ name: "delete_food_log" }), "destructive");
+  assert.equal(mutationTier({ name: "amend_expense" }), "destructive");
+  assert.equal(mutationTier({ name: "merge_entries" }), "destructive");
+  // Anything that leaves the app is `external` even before it exists, so it can
+  // never be gated as "merely destructive" the day someone adds one.
+  assert.equal(mutationTier({ name: "send_email" }), "external");
+  assert.equal(mutationTier({ name: "pay_merchant" }), "external");
+  assert.equal(mutationTier({ name: "share_report" }), "external");
+  assert.equal(mutationTier({}), "destructive", "a nameless call is not reversible");
+
+  // Destructive means SOFT-DELETE ONLY - the model gets no hard-delete path.
+  assert.equal(mutationRisk({ name: "delete_food_log" }).softDeleteOnly, true);
+  assert.equal(mutationRisk(A("create_food_log_candidate")).softDeleteOnly, false);
+
+  // --- THE INVARIANT ---------------------------------------------------------
+  // In an autonomous context nothing above `reversible` may apply itself. Asserted
+  // over every tool in the registry, so a tool added later is covered by this test
+  // without anyone remembering to extend it.
+  for (const tool of toolRegistry) {
+    const action = A(tool.name, tool.name === "update_plan_candidate" ? { scope: "permanent" } : {});
+    const decision = decideActionPolicy(action);
+    if (tierRank(decision.tier) > 0) {
+      assert.equal(decision.mode, "confirm", `${tool.name} is above reversible and must not auto-apply`);
+      assert.equal(canAutoApply(action), false, `${tool.name} must fail canAutoApply`);
+    } else {
+      assert.notEqual(decision.mode, "block", `${tool.name} is registered and reversible - it must not be blocked`);
+    }
+  }
+  assert.deepEqual(
+    autonomousViolations(toolRegistry.map((t) => A(t.name, t.name === "update_plan_candidate" ? { scope: "permanent" } : {}))),
+    [],
+    "no registered tool above `reversible` may auto-apply autonomously",
+  );
+
+  // Block still outranks everything: an unknown tool never reaches the tiers.
+  assert.equal(decideActionPolicy({ name: "drop_all_tables", confidence: 1, evidenceId: "x" }).mode, "block");
+
+  // Confirm carries a reason the UI can render, and the mode set is closed.
+  const confirmDecision = decideActionPolicy(A("set_target_candidate", { kind: "daily_protein", amount: 180 }));
+  assert.ok(confirmDecision.reasons.includes("confirm_consequential"));
+  assert.ok(MUTATION_TIERS.includes(confirmDecision.tier));
+
+  // Low confidence does NOT gate a reversible capture - capture-first is the
+  // product, and the old confidence gate is still dead on purpose.
+  assert.equal(decideActionPolicy({ name: "create_food_log_candidate", confidence: 0.1 }).mode, "auto_apply");
+  // ...and high confidence does NOT un-gate a consequential one.
+  assert.equal(
+    decideActionPolicy({ name: "set_target_candidate", confidence: 0.99, evidenceId: "ev", arguments: { kind: "daily_protein", amount: 180 } }).mode,
+    "confirm",
+    "0.99 confidence is not permission to rewrite a target",
+  );
+}
+
+console.log("mutation-risk + confirm-gate tests passed");

@@ -12,6 +12,11 @@ const BLOCKS = [
   { lib: "lib/reminders.mjs", edge: JARVIS, start: "REMINDERS MIRROR START", end: "REMINDERS MIRROR END" },
   { lib: "lib/email-template.mjs", edge: JARVIS, start: "EMAIL-TEMPLATE MIRROR START", end: "EMAIL-TEMPLATE MIRROR END" },
   { lib: "lib/sleep-window.mjs", edge: AGENT, start: "SLEEP-WINDOW MIRROR START", end: "SLEEP-WINDOW MIRROR END" },
+  { lib: "lib/route-invariants.mjs", edge: AGENT, start: "ROUTE-INVARIANTS MIRROR START", end: "ROUTE-INVARIANTS MIRROR END" },
+  // Risk tiers. The edge is where auto-apply is DECIDED, so a drifted copy here
+  // means the server commits something the client would have put behind a confirm
+  // - the worst possible place for the two to disagree.
+  { lib: "lib/mutation-risk.mjs", edge: AGENT, start: "MUTATION-RISK MIRROR START", end: "MUTATION-RISK MIRROR END" },
 ];
 
 function block(src, file, START, END) {

@@ -5,6 +5,8 @@ import { instantiate } from "../domain/diet/meal-templates.js";
 import { clampSleepSpan } from "../../lib/sleep-window.mjs";
 import { rowForRepeat } from "../../lib/meal-repeats.mjs";
 import { WATER_GOAL_KIND, WATER_GOAL_MAX_ML, clampGoalMl } from "../../lib/water.mjs";
+import { SOFT_DELETABLE_TABLES } from "../../lib/undo-ledger.mjs";
+import { isPlanDelta } from "../../lib/plan-merge.mjs";
 
 function requireUserId() {
   const session = getCurrentSession();
@@ -86,6 +88,10 @@ export async function fetchLedger({ limit = 50 } = {}) {
     // opportunity cost, exports), so without this filter merging a duplicate
     // would visibly change nothing - the whole point of the merge.
     .is("merged_into", null)
+    // Tombstoned rows are gone as far as every number in the app is concerned.
+    // This is the read that feeds every money total, so a deleted row that leaked
+    // through here would still be counted while the user believed it removed.
+    .is("deleted_at", null)
     .order("occurred_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -97,6 +103,7 @@ export async function fetchFoodLogs({ limit = 50 } = {}) {
   const { data, error } = await supabase
     .from("food_logs")
     .select("id, occurred_at, meal_name, meal_slot, description, calories_estimate, protein_g, carbs_g, fat_g, confidence, duplicate_state")
+    .is("deleted_at", null)
     .order("occurred_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -108,6 +115,7 @@ export async function fetchBodyMetrics({ limit = 400 } = {}) {
   const { data, error } = await supabase
     .from("body_metrics")
     .select("id, metric_type, value, unit, occurred_at")
+    .is("deleted_at", null)
     .order("occurred_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -119,6 +127,7 @@ export async function fetchWellnessLogs({ limit = 200 } = {}) {
   const { data, error } = await supabase
     .from("wellness_logs")
     .select("id, note, mood_score, energy_score, stress_score, occurred_at")
+    .is("deleted_at", null)
     .order("occurred_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -222,6 +231,7 @@ export async function fetchHydrationTotal(date = new Date()) {
   const { data, error } = await supabase
     .from("hydration_logs")
     .select("id, ml, occurred_at")
+    .is("deleted_at", null)
     .gte("occurred_at", start.toISOString())
     .lt("occurred_at", end.toISOString())
     // id descending is the tiebreak for rows written by one batched insert. Two
@@ -247,8 +257,13 @@ export async function undoLastHydration() {
   const { rows } = await fetchHydrationTotal(new Date());
   const last = rows[0];
   if (!last) return null;
+  // Tombstone, not a hard delete - fetchHydrationTotal filters `deleted_at`, so
+  // the ring drops by exactly one glass either way, and a mis-tapped undo is
+  // itself recoverable.
   const { error } = await supabase
-    .from("hydration_logs").delete().eq("id", last.id).eq("user_id", userId);
+    .from("hydration_logs")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", last.id).eq("user_id", userId).is("deleted_at", null);
   if (error) throw error;
   return last;
 }
@@ -293,6 +308,7 @@ export async function fetchOpenSleepSession() {
   const { data, error } = await supabase
     .from("sleep_sessions")
     .select("id, started_at, ended_at")
+    .is("deleted_at", null)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
     .limit(1);
@@ -342,7 +358,7 @@ export async function adjustSleepWake(sessionId, wakeAt) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
   const { data: rows, error: readErr } = await supabase
-    .from("sleep_sessions").select("id, started_at").eq("id", sessionId).limit(1);
+    .from("sleep_sessions").select("id, started_at").is("deleted_at", null).eq("id", sessionId).limit(1);
   if (readErr) throw readErr;
   const row = (rows || [])[0];
   if (!row) throw new Error("sleep session not found");
@@ -364,6 +380,7 @@ export async function fetchSleepSessions({ limit = 120 } = {}) {
   const { data, error } = await supabase
     .from("sleep_sessions")
     .select("id, started_at, ended_at, quality, source, note")
+    .is("deleted_at", null)
     .not("ended_at", "is", null)
     .order("ended_at", { ascending: false })
     .limit(limit);
@@ -408,6 +425,7 @@ export async function fetchTodayGymAnswer(date = new Date()) {
   const { data, error } = await supabase
     .from("workout_logs")
     .select("id, description, status, occurred_at")
+    .is("deleted_at", null)
     .gte("occurred_at", start.toISOString())
     .lt("occurred_at", end.toISOString())
     .order("occurred_at", { ascending: false });
@@ -426,6 +444,7 @@ export async function fetchWorkoutLogs({ limit = 200 } = {}) {
     // was omitted, which silently dropped every real row from the consistency,
     // streak, and weekly-volume insights.
     .select("id, description, status, duration_min, intensity, sets, bodyweight_kg, notes, occurred_at")
+    .is("deleted_at", null)
     .order("occurred_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -445,6 +464,7 @@ export async function fetchSpendPatternHistory({ sinceDays = 120, limit = 2000 }
     supabase
       .from("food_logs")
       .select("id, ingestion_id, occurred_at, meal_name, description")
+      .is("deleted_at", null)
       .gte("occurred_at", since)
       .order("occurred_at", { ascending: false })
       .limit(limit),
@@ -457,6 +477,7 @@ export async function fetchSpendPatternHistory({ sinceDays = 120, limit = 2000 }
       .eq("direction", "expense")
       .eq("counts_as_spending", true)
       .is("merged_into", null)
+      .is("deleted_at", null)
       .gte("occurred_at", since)
       .order("occurred_at", { ascending: false })
       .limit(limit),
@@ -478,14 +499,17 @@ export async function fetchDayLogs(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const end = new Date(start);
   end.setDate(start.getDate() + 1);
+  // The tombstone filter is spelled out on each query rather than folded into
+  // inDay(), because tests/soft-delete-contract.test.mjs reads each `.from(...)`
+  // chain in isolation - and so does anyone skimming this function.
   const inDay = (q) => q.gte("occurred_at", start.toISOString()).lt("occurred_at", end.toISOString());
   const [food, workout, hydration] = await Promise.all([
-    inDay(supabase.from("food_logs").select("id, occurred_at, meal_name, meal_slot, description, calories_estimate, protein_g, carbs_g, fat_g")),
+    inDay(supabase.from("food_logs").select("id, occurred_at, meal_name, meal_slot, description, calories_estimate, protein_g, carbs_g, fat_g").is("deleted_at", null)),
     // `status` is NOT optional here. Without it the reconciler below cannot tell a
     // real session from a "no gym today" answer, so tapping Skipped on Home ticked
     // the plan's workout as DONE.
-    inDay(supabase.from("workout_logs").select("id, occurred_at, description, duration_min, intensity, status, sets")),
-    inDay(supabase.from("hydration_logs").select("id, occurred_at, ml")),
+    inDay(supabase.from("workout_logs").select("id, occurred_at, description, duration_min, intensity, status, sets").is("deleted_at", null)),
+    inDay(supabase.from("hydration_logs").select("id, occurred_at, ml").is("deleted_at", null)),
   ]);
   if (food.error) throw food.error;
   if (workout.error) throw workout.error;
@@ -543,16 +567,40 @@ export async function fetchMealTemplates({ limit = 8 } = {}) {
 
 // Active diet/gym plans (latest first). The latest permanent diet plan is the
 // override the diet hub applies; older rows are the change history (undo target).
-export async function fetchUserPlans({ limit = 20 } = {}) {
+//
+// THE WINDOW HAS TO CONTAIN A BASE. `user_plans` is append-only and
+// foldPlanPayloads() walks a scope's rows oldest→newest over a FULL DOCUMENT: a
+// full payload resets the accumulator, a delta merges onto it. A fixed `limit: 20`
+// therefore breaks silently the moment a user accumulates 20 rows after their
+// last full plan - the base falls out of the window, the fold starts from a delta
+// with nothing under it, and the plan collapses to whatever that one delta says.
+// Nothing errors; the diet hub just quietly shows one meal.
+//
+// So: page back until the newest FULL (non-delta) row for each kind is inside the
+// window, and keep every row after it. `limit` is the page size now, not the cap.
+export async function fetchUserPlans({ limit = 20, maxPages = 10 } = {}) {
   const supabase = await getSupabaseClient();
-  const { data, error } = await supabase
-    .from("user_plans")
-    .select("id, kind, scope, summary, payload, created_at")
-    .eq("active", true)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return data || [];
+  const rows = [];
+  const kindsNeedingBase = new Set(["diet", "gym"]);
+  for (let page = 0; page < maxPages; page += 1) {
+    const { data, error } = await supabase
+      .from("user_plans")
+      .select("id, kind, scope, summary, payload, created_at")
+      .eq("active", true)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .range(page * limit, page * limit + limit - 1);
+    if (error) throw error;
+    const batch = data || [];
+    rows.push(...batch);
+    // A full document for a kind means everything older than it is unreachable
+    // history - stop asking for it.
+    for (const r of batch) {
+      if (!isPlanDelta(r.payload)) kindsNeedingBase.delete(r.kind || "diet");
+    }
+    if (batch.length < limit || !kindsNeedingBase.size) break;
+  }
+  return rows;
 }
 
 // Open notes/aspirations/todos (newest first) for the feed + context.
@@ -561,6 +609,7 @@ export async function fetchNotes({ limit = 50 } = {}) {
   const { data, error } = await supabase
     .from("notes")
     .select("id, kind, body, domain, status, due_on, event_group_id, occurred_at, created_at")
+    .is("deleted_at", null)
     .neq("status", "archived")
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -574,6 +623,7 @@ export async function fetchMemoryFacts({ limit = 50 } = {}) {
   const { data, error } = await supabase
     .from("memory_facts")
     .select("id, key, value, kind, confidence, source, updated_at")
+    .is("deleted_at", null)
     .order("confidence", { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -581,26 +631,41 @@ export async function fetchMemoryFacts({ limit = 50 } = {}) {
 }
 
 // AI-made target/budget changes (the note→target cascade), newest first, for the
-// undoable feed. Only the auto-applied set_target audit rows.
+// undoable feed.
+//
+// Reads BOTH the set_target rows and the revert_target rows that compensate them,
+// then hides any change that has already been reverted. It used to read only
+// set_target rows and rely on the undo DELETING its own audit row to make the
+// affordance disappear - see revertTargetEvent below for why that was wrong.
 export async function fetchTargetEvents({ limit = 20 } = {}) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("audit_log")
-    .select("id, action, before, after, created_at")
-    .eq("action", "set_target")
+    .select("id, action, target_id, before, after, created_at")
+    .in("action", ["set_target", "revert_target"])
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(limit * 2);
   if (error) throw error;
-  return data || [];
+  const rows = data || [];
+  const reverted = new Set(rows.filter((r) => r.action === "revert_target" && r.target_id).map((r) => r.target_id));
+  return rows.filter((r) => r.action === "set_target" && !reverted.has(r.id)).slice(0, limit);
 }
 
-// Undo a target change: restore the prior amount (or delete the budget if there
+// Undo a target change: restore the prior amount (or clear the budget if there
 // was none before). Mirrors revertTarget() in lib/aspiration-cascade.mjs.
+//
+// THIS USED TO DELETE THE audit_log ROW IT UNDID. The undo destroyed its own
+// audit trail: after it ran, the app held no record that the target had ever been
+// changed, no record that it had been changed BACK, and no way to answer "why is
+// my protein goal 180" three weeks later. An audit log that a normal user action
+// can erase is not an audit log. It now writes a COMPENSATING row instead -
+// double-entry style, with before/after swapped and target_id pointing at the
+// change it reverses - so the history reads forwards: set, then unset.
 export async function revertTargetEvent(auditId) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
   const { data: evt, error } = await supabase
-    .from("audit_log").select("before, after").eq("id", auditId).single();
+    .from("audit_log").select("id, before, after").eq("id", auditId).single();
   if (error) throw error;
   const kind = evt?.after?.kind || evt?.before?.kind;
   if (!kind) return;
@@ -611,8 +676,16 @@ export async function revertTargetEvent(auditId) {
     await supabase.from("budgets")
       .update({ amount: prior }).eq("user_id", userId).eq("kind", kind);
   }
-  // Remove the audit row so the undo affordance disappears from the feed.
-  await supabase.from("audit_log").delete().eq("id", auditId);
+  const { error: auditErr } = await supabase.from("audit_log").insert({
+    user_id: userId,
+    action: "revert_target",
+    target_table: "budgets",
+    target_id: auditId,
+    before: evt?.after ?? null,
+    after: evt?.before ?? null,
+    source: "user",
+  });
+  if (auditErr) throw auditErr;
 }
 
 // One-tap repeat of a meal the user has already logged before. The row shape comes
@@ -811,9 +884,13 @@ export async function fetchOpenDuplicatesWithRecords({ limit = 50 } = {}) {
   const recordsByKey = new Map(); // `${table}:${id}` -> row
   for (const [table, idSet] of byTable) {
     if (table !== "ledger_entries") continue; // no other domain populates this table yet
+    // SOFT-DELETE ALLOWLIST: this read deliberately sees tombstones. It resolves
+    // both halves of a duplicate PAIR for the audit card, and a pair with one side
+    // deleted must still render as a pair - otherwise the card shows "duplicate
+    // of (nothing)" and the user cannot tell what was matched.
     const { data, error } = await supabase
       .from("ledger_entries")
-      .select("id, amount, merchant, description, occurred_at, duplicate_state")
+      .select("id, amount, merchant, description, occurred_at, duplicate_state, deleted_at")
       .in("id", [...idSet]);
     if (error) throw error;
     for (const row of data || []) recordsByKey.set(`${table}:${row.id}`, row);
@@ -850,15 +927,53 @@ export async function applyAiAction(actionId) {
   if (error) throw error;
 }
 
+// The two keyed tools UPSERT a single canonical row. When that row already
+// exists the "write" is an EDIT of a value the user had before the AI ever
+// spoke, so the prior values have to be read BEFORE the write or an undo has
+// nothing to put back. Mirrors UPSERT_TOOLS in supabase/functions/agent/index.ts.
+const UPSERT_TOOLS = {
+  set_target_candidate: { table: "budgets", keyColumn: "kind", argKey: "kind", columns: ["amount", "period", "starts_on"] },
+  remember_fact: { table: "memory_facts", keyColumn: "key", argKey: "key", columns: ["value", "kind", "confidence", "source"] },
+};
+
+async function beforeImageFor(supabase, userId, action) {
+  const spec = UPSERT_TOOLS[action?.tool_name];
+  const keyValue = spec ? action?.arguments?.[spec.argKey] : null;
+  if (!spec || !keyValue) return null;
+  const { data } = await supabase
+    .from(spec.table)
+    .select(["id", spec.keyColumn, ...spec.columns].join(", "))
+    .eq("user_id", userId).eq(spec.keyColumn, keyValue).maybeSingle();
+  return data || null;
+}
+
 // Approve a proposed action: actually write the domain row (RLS-safe, user
 // client) the way the server auto-apply path would, THEN mark the action
-// applied with provenance. This is what makes the review queue persist.
+// applied with provenance AND a v2 undo_payload. Without that payload an
+// approved action would be the one write in the app with no way back - which is
+// exactly the hole the confirm gate would otherwise create, since consequential
+// tools now arrive here instead of auto-applying on the server.
 export async function applyProposedAction(action) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
   const built = buildRowForTool(action, userId);
   let appliedTable = null;
   let appliedId = null;
+  const before = built ? await beforeImageFor(supabase, userId, action) : null;
+
+  // A target change is undoable from the feed only because a set_target audit row
+  // exists. The server's applyTool writes one; this path did not, so a target
+  // approved by hand landed with no history and no Undo button. Written BEFORE
+  // the upsert, so `before.amount` is still the prior value.
+  if (action?.tool_name === "set_target_candidate" && action?.arguments?.kind) {
+    await supabase.from("audit_log").insert({
+      user_id: userId, action: "set_target", target_table: "budgets", target_id: null,
+      before: { kind: action.arguments.kind, amount: before?.amount ?? null },
+      after: { kind: action.arguments.kind, amount: action.arguments.amount },
+      source: "user",
+    });
+  }
+
   if (built) {
     // Keyed tools (set_target_candidate, remember_fact) upsert the single
     // canonical row; everything else inserts.
@@ -870,6 +985,7 @@ export async function applyProposedAction(action) {
     appliedTable = built.table;
     appliedId = data.id;
   }
+  const spec = UPSERT_TOOLS[action?.tool_name];
   const { error: upErr } = await supabase
     .from("ai_actions")
     .update({
@@ -877,6 +993,17 @@ export async function applyProposedAction(action) {
       applied_at: new Date().toISOString(),
       applied_record_table: appliedTable,
       applied_record_id: appliedId,
+      undo_payload: appliedId
+        ? {
+          v: 2,
+          op: spec ? "upsert" : "insert",
+          table: appliedTable,
+          id: appliedId,
+          before: spec ? (before || null) : null,
+          after: null,
+          columns: spec && before ? spec.columns : [],
+        }
+        : null,
     })
     .eq("id", action.id);
   if (upErr) throw upErr;
@@ -907,16 +1034,43 @@ export async function rejectAiAction(actionId) {
 
 // Generic single-row delete for the additions feed's ✕. Whitelisted to the
 // user-owned domain tables; RLS also enforces ownership on the server.
-const DELETABLE_TABLES = new Set([
-  "ledger_entries", "food_logs", "workout_logs", "body_metrics", "wellness_logs", "hydration_logs", "user_plans",
-  "notes", "memory_facts",
-]);
+//
+// It is now a SOFT delete: the row is tombstoned (`deleted_at`), every read
+// filters it out, and only the 30-day purge really removes it. To the user
+// nothing changed - the row vanishes from the feed and from every total - but the
+// removal is now a reversible write with a before-image, which is the whole
+// premise of undo. Hard delete survives only for `deleteAllUserData`.
+const DELETABLE_TABLES = new Set(SOFT_DELETABLE_TABLES);
 export async function deleteRow(table, id) {
   if (!DELETABLE_TABLES.has(table)) throw new Error(`delete not allowed for ${table}`);
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
-  const { error } = await supabase.from(table).delete().eq("id", id).eq("user_id", userId);
+  const { error } = await supabase
+    .from(table)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id).eq("user_id", userId)
+    // Deleting an already-deleted row is a no-op, not a second delete: it must
+    // never overwrite the original tombstone timestamp and restart the 30-day
+    // purge clock on a row the user removed weeks ago.
+    .is("deleted_at", null);
   if (error) throw error;
+}
+
+// Put a tombstoned row back. The other half of deleteRow, and what
+// src/services/undo-service.js calls to reverse a delete. Returns false when
+// there was nothing to restore (already live, or hard-gone) so the caller can
+// report `target_missing` instead of claiming success.
+export async function restoreRow(table, id) {
+  if (!DELETABLE_TABLES.has(table)) throw new Error(`restore not allowed for ${table}`);
+  const supabase = await getSupabaseClient();
+  const userId = requireUserId();
+  const { data, error } = await supabase
+    .from(table)
+    .update({ deleted_at: null })
+    .eq("id", id).eq("user_id", userId)
+    .select("id");
+  if (error) throw error;
+  return Boolean((data || []).length);
 }
 
 // Server-side data erasure: wipe every row this user owns and their stored
@@ -966,9 +1120,12 @@ export async function fetchStatementLedgerEntries({ fromDate, toDate }) {
   const [ty, tm, td] = toDate.split("-").map(Number);
   const start = new Date(fy, fm - 1, fd);
   const end = new Date(ty, tm - 1, td + 1);
+  // SOFT-DELETE ALLOWLIST: re-import dedupe must see tombstones. If a deleted
+  // bank row were invisible here, re-importing the same statement would recreate
+  // the exact entry the user removed, every time.
   const { data, error } = await supabase
     .from("ledger_entries")
-    .select("id, amount, direction, occurred_at, merchant, description, reference, source_type")
+    .select("id, amount, direction, occurred_at, merchant, description, reference, source_type, deleted_at")
     .eq("source_type", "statement")
     .gte("occurred_at", start.toISOString())
     .lt("occurred_at", end.toISOString());
@@ -1189,6 +1346,7 @@ export async function fetchManualLedgerEntries({ fromDate, toDate }) {
   const { data, error } = await supabase
     .from("ledger_entries")
     .select("id, amount, merchant, description, occurred_at, source_type")
+    .is("deleted_at", null)
     .or("source_type.is.null,source_type.neq.statement")
     .gte("occurred_at", `${fromDate}T00:00:00Z`)
     .lte("occurred_at", `${toDate}T23:59:59Z`);
@@ -1216,6 +1374,7 @@ export async function fetchReminders() {
   const { data, error } = await supabase
     .from("reminders")
     .select("id, title, note, kind, freq, day_of_month, month_of_year, weekday, on_date, lead_days, active, created_at")
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data || [];
@@ -1239,9 +1398,10 @@ export async function setReminderActive(id, active) {
 }
 
 export async function deleteReminder(id) {
-  const supabase = await getSupabaseClient();
-  const { error } = await supabase.from("reminders").delete().eq("id", id);
-  if (error) throw error;
+  // Soft delete like every other row the model can reach: a reminder that fires
+  // every year is exactly the kind of thing you want back after deleting it by
+  // mistake, and there is no way to retype a rule you no longer remember.
+  await deleteRow("reminders", id);
 }
 
 export async function deleteAllUserData() {

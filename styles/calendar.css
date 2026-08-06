@@ -1,0 +1,244 @@
+/* CALENDAR - the month grid and agenda rendered by src/ui/calendar-panel.js.
+ *
+ * Lives inside the existing #remindersStrip card on Home, so it inherits that
+ * card's surface and only has to describe the grid itself. Sized for a 320px
+ * phone first: seven columns of a 7-column grid at 320px minus the card padding
+ * leaves ~38px per cell, which is why the day number is 0.8rem and the event
+ * marker is a dot rather than a label. */
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.cal-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.cal-toggle button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+.cal-toggle button.is-on {
+  background: var(--accent, #138a5b);
+  color: #fff;
+  opacity: 1;
+}
+
+/* ---- agenda ------------------------------------------------------------- */
+
+.cal-agenda,
+.cal-agenda-items,
+.cal-day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cal-agenda-day + .cal-agenda-day {
+  margin-top: 0.6rem;
+}
+
+.cal-agenda-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.cal-agenda-day.is-today .cal-agenda-head {
+  color: var(--accent, #138a5b);
+  opacity: 1;
+}
+
+.cal-agenda-away {
+  font-size: 0.7rem;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.75;
+}
+
+.cal-agenda-item,
+.cal-day-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.6rem;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  font-size: 0.9rem;
+}
+
+.cal-agenda-item + .cal-agenda-item,
+.cal-day-list li + li {
+  margin-top: 0.3rem;
+}
+
+.cal-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-time {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--accent-soft, rgba(19, 138, 91, 0.16));
+}
+
+.cal-rule {
+  flex-basis: 100%;
+  font-size: 0.7rem;
+  opacity: 0.65;
+}
+
+.cal-empty {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.65;
+}
+
+/* ---- month grid --------------------------------------------------------- */
+
+.cal-month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.cal-nav {
+  appearance: none;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: inherit;
+  border-radius: 0.5rem;
+  /* 34px is the smallest a thumb reliably hits, and these arrows are the one
+     control in the grid a user taps repeatedly. */
+  min-width: 2.1rem;
+  min-height: 2.1rem;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cal-weekdays,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.cal-weekdays span {
+  text-align: center;
+  font-size: 0.65rem;
+  opacity: 0.55;
+  padding-bottom: 0.15rem;
+}
+
+.cal-cell {
+  appearance: none;
+  border: 0;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  /* Square-ish cells without a fixed height, so the six-row grid keeps its
+     shape from 320px to a desktop card. */
+  aspect-ratio: 1 / 1;
+  border-radius: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  position: relative;
+}
+
+.cal-cell.is-blank {
+  background: transparent;
+  cursor: default;
+}
+
+.cal-cell.is-past {
+  opacity: 0.45;
+}
+
+.cal-cell.is-today {
+  outline: 1px solid var(--accent, #138a5b);
+  font-weight: 700;
+}
+
+.cal-cell.is-selected {
+  background: var(--accent, #138a5b);
+  color: #fff;
+  opacity: 1;
+}
+
+.cal-dots {
+  display: flex;
+  gap: 2px;
+  line-height: 0;
+}
+
+.cal-dots i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--accent, #138a5b);
+  display: block;
+}
+
+.cal-cell.is-selected .cal-dots i {
+  background: #fff;
+}
+
+.cal-day-list {
+  margin-top: 0.5rem;
+}
+
+/* ---- the manage list's extra rule detail (Settings) ---------------------- */
+
+.reminder-next {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.reminder-warn {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--warn, #d98324);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cal-cell {
+    transition: background-color 120ms ease;
+  }
+}

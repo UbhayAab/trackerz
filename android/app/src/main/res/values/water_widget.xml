@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings and colours for the water widget + Quick Settings tile.
+
+  A SEPARATE file from values/strings.xml on purpose: `npx cap sync` / `cap add`
+  regenerate the Capacitor-owned resources, and strings.xml is one of them.
+  Anything the widget needs that lives in a Capacitor-owned file is one sync away
+  from disappearing and taking the widget's labels with it.
+
+  Colours are the light-theme tokens from styles/tokens.css, so the widget looks
+  like the app rather than like a generic Android card. The wellness token
+  (#3a5fb0) is the water hue everywhere in the app; the green accent means MONEY,
+  and a green water meter next to a green spend meter is two different facts
+  wearing the same colour. There is no values-night/ variant yet: launchers
+  render widgets over wallpaper, not over the app's canvas, so a fixed light card
+  is legible on both and a dark one is not always.
+
+  NOTE: an XML comment may not contain a double hyphen. Writing that CSS custom
+  property with its own leading hyphens made this whole file unparseable, which
+  takes every string and colour below down with it and fails the build.
+-->
+<resources>
+    <string name="water_widget_label">Deno water</string>
+    <string name="water_widget_description">Tap to log 250 ml of water without opening Deno.</string>
+    <string name="water_widget_tap_hint">Log 250 ml of water</string>
+    <string name="water_widget_goal_placeholder">of 3.5L</string>
+    <string name="water_widget_status_placeholder">tap to add 250 ml</string>
+    <string name="water_tile_label">Water +250ml</string>
+
+    <color name="water_widget_bg">#FFFFFFFF</color>
+    <color name="water_widget_line">#FFEAE9E3</color>
+    <color name="water_widget_ink">#FF17191E</color>
+    <color name="water_widget_muted">#FF787D87</color>
+    <color name="water_widget_accent">#FF3A5FB0</color>
+</resources>

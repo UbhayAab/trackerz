@@ -32,7 +32,11 @@ export const toolRegistry = [
   { name: "create_reminder_candidate", domain: "all", write: true, destructive: false },
   { name: "set_target_candidate", domain: "all", write: true, destructive: false },
   { name: "remember_fact", domain: "all", write: true, destructive: false },
-  { name: "link_duplicate_candidates", domain: "all", write: true, destructive: false },
+  // write:false, not true. The edge function keeps this OUT of WRITE_TOOLS and
+  // out of applyTool() on purpose - it never writes a domain row, it flags two
+  // candidates as the same event for review. The registry claimed it was a
+  // writer, which is the third drift tests/tool-sync.test.mjs caught on day one.
+  { name: "link_duplicate_candidates", domain: "all", write: false, destructive: false },
   { name: "update_plan_candidate", domain: "all", write: true, destructive: false },
   { name: "request_user_review", domain: "all", write: false, destructive: false },
   // Writes nothing - it carries the AI's reply to a question back to the UI.

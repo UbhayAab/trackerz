@@ -9,6 +9,8 @@ import { classifyRequestKind } from "../../lib/request-router.mjs";
 import { startDictation, isLiveTranscriptionSupported, collapseStutter } from "../services/speech.js";
 import { enqueueCapture, markSending, markSent, markFailed } from "../services/offline-queue.js";
 import { recordLatency, bucketFor } from "../services/latency-stats.js";
+import { setLiveDetail, renderOutbox } from "./outbox-panel.js";
+import { pickRecorderMime, prepareAudioFiles } from "../services/audio-convert.js";
 import { showToast } from "./toast.js";
 
 let recorder = null;
@@ -17,7 +19,6 @@ let pendingMediaFiles = [];
 let liveTranscript = "";
 let recognitionHandle = null;
 let waveformHandle = null;
-let optimisticCounter = 0;
 // The textarea contents at the moment dictation started. Live text is rendered
 // as `voiceBaseText + transcript` so speaking never eats something already typed.
 let voiceBaseText = "";
@@ -116,7 +117,10 @@ async function handleSubmit() {
   }
 
   const text = $("#captureText").value.trim();
-  const allFiles = getCaptureFiles();
+  // Convert any audio the transcription API cannot read (webm, mp4) into 16 kHz
+  // mono WAV. Without this a voice note uploads, 400s during extraction, gets
+  // swallowed, and the UI still reports "Capture saved" over nothing.
+  const allFiles = await prepareAudioFiles(getCaptureFiles());
   if (!text && allFiles.length === 0 && !liveTranscript) {
     // Silence used to be the entire response to an empty submit.
     showToast("Type, speak, or attach something first.");
@@ -124,7 +128,9 @@ async function handleSubmit() {
   }
 
   const captureType = activeMode();
-  const optimisticId = pushOptimistic({ text, transcript: liveTranscript, fileCount: allFiles.length, captureType });
+  // Set once the outbox has the capture; it doubles as the row's identity on
+  // screen, so what is rendered is exactly what is persisted.
+  let outboxId = null;
 
   // CLEAR THE BOX NOW, not in `finally`. resetForm() used to run after the whole
   // round trip, so the text sat there for the entire 6-46 s the agent takes
@@ -163,13 +169,15 @@ async function handleSubmit() {
   // Writing here first also means an app kill mid-flight is survivable: the item
   // is on disk in `sending`, and recoverOutbox() on the next boot hands it back
   // to the retry machine.
-  let outboxId = null;
   try {
     outboxId = await enqueueCapture({
       text: [text, submitted.transcript].filter(Boolean).join("\n"),
       files: allFiles,
       captureType,
     });
+    // Paint the queued row now, so the capture is visibly somewhere the instant
+    // the box clears rather than only once the network answers.
+    await renderOutbox();
   } catch (err) {
     // Storage itself is unavailable (private mode, quota, a tab holding an old
     // DB version). Say so rather than proceeding as if the capture were safe.
@@ -178,7 +186,7 @@ async function handleSubmit() {
   }
 
   if (!navigator.onLine) {
-    updateOptimistic(optimisticId, { status: "queued", detail: "Offline - saved on this phone, will send when you're back online." });
+    updateOptimistic(outboxId, { status: "queued", detail: "Offline - saved on this phone, will send when you're back online." });
     updateState((state) => {
       state.activeJob = null;
       state.parseLog.unshift("Offline: capture waiting in the outbox.");
@@ -199,7 +207,7 @@ async function handleSubmit() {
             state.activeJob = { ...s, stageIndex: idx, startedAt, bucket };
             state.parseLog.unshift(`${s.label}: ${s.detail}`);
           });
-          updateOptimistic(optimisticId, { status: s.key, detail: s.detail });
+          updateOptimistic(outboxId, { status: s.key, detail: s.detail });
         },
       },
     );
@@ -229,13 +237,15 @@ async function handleSubmit() {
       }
     }
     if (answered) renderAnswer(answered);
-    updateOptimistic(optimisticId, {
+    updateOptimistic(outboxId, {
       status: "done",
       detail: answered ? "Answered - nothing was logged." : "Saved. Review the action queue.",
     });
     // It landed. Release it from the outbox - the domain rows are the record
     // now, and a lingering item would sit in the queue depth forever.
     if (outboxId) await markSent(outboxId, result?.ingestion?.id || null).catch(() => null);
+    setLiveDetail(outboxId, "");
+    await renderOutbox();
     // Only a run that actually completed teaches the curve. Failures and
     // timeouts are not observations of how long success takes.
     recordLatency(bucket, Date.now() - startedAt);
@@ -256,6 +266,8 @@ async function handleSubmit() {
     // over-budget capture just spends more money.
     let outcome = null;
     if (outboxId) outcome = await markFailed(outboxId, err).catch(() => null);
+    setLiveDetail(outboxId, "");
+    await renderOutbox();
 
     if (!outboxId) {
       // The outbox was never available. Put the words back rather than swallow
@@ -273,7 +285,7 @@ async function handleSubmit() {
       : outcome?.state === "dead"
         ? `Couldn't send - ${describeDeath(outcome)}`
         : msg;
-    updateOptimistic(optimisticId, { status: willRetry ? "queued" : "error", detail });
+    updateOptimistic(outboxId, { status: willRetry ? "queued" : "error", detail });
     showToast(willRetry ? "Couldn't send - saved on this phone, retrying." : detail,
       { kind: "error", duration: 6000 });
     updateState((state) => {
@@ -304,41 +316,19 @@ function resetForm() {
   renderRoutePreview();
 }
 
-// Same escaping as ui/toast.js - the optimistic row is built with innerHTML and
-// the summary is whatever the user typed, pasted or dictated.
-function escapeHtml(s) {
-  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
-}
-
-function pushOptimistic({ text, transcript, fileCount, captureType }) {
-  const wrap = $("#optimisticQueue");
-  if (!wrap) return null;
-  optimisticCounter += 1;
-  const id = `opt-${optimisticCounter}`;
-  const row = document.createElement("div");
-  row.className = "optimistic-row status-queued";
-  row.id = id;
-  const summary = text || transcript || `${fileCount} file(s)`;
-  row.innerHTML = `
-    <span class="optimistic-dot" aria-hidden="true"></span>
-    <div class="optimistic-body">
-      <strong>${escapeHtml(summary.slice(0, 80))}</strong>
-      <span class="optimistic-status">${escapeHtml(captureType)} • queued</span>
-    </div>
-  `;
-  wrap.prepend(row);
-  setTimeout(() => row.classList.add("ready"), 20);
-  return id;
-}
-
-function updateOptimistic(id, { status, detail }) {
+// THE OUTBOX IS THE ROW NOW.
+//
+// These used to build and mutate their own DOM node in #optimisticQueue. That
+// row existed only in memory, so a reload erased it while the capture itself was
+// still queued in IndexedDB - the user saw nothing and had no way to tell "still
+// trying" from "gone". src/ui/outbox-panel.js renders the same container from
+// storage instead, so what is on screen is what is actually persisted.
+//
+// Kept as thin shims so the call sites stay readable: the in-flight stage text
+// is the one thing the outbox cannot know by itself.
+function updateOptimistic(id, { detail }) {
   if (!id) return;
-  const row = document.getElementById(id);
-  if (!row) return;
-  row.className = `optimistic-row status-${status || "running"} ready`;
-  const label = row.querySelector(".optimistic-status");
-  if (label) label.textContent = `${status} • ${detail || ""}`;
-  if (status === "done") setTimeout(() => row.remove(), 6000);
+  setLiveDetail(id, detail || "");
 }
 
 function setVoiceLabel(button, text) {
@@ -407,7 +397,10 @@ async function handleVoiceClick() {
     liveTranscript = "";
     // Anything already typed stays; dictation appends to it.
     voiceBaseText = $("#captureText")?.value || "";
-    recorder = new MediaRecorder(stream);
+    // Prefer a container Gemini accepts so no conversion is needed at all.
+    // Chrome's default is audio/webm, which the API rejects outright.
+    const preferredMime = pickRecorderMime();
+    recorder = preferredMime ? new MediaRecorder(stream, { mimeType: preferredMime }) : new MediaRecorder(stream);
     startWaveform(stream);
 
     if (isLiveTranscriptionSupported()) {

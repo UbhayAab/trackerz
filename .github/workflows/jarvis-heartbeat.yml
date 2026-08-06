@@ -13,10 +13,16 @@ on:
     - cron: "45 1 * * *"  # 45 1 UTC = 07:15 IST - morning brief
     - cron: "15 9 * * *"  # 14:45 IST - midday pace check
     - cron: "15 15 * * *" # 20:45 IST - evening nudge
+    # Every 30 minutes, purely to drain the agent_tasks backlog if the per-minute
+    # pg_cron tick has stopped. GitHub's scheduler is far too coarse and far too
+    # unreliable to BE the minute clock (5 min is its floor and it skips under
+    # load), so this is a safety net, not a schedule: each drained task still
+    # claims its own occurrence row, so a late drain fires it exactly once.
+    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       action:
-        description: "closeout | morning | midday | evening | status"
+        description: "closeout | morning | midday | evening | task | status"
         default: "morning"
 
 jobs:
@@ -31,20 +37,34 @@ jobs:
             echo "::warning::JARVIS_CRON_SECRET repo secret not set - heartbeat skipped."
             exit 0
           fi
+          fire() {
+            echo "action=$1"
+            curl -sS -X POST "https://yyoewdcijplkhxleejtm.supabase.co/functions/v1/jarvis" \
+              -H "content-type: application/json" \
+              -H "x-jarvis-secret: $JARVIS_CRON_SECRET" \
+              -d "{\"action\":\"$1\"}" | head -c 2000
+            echo
+          }
           case "${{ github.event.inputs.action }}" in
-            closeout|morning|midday|evening|status) ACTION="${{ github.event.inputs.action }}" ;;
-            *)
+            closeout|morning|midday|evening|task|status) fire "${{ github.event.inputs.action }}"; exit 0 ;;
+          esac
+          # The minute of the hour tells the four daily slots apart from the
+          # every-30-minutes task drain: only the :15/:45/:50 runs stand in for a
+          # slot. Without this the drain runs would ALSO fire a brief, and the
+          # slot claim in job_runs would be doing all the work of suppressing it.
+          MIN=$(date -u +%M)
+          HOUR=$(date -u +%H)
+          case "$MIN" in
+            15|45|50)
               # UTC hour -> the slot this run is standing in for. Ordered so
               # each window maps to exactly one action; 09 UTC is 14:30 IST.
-              HOUR=$(date -u +%H)
               if [ "$HOUR" -ge 18 ]; then ACTION=closeout
               elif [ "$HOUR" -lt 8 ]; then ACTION=morning
               elif [ "$HOUR" -lt 12 ]; then ACTION=midday
               else ACTION=evening
-              fi ;;
+              fi
+              fire "$ACTION" ;;
           esac
-          echo "action=$ACTION"
-          curl -sS -X POST "https://yyoewdcijplkhxleejtm.supabase.co/functions/v1/jarvis" \
-            -H "content-type: application/json" \
-            -H "x-jarvis-secret: $JARVIS_CRON_SECRET" \
-            -d "{\"action\":\"$ACTION\"}" | head -c 2000
+          # Always drain the task queue. Every task claims its own occurrence
+          # row, so this is idempotent no matter how often it runs.
+          fire task

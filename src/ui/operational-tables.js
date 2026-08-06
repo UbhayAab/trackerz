@@ -4,6 +4,7 @@ import { isLocalSession } from "../services/auth.js";
 import { applyProposedAction, applyProposedActions, applyAiAction, rejectAiAction } from "../services/supabase-data.js";
 import { APPLIER_WRITE_TOOLS } from "../services/action-applier.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { refreshAfterWrite } from "./refresh.js";
 
 const reviewColumns = [
   { key: "item", label: "Item", strong: true },
@@ -134,7 +135,7 @@ async function handleReviewAction(action, rowId) {
   } catch (err) {
     updateState((state) => { state.parseLog.unshift(`Review action failed: ${err?.message || err}`); });
   }
-  await hydrateStateFromSupabase().catch(() => {});
+  await refreshAfterWrite("that");
 }
 
 async function handleApproveAll() {
@@ -158,7 +159,7 @@ async function handleApproveAll() {
   } catch (err) {
     updateState((state) => { state.parseLog.unshift(`Bulk approve failed: ${err?.message || err}`); });
   }
-  await hydrateStateFromSupabase().catch(() => {});
+  await refreshAfterWrite("that");
 }
 
 function setTable(selector, columns, rows, options = {}) {

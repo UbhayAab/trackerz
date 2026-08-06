@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Home-screen water widget.
+
+  RemoteViews can only inflate a fixed set of classes (LinearLayout /
+  RelativeLayout / FrameLayout / GridLayout, TextView, ImageView, Button,
+  ProgressBar and a few more). Nothing here is outside that list on purpose - a
+  ConstraintLayout or a custom view inflates to a blank grey box on the launcher
+  with the failure only visible in logcat.
+
+  The whole card is the tap target (@id/widgetWaterTap), sized so a thumb cannot
+  miss it, and the status line is a SECOND target that opens the app in sync mode.
+  They are separate because they mean opposite things: one adds water, the other
+  must never add water.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widgetWaterTap"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@drawable/widget_water_bg"
+    android:padding="10dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:contentDescription="@string/water_widget_tap_hint">
+
+    <TextView
+        android:id="@+id/widgetWaterTotal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:textColor="@color/water_widget_ink"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="0ml" />
+
+    <TextView
+        android:id="@+id/widgetWaterGoal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="1dp"
+        android:textSize="11sp"
+        android:textColor="@color/water_widget_muted"
+        android:maxLines="1"
+        android:text="@string/water_widget_goal_placeholder" />
+
+    <ProgressBar
+        android:id="@+id/widgetWaterMeter"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="7dp"
+        android:layout_marginBottom="5dp"
+        android:max="100"
+        android:progress="0"
+        android:progressTint="@color/water_widget_accent" />
+
+    <!-- The honest half. "queued" here is not a cosmetic detail: it is the
+         difference between water that is in the account and water that is only
+         on this phone, and it is also the button that fixes it. -->
+    <TextView
+        android:id="@+id/widgetWaterStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp"
+        android:textSize="10sp"
+        android:textColor="@color/water_widget_muted"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:clickable="true"
+        android:focusable="true"
+        android:text="@string/water_widget_status_placeholder" />
+
+</LinearLayout>

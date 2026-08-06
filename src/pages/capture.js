@@ -10,6 +10,7 @@ import { bootWithAuth } from "./bootstrap.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { registerServiceWorker, bindInstallPrompt, bindOnlineDrain } from "../services/pwa.js";
 import { recoverOutbox, drainOfflineQueue } from "../services/offline-queue.js";
+import { bindOutboxPanel, renderOutbox } from "../ui/outbox-panel.js";
 import { runCapture } from "../services/agent-runner.js";
 import { ensureTodayBriefing, watchTodayBriefings } from "../services/briefing.js";
 import { renderBriefingStrip } from "../ui/briefing-strip.js";
@@ -57,9 +58,13 @@ bootWithAuth(async () => {
   // camera Activity is a common trigger - sits in `sending` and would never be
   // sent or surfaced. Hand it back to the retry machine, then drain: on a
   // connection that never actually dropped, the `online` event never fires.
+  bindOutboxPanel(runCapture);
   recoverOutbox()
     .then((n) => (n ? drainOfflineQueue(runCapture) : null))
-    .catch((err) => console.error("[outbox] boot recovery failed:", err));
+    .catch((err) => console.error("[outbox] boot recovery failed:", err))
+    // Render whatever is still waiting, so a capture queued before a reload is
+    // visible rather than silently sitting in IndexedDB.
+    .finally(() => renderOutbox());
   await hydrateStateFromSupabase();
   // Proactive briefing: the jarvis edge fn writes it server-side on schedule -
   // show the freshest row (client-generating only as offline fallback), and

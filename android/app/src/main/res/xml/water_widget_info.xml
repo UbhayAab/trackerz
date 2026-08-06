@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Water widget metadata.
+
+  updatePeriodMillis is 0 on purpose. The platform floor is 30 minutes anyway,
+  and a periodic wake-up would tell us nothing we do not already know: every
+  number this widget shows changes because of a tap, a sync or the app pushing a
+  fresh total, and all three call WaterWidgetProvider.refreshAll() directly. A
+  30-minute alarm would only cost battery to redraw an unchanged number.
+
+  minWidth/minHeight target a 2x2 cell so the number stays legible; the API 31+
+  targetCellWidth/Height say the same thing in the newer units, and older
+  launchers keep using the dp values.
+
+  57dp per cell is the documented formula (70*n - 30).
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_water"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/water_widget_description"
+    android:updatePeriodMillis="0" />

@@ -250,3 +250,53 @@ assert.ok(chainHtml.includes("→ ledger entries"), "action (applied target) ren
 assert.ok(chainHtml.includes("→ food logs"), "fan-out food log target rendered");
 
 console.log("audit-log tests passed");
+
+// ---------------------------------------------------------------------------
+// THE AUDIT LOG IS APPEND-ONLY.
+//
+// revertTargetEvent() used to finish with `.from("audit_log").delete().eq("id",
+// auditId)` - the undo destroyed its own audit trail. After it ran the app held
+// no record that the target had ever been changed, no record that it had been
+// changed BACK, and no way to answer "why is my protein goal 180" three weeks
+// later. An audit log an ordinary user action can erase is not an audit log.
+//
+// A revert now writes a COMPENSATING row (double-entry style: before/after
+// swapped, target_id pointing at the change it reverses) and fetchTargetEvents
+// hides a change that has one. This scans every module in src/ so the next person
+// reaching for `.delete()` on audit_log fails the build instead of the audit.
+// ---------------------------------------------------------------------------
+{
+  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+
+  function walk(dir, out = []) {
+    for (const name of readdirSync(dir)) {
+      const path = `${dir}/${name}`;
+      if (statSync(path).isDirectory()) walk(path, out);
+      else if (path.endsWith(".js") || path.endsWith(".mjs")) out.push(path);
+    }
+    return out;
+  }
+
+  let callSites = 0;
+  for (const file of walk("src")) {
+    // Whole-line comments are prose here and carry semicolons; blanking them
+    // keeps a chain from being cut in half by punctuation.
+    const text = readFileSync(file, "utf8").replace(/^[ \t]*\/\/.*$/gm, "");
+    for (let i = text.indexOf('.from("audit_log")'); i >= 0; i = text.indexOf('.from("audit_log")', i + 1)) {
+      callSites += 1;
+      const chain = text.slice(i, i + 500).split(";")[0];
+      assert.ok(
+        !/\.delete\(/.test(chain),
+        `${file}: an audit_log call site uses .delete( - the audit trail must be append-only`,
+      );
+    }
+  }
+  assert.ok(callSites >= 2, `expected audit_log to be read and written in src/, found ${callSites} call sites`);
+
+  const data = readFileSync("src/services/supabase-data.js", "utf8");
+  assert.match(data, /action: "revert_target"/, "an undo must write a compensating audit row");
+  assert.match(data, /target_id: auditId/, "the compensating row must name the change it reverses");
+  assert.match(data, /\.in\("action", \["set_target", "revert_target"\]\)/, "the feed must read both halves");
+
+  console.log(`audit append-only tests passed: ${callSites} audit_log call sites, none delete`);
+}

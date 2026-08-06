@@ -8,6 +8,7 @@ import { upsertBudget } from "../services/supabase-data.js";
 import { goalDef, goalValue, goalDisplayValue, resolveDietTargets } from "../domain/goals.js";
 import { planForDate } from "../domain/diet/plan.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { refreshAfterWrite } from "./refresh.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 
 const saveTimers = new WeakMap();
@@ -94,7 +95,7 @@ async function saveBudget(input, status) {
     await upsertBudget({ kind: def.kind, period: def.period, amount });
     if (status) status.textContent = `${def.label} saved - updated everywhere.`;
     // Re-hydrate so every surface that reads this budget/goal refreshes.
-    await hydrateStateFromSupabase().catch(() => {});
+    await refreshAfterWrite("the target");
   } catch (err) {
     if (status) status.textContent = `${def.label} save failed: ${err?.message || err}`;
   }

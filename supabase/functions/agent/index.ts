@@ -305,6 +305,24 @@ function validateToolArguments(name: string, args: Record<string, unknown> | und
   for (const [key, [lo, hi]] of Object.entries(schema.ranges || {})) {
     if (typeof args[key] === "number" && ((args[key] as number) < lo || (args[key] as number) > hi)) errors.push(`range:${key}:${lo}-${hi}`);
   }
+  // A PERMANENT-scope DELTA is the one plan shape that corrupts the standing
+  // setup rather than one day of it. SYSTEM_PROMPT says "delta ops are ONLY for a
+  // date scope" and nothing enforced it - so a `{scope:"permanent", payload:{op:
+  // "remove_meal", match:"banana"}}` was stored as the standing plan DOCUMENT.
+  // foldPlanPayloads then reads that object as the whole diet: no `meals` array,
+  // so the plan resolves to zero meals, and every macro figure derived from it
+  // renders a measured zero for every future day.
+  //
+  // Rejected rather than coerced on purpose: turning it into a dated delta would
+  // mean inventing a date the user never said. The cost is that one plan edit is
+  // dropped and has to be retyped; the alternative cost is a silently emptied
+  // permanent plan that nobody notices until the numbers are wrong.
+  if (name === "update_plan_candidate") {
+    const scope = String((args as any).scope ?? "").trim().toLowerCase();
+    const payload = (args as any).payload;
+    const isDelta = Boolean(payload && typeof payload === "object" && !Array.isArray(payload) && typeof (payload as any).op === "string");
+    if (isDelta && (!scope || scope === "permanent")) errors.push("permanent_scope_delta");
+  }
   return { ok: errors.length === 0, errors };
 }
 
@@ -852,7 +870,7 @@ function parseToolCalls(raw: string, nowIso = "") {
 // expense also yields a food_log at the same time when the model didn't emit one,
 // so "paid 240 zomato lunch" lands in BOTH money and diet.
 const FOOD_MERCHANTS = ["zomato", "swiggy", "blinkit", "zepto", "instamart", "dominos", "domino", "mcdonald", "kfc", "starbucks", "subway", "pizza", "burger", "cafe", "coffee", "restaurant", "dhaba", "bakery", "biryani", "faasos", "eatfit", "box8", "behrouz", "wow momo", "chaayos", "haldiram", "barbeque", "burger king", "pizza hut", "dunkin", "baskin", "chai point", "theobroma", "la pino", "eatsure", "freshmenu", "ovenstory", "taco bell", "third wave", "blue tokai", "keventers", "bikanervala", "nandos", "sweet truth"];
-const FOOD_WORDS = ["aam","almond","almonds","aloo","aloo gobi","aloo paratha","aloo parathas","aloo tikki burger","americano","amrood","anda","anda curry","ande","apple","apples","ate","badam","baked chips","banana","bananas","bhaat","bhaji","bhindi","bhujia","biryani","biscuit","biscuits","black coffee","black tea","blueberries","blueberry","boiled egg","boiled eggs","boiled rice","bread","bread slice","bread slices","breakfast","burger","burrito","burritos","butter","butter chicken","buttermilk","cafe latte","cake","cappuccino","caramel popcorn","chaas","chaat","chai","chana","chana masala","chapathi","chapati","chapatis","chawal","cheese","cheese popcorn","cheese slice","cheese slices","chhaas","chhole","chia","chia seeds","chicken","chicken 100g","chicken biryani","chicken breast","chicken burger","chicken curry","chicken gravy","chicken patty burger","chickpea curry","chips","choc chip cookie","choc chip cookies","choco bar","choco chip cookie","choco chip cookies","chocolate","chocolate bar","chocolate chip cookie","chocolate chip cookies","chole","coca cola zero","coffee","coke","coke zero","cola","cookie","cookies","cottage cheese","cream biscuit","curd","curry","daal","dahi","dairy milk","dal","dal bowl","dal fry","diet coke","diet pepsi","diet soda","diet soft drink","dinner","doodh","doodh chai","dosa","dosas","dumpling","dumplings","eaten","egg","egg curry","egg masala","egg white","egg whites","eggs","espresso","filter coffee","fish","fish curry","flax seeds","food","fruit","fruit chaat","fruit juice","fruit salad","fulka","granola","greek yoghurt","greek yogurt","green salad","green tea","grilled chicken","grilled sandwich","groundnut","guava","halwa","hung curd","idli","idlis","idly","instant noodles","jalebi","jam","jeera rice","juice","kebab","kela","kheer","khichdi","kidney beans","kulcha","lamb curry","lassi","latte","lays","lemon tea","lentils","lunch","macaroni","maggi","makhan","mango","mango juice","mangoes","marmalade","masala chai","masala dosa","masala dosas","mass gainer shake","mcchicken","meal","milk","milk coffee","milk tea","millet chip","millet chips","mixed veg","mixture","momo","momos","moongphali","muesli","mutton","mutton curry","naan","nacho","nachos","namkeen","noodles","oatmeal","oats","omelet","omelette","orange","orange juice","oranges","pakoda","pakora","palak","paneer","pao bhaji","parantha","paratha","parathas","pasta","pav bhaji","peanut butter","peanuts","pepsi","pepsi black","pepsi zero","phulka","phulkas","pizza","pizza slice","pizza slices","plain dosa","poha","poori","popcorn","porridge","potato chips","potato paratha","prawns","protein milk shake","protein scoop","protein shake","pulao","pumpkin seeds","puri","quesadilla","quesadillas","ragi chip","ragi chips","rajma","ramen","rice","rice bowl","roasted peanuts","roti","rotis","rusk","sabji","sabzi","salad","salad bowl","sambar","sambhar","samosa","samosas","sandwich","santra","scoop of whey","scoop whey","seb","seed mix","seeds","sev","shake","shawarma","slice of bread","smoothie","snack","soda","soft drink","soup","south indian coffee","soya","soya beans","soya chunks","soyabean","soyabeans","soybean","soybeans","sprite","sprite zero","sprouts","steamed rice","sugar free cola","sunflower seeds","sweet lassi","tadka dal","tea","thali","thums up","thums up zero","tikka","toast","toast biscuit","tofu","toned milk","upma","uttapam","vada","vada pao","vada pav","veg biryani","veg burger","veg curry","veg salad","veg sandwich","vegetable biryani","wafers","whey","whey scoop","white rice","white sauce pasta","whites","whole egg","whole eggs","yoghurt","yogurt","zero sugar cola"];
+const FOOD_WORDS = ["aam","almond","almonds","aloo","aloo gobi","aloo paratha","aloo parathas","aloo tikki burger","americano","amrood","anda","anda curry","ande","apple","apples","ate","badam","baked chips","banana","bananas","barfi","besan laddu","bhaat","bhaji","bhindi","bhujia","biryani","biscuit","biscuits","black coffee","black forest","black tea","blueberries","blueberry","boiled egg","boiled eggs","boiled rice","bread","bread slice","bread slices","breakfast","brownie","brownies","burfi","burger","burrito","burritos","butter","butter chicken","buttermilk","cafe latte","cake","cake slice","cappuccino","caramel popcorn","carrot halwa","chaas","chaat","chai","chana","chana masala","chapathi","chapati","chapatis","chawal","cheese","cheese popcorn","cheese slice","cheese slices","chhaas","chhole","chia","chia seeds","chicken","chicken 100g","chicken biryani","chicken breast","chicken burger","chicken curry","chicken gravy","chicken patty burger","chickpea curry","chips","choc chip cookie","choc chip cookies","choco bar","choco chip cookie","choco chip cookies","chocolate","chocolate bar","chocolate chip cookie","chocolate chip cookies","chole","coca cola zero","coffee","coke","coke zero","cola","cookie","cookies","cottage cheese","cream biscuit","cup cake","cupcake","curd","curry","daal","dahi","dairy milk","dal","dal bowl","dal fry","diet coke","diet pepsi","diet soda","diet soft drink","dinner","donut","donuts","doodh","doodh chai","dosa","dosas","doughnut","doughnuts","dumpling","dumplings","eaten","egg","egg curry","egg masala","egg white","egg whites","eggs","espresso","filter coffee","fish","fish curry","flax seeds","food","fruit","fruit chaat","fruit juice","fruit salad","fulka","gajar halwa","gelato","granola","greek yoghurt","greek yogurt","green salad","green tea","grilled chicken","grilled sandwich","groundnut","guava","gulab jamun","gulab jamuns","gulabjamun","halva","halwa","hung curd","ice cream","ice cream scoop","ice creams","icecream","idli","idlis","idly","instant noodles","jalebi","jalebis","jam","jeera rice","juice","kaju barfi","kaju katli","kebab","kela","kheer","khichdi","kidney beans","kulcha","kulfi","kulfis","laddoo","laddu","ladoo","lamb curry","lassi","latte","lays","lemon tea","lentils","lunch","macaroni","maggi","makhan","mango","mango juice","mangoes","marmalade","masala chai","masala dosa","masala dosas","mass gainer shake","matka kulfi","mcchicken","meal","milk","milk coffee","milk tea","millet chip","millet chips","mixed veg","mixture","momo","momos","moongphali","motichoor laddu","muesli","mutton","mutton curry","naan","nacho","nachos","namkeen","noodles","oatmeal","oats","omelet","omelette","orange","orange juice","oranges","pakoda","pakora","palak","paneer","pao bhaji","parantha","paratha","parathas","pasta","pastry","pav bhaji","payasam","peanut butter","peanuts","pepsi","pepsi black","pepsi zero","phulka","phulkas","pizza","pizza slice","pizza slices","plain dosa","poha","poori","popcorn","porridge","potato chips","potato paratha","prawns","protein milk shake","protein scoop","protein shake","pulao","pumpkin seeds","puri","quesadilla","quesadillas","ragi chip","ragi chips","rajma","ramen","ras malai","rasgulla","rasgullas","rasmalai","rasmalais","rice","rice bowl","rice pudding","roasted peanuts","rosogolla","roti","rotis","rusk","sabji","sabzi","salad","salad bowl","sambar","sambhar","samosa","samosas","sandwich","santra","scoop of whey","scoop whey","seb","seed mix","seeds","sev","sewai","shake","shawarma","slice of bread","smoothie","snack","soda","soft drink","soft serve","softy","sooji halwa","soup","south indian coffee","soya","soya beans","soya chunks","soyabean","soyabeans","soybean","soybeans","sprite","sprite zero","sprouts","steamed rice","sugar free cola","suji halwa","sundae","sunflower seeds","sweet lassi","tadka dal","tea","thali","thums up","thums up zero","tikka","toast","toast biscuit","tofu","toned milk","upma","uttapam","vada","vada pao","vada pav","veg biryani","veg burger","veg curry","veg salad","veg sandwich","vegetable biryani","wafers","whey","whey scoop","white rice","white sauce pasta","whites","whole egg","whole eggs","yoghurt","yogurt","zero sugar cola"];
 // Words that name WHEN you ate, not WHAT - matching only these means no dish was
 // named, so no macros can ever be derived.
 const MEAL_SLOT_WORDS = new Set(["lunch", "dinner", "breakfast", "snack", "meal", "food", "ate", "eaten"]);
@@ -1314,6 +1332,223 @@ function isStandingChange(tc: any): boolean {
   const scope = String(tc?.arguments?.scope || "").trim().toLowerCase();
   return !scope || scope === "permanent";
 }
+
+// ==== MUTATION-RISK MIRROR START (byte-identical in lib/mutation-risk.mjs) ====
+var MUTATION_TIERS = ["reversible", "consequential", "destructive", "external"];
+
+// How long a soft-confirmed write stays undoable in the toast. Long enough to
+// read the sentence it just wrote, short enough not to sit on screen.
+var UNDO_TOAST_MS = 15000;
+
+// The registered tools, by tier. Membership is explicit rather than inferred from
+// the name so that adding a tool is a decision someone made, not a regex outcome.
+var REVERSIBLE_TOOLS = [
+  "create_expense_candidate", "create_income_candidate", "create_transfer_candidate",
+  "create_statement_row_candidate", "create_food_log_candidate", "create_workout_log_candidate",
+  "create_body_metric_candidate", "create_wellness_note_candidate", "create_hydration_candidate",
+  "create_sleep_candidate", "create_note_candidate",
+];
+var CONSEQUENTIAL_TOOLS = [
+  // A target is a goal every pace calculation is measured against.
+  "set_target_candidate",
+  // A durable fact is replayed into EVERY later prompt, so a wrong one compounds
+  // instead of decaying with the capture that made it.
+  "remember_fact",
+  // A reminder is a rule that fires again; a wrong one is a wrong notification
+  // every year until someone notices.
+  "create_reminder_candidate",
+  // NOT in the registry today (removed as decoration - it had no schema and no
+  // applyTool case). Pre-classified so that re-adding it cannot land on the auto
+  // path by omission: it commits a previously proposed action, so it inherits
+  // that action's blast radius and can never be lighter than consequential.
+  "apply_verified_action",
+];
+var DESTRUCTIVE_TOOLS = [
+  // A merge deletes the loser of a duplicate pair.
+  "link_duplicate_candidates",
+  // Also not registered today; pre-classified for the same reason. An undo
+  // removes rows that are already in the user's totals.
+  "undo_ai_action",
+];
+// Tools that write nothing at all. They carry a question or an answer back to the
+// UI, so they are on the auto path with the reversible inserts.
+// (estimate_food_macros is likewise not registered today - listed for the same
+// fail-closed reason as the two above.)
+var NON_MUTATING_TOOLS = ["request_user_review", "answer_question", "estimate_food_macros"];
+
+// Name shapes for tools that do not exist yet. The DEFAULT for an unrecognised
+// name is `destructive`, so a tool added without a tier entry fails CLOSED
+// (confirm) rather than open - but a `send_*` still has to read as external, or
+// the day someone adds one it would be gated as merely destructive.
+var EXTERNAL_NAME = /^(send|email|mail|notify|pay|share|post|publish|sms|call|export|upload|webhook|order|book)[_-]/;
+var DESTRUCTIVE_NAME = /^(delete|remove|drop|purge|merge|amend|edit|correct|overwrite|reset|clear|unlink|archive)[_-]/;
+
+function mutationTier(tc) {
+  var name = tc && tc.name ? String(tc.name) : "";
+  if (!name) return "destructive";
+  if (EXTERNAL_NAME.test(name)) return "external";
+  if (DESTRUCTIVE_TOOLS.indexOf(name) >= 0) return "destructive";
+  // The one tool whose tier depends on its ARGUMENTS, not its name. A permanent
+  // plan rewrite replaces the standing setup; a date-scoped delta bends one named
+  // day and is undone by deleting one row.
+  if (name === "update_plan_candidate") {
+    return isStandingChange(tc) ? "consequential" : "reversible";
+  }
+  if (CONSEQUENTIAL_TOOLS.indexOf(name) >= 0) return "consequential";
+  if (REVERSIBLE_TOOLS.indexOf(name) >= 0) return "reversible";
+  if (NON_MUTATING_TOOLS.indexOf(name) >= 0) return "reversible";
+  if (DESTRUCTIVE_NAME.test(name)) return "destructive";
+  return "destructive";
+}
+
+// What the UI has to do before the write counts as accepted.
+//   "auto" - write it, no extra affordance beyond the feed row and its delete.
+//   "soft" - write it NOW and show an undo toast for UNDO_TOAST_MS.
+//   "hard" - do NOT write; render the diff card and wait for a tap.
+function mutationGate(tc) {
+  var tier = mutationTier(tc);
+  if (tier !== "reversible") return "hard";
+  // The refinement that keeps the fast path fast. "Swap today's leg day for
+  // cardio" is one day of one plan: a diff card there is friction with nothing
+  // behind it, and the LOG-THAT-CONTRADICTS-THE-PLAN rule deliberately emits one
+  // of these ALONGSIDE a real log, so gating it would stall an ordinary capture.
+  if (tc && tc.name === "update_plan_candidate") return "soft";
+  return "auto";
+}
+
+function mutationRisk(tc) {
+  var tier = mutationTier(tc);
+  var gate = mutationGate(tc);
+  return {
+    tier: tier,
+    gate: gate,
+    undoToastMs: gate === "soft" ? UNDO_TOAST_MS : 0,
+    // Destructive means soft-delete only. The LLM gets NO hard-delete path at any
+    // tier - a purge is a maintenance job on rows already tombstoned for 30 days.
+    softDeleteOnly: tier === "destructive",
+  };
+}
+
+function requiresConfirmation(tc) {
+  return mutationGate(tc) === "hard";
+}
+
+// Rank within MUTATION_TIERS - "above reversible" is rank > 0.
+function tierRank(tier) {
+  var i = MUTATION_TIERS.indexOf(tier);
+  return i < 0 ? MUTATION_TIERS.length : i;
+}
+
+// THE INVARIANT, in one function so it can be asserted rather than described:
+// in an autonomous context (no human at the other end of the round trip) nothing
+// above `reversible` may apply itself.
+function canAutoApply(tc) {
+  return tierRank(mutationTier(tc)) === 0 && mutationGate(tc) !== "hard";
+}
+// ==== MUTATION-RISK MIRROR END ====
+
+
+// ==== ROUTE-INVARIANTS MIRROR START (byte-identical in lib/route-invariants.mjs) ====
+// Note: the edge copy reuses ITS OWN LOG_TOOLS and isStandingChange, which are
+// already defined there for the fan-out expander. Only the block below is mirrored.
+
+// Phrases that assert something is now true of every day. These are the ones the
+// original PLAN_CHANGE_CUES list missed entirely, because it was written from the
+// imperative side ("change my diet") and people mostly speak the declarative one
+// (my-diet-has-changed, I-now-have-X-every-day). Keep this array free of quoted
+// example prose: tests/mirror-parity extracts string literals by regex and cannot
+// tell a marker from a comment.
+const STANDING_MARKERS = [
+  "every day", "everyday", "every single day", "daily", "from now on",
+  "going forward", "now i", "i now", "has changed", "have changed",
+  "switched to", "these days", "nowadays", "always", "usually",
+  "my new", "no longer", "stopped eating", "stopped having",
+  // Hinglish
+  "ab se", "ab main", "ab mai", "roz", "rozana", "hamesha",
+];
+
+/**
+ * Does this text assert a STANDING fact rather than report one occasion?
+ *
+ * "I now eat 6 eggs daily" names eggs and is not a meal. Naming a food is
+ * evidence of DOMAIN, never evidence of OCCURRENCE - that single confusion
+ * produced both phantom meals in this app's history.
+ */
+export function hasStandingLanguage(text = "") {
+  const t = String(text || "").toLowerCase();
+  return STANDING_MARKERS.some((m) => t.includes(m));
+}
+
+/** Is the payload a one-shot delta ({op:...}) rather than a full document? */
+export function isDeltaPayload(payload) {
+  return Boolean(payload && typeof payload === "object" && typeof payload.op === "string");
+}
+
+/**
+ * Enforce the invariants over a set of tool calls.
+ *
+ * @param {object[]} calls
+ * @param {{evidence?: string, carriesLoggedEvent?: boolean}} ctx
+ * @returns {{calls: object[], violations: {code: string, tool: string}[]}}
+ */
+export function enforceRouteInvariants(calls = [], { evidence = "", carriesLoggedEvent = false } = {}) {
+  let out = [...calls];
+  const violations = [];
+
+  const drop = (pred, code) => {
+    const kept = [];
+    for (const c of out) {
+      if (pred(c)) violations.push({ code, tool: c?.name });
+      else kept.push(c);
+    }
+    out = kept;
+  };
+
+  const standingChange = out.some(isStandingChange);
+  const standingText = hasStandingLanguage(evidence);
+
+  // I1. A capture that rewrites the standing setup may not also write a tracker
+  //     row. 2026-08-06: update_plan_candidate at 0.95 arrived alongside a
+  //     540 kcal meal built from the instruction text.
+  if (standingChange && !carriesLoggedEvent) {
+    drop((c) => LOG_TOOLS.has(c?.name), "log_in_standing_change");
+  }
+
+  // I2. Standing LANGUAGE is enough on its own, even when the model emitted no
+  //     plan tool at all. This is the guard that works when the brain is
+  //     unavailable and only the deterministic layers run.
+  if (standingText && !carriesLoggedEvent && !standingChange) {
+    drop((c) => LOG_TOOLS.has(c?.name), "log_from_standing_language");
+  }
+
+  // I3. A permanent scope may not carry a delta payload. The prompt says this in
+  //     capitals and nothing enforced it; a delta written with scope
+  //     "permanent" is inserted, reported as applied, and then silently ignored
+  //     forever by the client, because sync.js drops permanent deltas.
+  for (const c of out) {
+    if (c?.name !== "update_plan_candidate") continue;
+    const scope = String(c?.arguments?.scope || "").trim().toLowerCase();
+    if ((!scope || scope === "permanent") && isDeltaPayload(c?.arguments?.payload)) {
+      violations.push({ code: "permanent_delta", tool: c.name });
+      // Do not drop it - a rejected plan change is a lost instruction. Mark it
+      // so the caller can ask the model for a full payload instead.
+      c.arguments._needs_full_plan = true;
+    }
+  }
+
+  // I4. A plan change that resolves to no change at all is a silent no-op
+  //     reported as a success. `matched: 0` on a delta is the usual cause: the
+  //     old fuzzy substring matcher would find nothing and quietly append.
+  for (const c of out) {
+    if (c?.name !== "update_plan_candidate") continue;
+    const p = c?.arguments?.payload;
+    const empty = !p || (typeof p === "object" && Object.keys(p).length === 0);
+    if (empty) violations.push({ code: "empty_plan_change", tool: c.name });
+  }
+
+  return { calls: out, violations };
+}
+// ==== ROUTE-INVARIANTS MIRROR END ====
 
 function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCall[] {
   let out = [...toolCalls];
@@ -2234,6 +2469,25 @@ const FOOD_TABLE: any[] = [
   { key: "chicken burger", kind: "count", aliases: ["chicken burger", "mcchicken", "chicken patty burger"], calories: 450, protein_g: 22, carbs_g: 40, fat_g: 22 },
   { key: "pizza slice", kind: "count", aliases: ["pizza slice", "pizza", "pizza slices"], calories: 285, protein_g: 12, carbs_g: 36, fat_g: 10 },
   { key: "momo", kind: "count", aliases: ["momo", "momos", "dumpling", "dumplings"], calories: 35, protein_g: 1.5, carbs_g: 5, fat_g: 1 },
+
+  // --- desserts (mirrored from lib/food-nutrition.mjs 2026-08-06) ---
+  // The table had no dessert vocabulary at all, so every ice cream, jalebi and
+  // slice of cake landed as an UNKNOWN food: no macros, no row the pattern
+  // engine could count, and `recognized: false` handing the whole capture to the
+  // model. tests/food-mirror.test.mjs asserts these aliases exist on both sides.
+  { key: "ice cream", kind: "count", gramsPerUnit: 100, aliases: ["ice cream", "icecream", "ice creams", "ice cream scoop", "gelato", "softy", "soft serve", "sundae"], calories: 200, protein_g: 3.5, carbs_g: 24, fat_g: 11 },
+  { key: "kulfi", kind: "count", aliases: ["kulfi", "kulfis", "matka kulfi"], calories: 190, protein_g: 4, carbs_g: 20, fat_g: 10 },
+  { key: "gulab jamun", kind: "count", aliases: ["gulab jamun", "gulab jamuns", "gulabjamun"], calories: 150, protein_g: 2, carbs_g: 25, fat_g: 5 },
+  { key: "jalebi", kind: "count", aliases: ["jalebi", "jalebis"], calories: 150, protein_g: 1, carbs_g: 26, fat_g: 5 },
+  { key: "rasgulla", kind: "count", aliases: ["rasgulla", "rasgullas", "rosogolla"], calories: 106, protein_g: 2, carbs_g: 20, fat_g: 2 },
+  { key: "rasmalai", kind: "count", aliases: ["rasmalai", "ras malai", "rasmalais"], calories: 190, protein_g: 6, carbs_g: 22, fat_g: 9 },
+  { key: "kheer", kind: "count", gramsPerUnit: 150, aliases: ["kheer", "payasam", "rice pudding", "sewai"], calories: 250, protein_g: 6, carbs_g: 38, fat_g: 8 },
+  { key: "halwa", kind: "count", gramsPerUnit: 150, aliases: ["halwa", "halva", "sooji halwa", "suji halwa", "gajar halwa", "carrot halwa"], calories: 320, protein_g: 5, carbs_g: 45, fat_g: 14 },
+  { key: "laddu", kind: "count", aliases: ["laddu", "ladoo", "laddoo", "besan laddu", "motichoor laddu"], calories: 185, protein_g: 4, carbs_g: 22, fat_g: 9 },
+  { key: "barfi", kind: "count", aliases: ["barfi", "burfi", "kaju katli", "kaju barfi"], calories: 145, protein_g: 3, carbs_g: 17, fat_g: 7 },
+  { key: "cake", kind: "count", gramsPerUnit: 100, aliases: ["cake", "cake slice", "pastry", "cupcake", "cup cake", "black forest"], calories: 350, protein_g: 4, carbs_g: 50, fat_g: 15 },
+  { key: "brownie", kind: "count", aliases: ["brownie", "brownies"], calories: 240, protein_g: 3, carbs_g: 32, fat_g: 12 },
+  { key: "donut", kind: "count", aliases: ["donut", "donuts", "doughnut", "doughnuts"], calories: 250, protein_g: 4, carbs_g: 31, fat_g: 13 },
 ];
 const FOOD_ALIAS_INDEX = (() => {
   const rows: any[] = [];
@@ -2524,20 +2778,24 @@ async function fetchContextBlock(supabase: ReturnType<typeof adminClient>, userI
     const [profile, budgets, notes, facts, ledger, foods, workouts, plan, todayFood, todayMoney] = await Promise.all([
       supabase.from("profiles").select("display_name, timezone, currency").eq("id", userId).maybeSingle(),
       supabase.from("budgets").select("kind, amount").eq("user_id", userId),
-      supabase.from("notes").select("kind, domain, body, due_on").eq("user_id", userId).eq("status", "open").order("created_at", { ascending: false }).limit(8),
-      supabase.from("memory_facts").select("key, value, confidence").eq("user_id", userId).order("confidence", { ascending: false }).limit(12),
+      // Every read here filters tombstones. A row the user deleted must not come
+      // back as evidence: the LOGGED TODAY ALREADY line is what stops the model
+      // re-emitting a meal, so a deleted meal left in it would make the model
+      // refuse to re-log a meal the user deliberately removed and re-entered.
+      supabase.from("notes").select("kind, domain, body, due_on").eq("user_id", userId).eq("status", "open").is("deleted_at", null).order("created_at", { ascending: false }).limit(8),
+      supabase.from("memory_facts").select("key, value, confidence").eq("user_id", userId).is("deleted_at", null).order("confidence", { ascending: false }).limit(12),
       // counts_as_spending, not direction: since the statement import landed, the
       // ledger also holds card-bill payments, investments and self-transfers.
       // Summing by direction told the model a gross outflow roughly 4x the real
       // spend, and the model then quoted that number back as fact.
-      supabase.from("ledger_entries").select("amount, direction, flow_type, counts_as_spending, merged_into").eq("user_id", userId).gte("occurred_at", since),
-      supabase.from("food_logs").select("calories_estimate, protein_g").eq("user_id", userId).gte("occurred_at", since),
-      supabase.from("workout_logs").select("id").eq("user_id", userId).gte("occurred_at", since),
-      supabase.from("user_plans").select("summary").eq("user_id", userId).eq("kind", "diet").eq("active", true).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("ledger_entries").select("amount, direction, flow_type, counts_as_spending, merged_into").eq("user_id", userId).is("deleted_at", null).gte("occurred_at", since),
+      supabase.from("food_logs").select("calories_estimate, protein_g").eq("user_id", userId).is("deleted_at", null).gte("occurred_at", since),
+      supabase.from("workout_logs").select("id").eq("user_id", userId).is("deleted_at", null).gte("occurred_at", since),
+      supabase.from("user_plans").select("summary").eq("user_id", userId).eq("kind", "diet").eq("active", true).is("deleted_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("food_logs").select("description, meal_name, calories_estimate, occurred_at")
-        .eq("user_id", userId).gte("occurred_at", istMidnightUtc).order("occurred_at").limit(20),
+        .eq("user_id", userId).is("deleted_at", null).gte("occurred_at", istMidnightUtc).order("occurred_at").limit(20),
       supabase.from("ledger_entries").select("amount, merchant, description, occurred_at")
-        .eq("user_id", userId).gte("occurred_at", istMidnightUtc).is("merged_into", null).order("occurred_at").limit(20),
+        .eq("user_id", userId).is("deleted_at", null).gte("occurred_at", istMidnightUtc).is("merged_into", null).order("occurred_at").limit(20),
     ]);
     // The target the app actually enforces: a saved budget row if there is one,
     // otherwise the diet scaffold's default. tests/context-builder.test.mjs
@@ -2576,10 +2834,10 @@ async function fetchSpendHistory(supabase: ReturnType<typeof adminClient>, userI
   const [food, ledger] = await Promise.all([
     supabase.from("food_logs")
       .select("id, ingestion_id, occurred_at, meal_name, description")
-      .eq("user_id", userId).gte("occurred_at", since).limit(2000),
+      .eq("user_id", userId).is("deleted_at", null).gte("occurred_at", since).limit(2000),
     supabase.from("ledger_entries")
       .select("id, ingestion_id, occurred_at, merchant, description, amount, direction")
-      .eq("user_id", userId).eq("direction", "expense").is("merged_into", null)
+      .eq("user_id", userId).eq("direction", "expense").is("merged_into", null).is("deleted_at", null)
       .gte("occurred_at", since).limit(2000),
   ]);
   if (food.error) throw food.error;
@@ -2671,12 +2929,35 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   }
 
   const { validCalls, rejected } = parseToolCalls(raw, nowIso);
-  const expandedCalls = recomputeMealSlots(
+  const shapedCalls = recomputeMealSlots(
     recomputeFoodMacros(
       expandToolCalls(validCalls, combinedText, nowIso), // fan-out + pure-food fallback
     ), // then deterministic food-macro override (table beats the model for everyday foods)
     combinedText,
   ); // ...and the same treatment for meal_slot: the capture's own words, else the clock
+
+  // LAST GATE. Rules the SYSTEM_PROMPT already states, now actually enforced.
+  //
+  // The prompt says a change request must not log an event, and it says a
+  // permanent plan change must be a full payload and never a delta. Both rules
+  // were written, in capitals, and both were violated in production - because a
+  // prompt is a request and a validator is a contract.
+  //
+  // Runs AFTER expansion on purpose: the phantom meal on 2026-08-06 was appended
+  // by the expander, not emitted by the brain, so checking the model's raw output
+  // would have missed it entirely.
+  const invariantResult = enforceRouteInvariants(shapedCalls, {
+    evidence: combinedText,
+    carriesLoggedEvent: carriesLoggedEvent(combinedText),
+  });
+  const expandedCalls = invariantResult.calls;
+  // Counted, not merely fixed: a rising log_from_standing_language is the early
+  // warning that a model change has started drifting, and it arrives before the
+  // user ever sees a phantom meal.
+  const invariantViolations = invariantResult.violations;
+  if (invariantViolations.length) {
+    console.warn("[invariants]", JSON.stringify(invariantViolations));
+  }
   const latencyMs = Date.now() - startedAt;
   const estimatedCostUsd = Number((extractCost + brainCost).toFixed(6));
   const provider = usedProviders.join("+") || "deepseek";
@@ -3131,6 +3412,63 @@ const BUDGET_PERIOD_BY_KIND: Record<string, string> = {
   weekly_workouts: "weekly",
 };
 
+// ---- undo_payload v2 (mirror of lib/undo-ledger.mjs) ------------------------
+//
+// v1 was `{table, id}` and nothing else, which is exactly enough to delete an
+// insert and useless for anything else. Two of the tools here do not insert at
+// all: set_target_candidate and remember_fact UPSERT a single canonical row, so
+// when one already exists the "write" is an EDIT of a value the user had before
+// the AI ever spoke. Undoing that by deleting the row would destroy the user's
+// own target. The before-image is read HERE, immediately before the write, and
+// stored with the exact column list an undo may restore.
+const UPSERT_TOOLS: Record<string, { table: string; keyColumn: string; argKey: string; columns: string[] }> = {
+  set_target_candidate: { table: "budgets", keyColumn: "kind", argKey: "kind", columns: ["amount", "period", "starts_on"] },
+  remember_fact: { table: "memory_facts", keyColumn: "key", argKey: "key", columns: ["value", "kind", "confidence", "source"] },
+};
+
+async function beforeImageFor(supabase: ReturnType<typeof adminClient>, userId: string, tc: ToolCall) {
+  const spec = UPSERT_TOOLS[tc.name];
+  if (!spec) return null;
+  const keyValue = (tc.arguments as any)?.[spec.argKey];
+  if (!keyValue) return null;
+  try {
+    const { data } = await supabase.from(spec.table)
+      .select(["id", spec.keyColumn, ...spec.columns].join(", "))
+      .eq("user_id", userId).eq(spec.keyColumn, keyValue).maybeSingle();
+    return data || null;
+  } catch (_e) {
+    // A failed before-image read must not fail the write. It costs undoability
+    // for this one action, which is recorded as an absent `before`.
+    return null;
+  }
+}
+
+// The columns an undo of THIS write may put back. Never the whole row: restoring
+// everything would clobber any later legitimate edit to the same row.
+function undoColumnsFor(toolName: string, before: any, _row: any): string[] {
+  const spec = UPSERT_TOOLS[toolName];
+  if (!spec || !before) return [];
+  return spec.columns;
+}
+
+function buildUndoPayload(
+  toolName: string, table: string | null, id: string,
+  before: any, columns: string[], note: string | null,
+) {
+  const isUpsert = Boolean(UPSERT_TOOLS[toolName]);
+  const payload: Record<string, unknown> = {
+    v: 2,
+    op: isUpsert ? "upsert" : "insert",
+    table, id,
+    // An insert has no before-image by definition - the row did not exist.
+    before: isUpsert ? (before || null) : null,
+    after: null,
+    columns: isUpsert && before ? columns : [],
+  };
+  if (note) payload.note = note;
+  return payload;
+}
+
 async function persistRunAndActions(
   supabase: ReturnType<typeof adminClient>,
   userId: string, ingestionId: string,
@@ -3185,10 +3523,11 @@ async function persistRunAndActions(
     let status = actionStatus(tc.confidence);
     let appliedTable: string | null = null;
     let appliedId: string | null = null;
+    let appliedBefore: any = null;
+    let appliedColumns: string[] = [];
     let groundingNote: string | null = null;
     // Field-level evidence flag: a write whose load-bearing fields are not present
-    // in the evidence (user text + model OCR) still commits (no approve gate) but
-    // is tagged low_evidence so the client feed can mark it for a quick look.
+    // in the evidence (user text + model OCR) is tagged low_evidence.
     if (!isGrounded(tc.name, tc.arguments, evidence)) {
       groundingNote = "low_evidence";
     }
@@ -3201,13 +3540,39 @@ async function persistRunAndActions(
       groundingNote = groundingNote ? `${groundingNote},${sanity.flags.join(",")}` : sanity.flags.join(",");
       if (status === "auto_applied") status = "proposed";
     }
+
+    // ---- THE CONFIRM GATE ---------------------------------------------------
+    // Risk TIER, not confidence. Everything above `reversible` stops here and is
+    // written as `proposed`, which the Home additions feed renders with "Add it" /
+    // "✕" - so a permanent plan rewrite, a target change or a durable memory fact
+    // now needs one tap instead of committing silently at 0.95.
+    //
+    // The reversible inserts are untouched: capture-first is the product, and
+    // putting a confirmation in front of a food log would be a regression. A
+    // DATE-SCOPED plan delta is also untouched (gate "soft") - it applies now and
+    // the client offers a 15-second undo, because the LOG-THAT-CONTRADICTS-THE-PLAN
+    // rule deliberately emits one alongside a real log and gating it would stall
+    // an ordinary capture.
+    const risk = mutationRisk(tc);
+    if (risk.gate === "hard" && status === "auto_applied") {
+      status = "proposed";
+      const gateNote = `confirm_${risk.tier}`;
+      groundingNote = groundingNote ? `${gateNote},${groundingNote}` : gateNote;
+    }
+
     if (status === "auto_applied") {
       try {
+        // The before-image for an UPSERT. An upsert over an existing row is an
+        // EDIT, and without this the undo has nothing to put back - it could only
+        // delete the row, which for `budgets`/`memory_facts` means destroying a
+        // value the user had before the AI ever spoke.
+        appliedBefore = await beforeImageFor(supabase, userId, tc);
         const res = await applyTool(supabase, userId, ingestionId, tc);
         const row: any = res && (res as any).data;
         if (row && row.id) {
           appliedTable = tableForTool(tc.name);
           appliedId = row.id;
+          appliedColumns = undoColumnsFor(tc.name, appliedBefore, row);
         } else {
           // A write tool that produced no row is a contract failure, not a
           // success. Do NOT record auto_applied with a null id - demote to
@@ -3229,7 +3594,7 @@ async function persistRunAndActions(
       status, applied_record_table: appliedTable, applied_record_id: appliedId,
       applied_at: appliedId ? new Date().toISOString() : null,
       undo_payload: appliedId
-        ? (groundingNote ? { table: appliedTable, id: appliedId, note: groundingNote } : { table: appliedTable, id: appliedId })
+        ? buildUndoPayload(tc.name, appliedTable, appliedId, appliedBefore, appliedColumns, groundingNote)
         : (groundingNote ? { review_reason: groundingNote } : null),
     });
   }

@@ -50,8 +50,77 @@ function getRecognitionCtor() {
   return globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition || null;
 }
 
+// The native Android recogniser, reached through the Capacitor global exactly the
+// way HealthConnect is - no npm specifier, so the no-bundler web build is
+// untouched and this is simply `undefined` in a browser.
+function nativeSpeech() {
+  return globalThis.Capacitor?.isNativePlatform?.() ? globalThis.Capacitor?.Plugins?.Speech : null;
+}
+
 export function isLiveTranscriptionSupported() {
-  return Boolean(getRecognitionCtor());
+  return Boolean(getRecognitionCtor() || nativeSpeech());
+}
+
+/**
+ * Start dictation on the NATIVE recogniser.
+ *
+ * Same handle shape as startDictation, so the caller cannot tell which engine it
+ * got. The plugin emits the whole transcript on every update - a replace, never
+ * an append - and joins across the session restarts Android does at every pause.
+ */
+function startNativeDictation({ onUpdate, onError, onStateChange, lang }) {
+  const Speech = nativeSpeech();
+  if (!Speech) return null;
+  let text = "";
+  let active = true;
+
+  const handles = [
+    Speech.addListener?.("speechPartial", (e) => { text = e?.text || text; onUpdate?.({ committed: "", final: "", interim: "", text }); }),
+    Speech.addListener?.("speechFinal", (e) => { text = e?.text || text; onUpdate?.({ committed: text, final: "", interim: "", text }); }),
+    Speech.addListener?.("speechError", (e) => {
+      // The plugin's codes deliberately match the Web Speech names, so one set of
+      // user-facing copy serves both engines.
+      const code = e?.code || "speech_error";
+      if (e?.text) text = e.text;
+      onError?.(code, { fatal: FATAL.has(code), message: e?.message || SPEECH_ERROR_COPY[code] || code });
+    }),
+    Speech.addListener?.("speechState", (e) => onStateChange?.(e?.state === "listening" ? "listening" : "stopped")),
+  ];
+
+  const cleanup = () => {
+    active = false;
+    for (const h of handles) { try { h?.remove?.(); } catch { /* listener already gone */ } }
+  };
+
+  Speech.start({ lang }).catch((err) => {
+    onError?.(err?.code || "start_failed", { fatal: true, message: err?.message || String(err) });
+    cleanup();
+  });
+
+  return {
+    stop() {
+      Speech.stop()
+        .then((r) => { if (r?.text) text = r.text; })
+        // A failed stop is not nothing: the plugin returns the FINAL transcript
+        // here, so swallowing it silently keeps whatever partial text we last
+        // saw. Say so, and keep the partial rather than losing the lot.
+        .catch((err) => {
+          console.error("[speech] native stop failed; keeping the last partial transcript:", err);
+          onError?.("stop_failed", { fatal: false, message: "Voice stopped, but the last few words may be missing." });
+        })
+        .finally(cleanup);
+    },
+    abort() {
+      // Cancel discards the transcript by design, so a failure here genuinely
+      // costs nothing the user wanted - but it still gets logged rather than
+      // vanishing, because a recogniser that will not cancel holds the mic open.
+      Speech.cancel()
+        .catch((err) => console.error("[speech] native cancel failed; the mic may still be held:", err))
+        .finally(cleanup);
+    },
+    getText: () => text,
+    isActive: () => active,
+  };
 }
 
 /**
@@ -135,6 +204,12 @@ export function collapseStutter(text) {
  * @returns {{stop:()=>void, abort:()=>void, getText:()=>string, isActive:()=>boolean}|null}
  */
 export function startDictation({ onUpdate, onError, onStateChange, lang = "en-IN" } = {}) {
+  // In the Android app there IS no Web Speech API - it is a Chrome-the-browser
+  // feature, not a WebView one - so the native recogniser is the only live-text
+  // path that exists there. Preferred whenever present.
+  const native = startNativeDictation({ onUpdate, onError, onStateChange, lang });
+  if (native) return native;
+
   const Ctor = getRecognitionCtor();
   if (!Ctor) return null;
 

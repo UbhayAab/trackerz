@@ -35,6 +35,28 @@ if (undoAt >= 0) {
   if (!id) { console.error("usage: --undo <ingestionId>"); process.exit(1); }
   const c = await db();
   let total = 0;
+
+  // Undo what the SERVER says it wrote, before touching ai_actions - that table
+  // is the only record of rows in tables with no ingestion_id of their own.
+  //
+  // The hardcoded list below could never reach `user_plans` or `budgets`, because
+  // neither carries an ingestion_id. So `--undo` on a plan change reported
+  // "undone: 0 domain rows" and left the plan in place, which is a worse lie than
+  // failing outright: it claims the database is back where it started.
+  const acted = await c.query(
+    `select applied_record_table, applied_record_id from ai_actions
+      where ingestion_id = $1 and applied_record_table is not null and applied_record_id is not null`,
+    [id],
+  ).catch(() => ({ rows: [] }));
+  for (const a of acted.rows) {
+    const r = await c
+      .query(`delete from ${a.applied_record_table} where id = $1`, [a.applied_record_id])
+      .catch(() => ({ rowCount: 0 }));
+    if (r.rowCount) { console.log(`  removed ${r.rowCount} from ${a.applied_record_table}`); total += r.rowCount; }
+  }
+
+  // Then sweep by ingestion_id for anything written outside the tool path (the
+  // deterministic salvage and the client-side appliers both do this).
   for (const t of ["food_logs", "ledger_entries", "workout_logs", "notes", "sleep_sessions", "hydration_logs", "reminders", "body_metrics", "wellness_logs"]) {
     const r = await c.query(`delete from ${t} where ingestion_id = $1`, [id]).catch(() => ({ rowCount: 0 }));
     if (r.rowCount) { console.log(`  removed ${r.rowCount} from ${t}`); total += r.rowCount; }
@@ -103,26 +125,53 @@ if (out.warning) console.log(`  warning: ${out.warning}`);
 
 console.log("\nROWS THAT LANDED");
 let landed = 0;
-for (const [t, cols] of [
-  ["food_logs", "description, calories_estimate, protein_g, carbs_g, fat_g"],
-  ["ledger_entries", "amount, merchant, description"],
-  ["workout_logs", "status, description"],
-  ["notes", "kind, domain, body"],
-  ["sleep_sessions", "started_at, ended_at"],
-  // Every table an applied tool can write must be listed here. A missing entry
-  // makes this script report "this capture was lost" for a capture that landed
-  // perfectly - the exact shape of lying-about-absent-data this repo keeps
-  // hitting, except here it is the DIAGNOSTIC doing the lying.
-  ["reminders", "title, kind, freq, day_of_month, month_of_year, weekday, on_date, lead_days"],
-  ["body_metrics", "metric_type, value, unit"],
-  ["wellness_logs", "note, mood_score"],
-  ["hydration_logs", "ml"],
-  ["memory_facts", "key, value"],
-]) {
-  const r = await c.query(`select ${cols} from ${t} where ingestion_id = $1`, [ingestionId]).catch(() => ({ rows: [] }));
-  for (const row of r.rows) { console.log(`  ${t.padEnd(15)} ${JSON.stringify(row)}`); landed += 1; }
+
+// Read what actually landed from ai_actions, NOT from a hardcoded table list.
+//
+// The old version listed tables and looked each one up by ingestion_id. Two ways
+// that lied, and it did both:
+//   1. A table missing from the list reported a perfectly good capture as lost.
+//      `user_plans` was missing, so on 2026-08-06 a plan change that applied
+//      correctly printed "(nothing - this capture was lost)".
+//   2. Not every table HAS an ingestion_id. user_plans and budgets do not, so no
+//      amount of adding to that list could ever have found them.
+// ai_actions.applied_record_table/applied_record_id is the server's own record of
+// what it wrote, so this cannot drift out of date when a tool is added.
+const applied = await c.query(
+  `select tool_name, status, applied_record_table, applied_record_id
+     from ai_actions
+    where ingestion_id = $1
+    order by created_at`,
+  [ingestionId],
+).catch(() => ({ rows: [] }));
+
+for (const a of applied.rows) {
+  if (!a.applied_record_table || !a.applied_record_id) continue;
+  const r = await c
+    .query(`select * from ${a.applied_record_table} where id = $1`, [a.applied_record_id])
+    .catch(() => ({ rows: [] }));
+  for (const row of r.rows) {
+    // Trim the noisy plumbing columns so the interesting fields are readable.
+    for (const k of ["id", "user_id", "created_at", "updated_at", "ingestion_id"]) delete row[k];
+    console.log(`  ${String(a.applied_record_table).padEnd(15)} ${JSON.stringify(row).slice(0, 220)}`);
+    landed += 1;
+  }
 }
-if (!landed) console.log("  (nothing - this capture was lost)");
+
+// An action that errored is not "nothing happened" - it is a failure nobody would
+// otherwise see, since ai_actions.status='errored' is rendered in no surface.
+const failedActions = applied.rows.filter((a) => a.status === "errored");
+for (const a of failedActions) console.log(`  ERRORED         ${a.tool_name}`);
+
+if (!landed) {
+  const answered = applied.rows.some((a) => a.tool_name === "answer_question");
+  const nonWriting = applied.rows.length > 0 && !failedActions.length;
+  console.log(
+    answered ? "  (nothing written - this capture was a QUESTION and was answered)"
+      : nonWriting ? "  (nothing written - every tool this capture produced was non-writing)"
+        : "  (nothing - this capture really did produce no rows)",
+  );
+}
 
 await c.end();
 console.log(`\ningestion ${ingestionId}`);

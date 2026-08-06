@@ -160,9 +160,15 @@ jobs:
           # dropping every registerPlugin() call.
           test ! -f android/app/src/main/java/com/ubhayaab/trackerz/MainActivity.java \
             || { echo "::error::MainActivity.java appeared - the Kotlin entry point with its plugin registrations was replaced"; exit 1; }
-          grep -q 'registerPlugin(SpeechPlugin' android/app/src/main/java/com/ubhayaab/trackerz/MainActivity.kt \
-            || echo "::warning::SpeechPlugin not registered yet"
-          echo "manifest intact"
+          # Every app-local plugin must still be registered. `cap add` would
+          # replace MainActivity.kt with a stock Java stub and silently drop all
+          # of these - the app would install fine and simply have no microphone,
+          # no SMS capture, no Health Connect and no water widget.
+          for plugin in HealthConnectPlugin SmsReaderPlugin NotifyReaderPlugin WaterWidgetPlugin SpeechPlugin ; do
+            grep -q "registerPlugin($plugin" android/app/src/main/java/com/ubhayaab/trackerz/MainActivity.kt \
+              || { echo "::error::$plugin is no longer registered in MainActivity.kt"; exit 1; }
+          done
+          echo "manifest intact, 5 plugins registered"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
