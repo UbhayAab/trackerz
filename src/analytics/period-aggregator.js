@@ -46,13 +46,27 @@ function inRange(ts, range) {
   return t >= new Date(range.startISO).getTime() && t < new Date(range.endISO).getTime();
 }
 
+// The single gate between "a row said this" and "we made this up". Anything that
+// is not a finite number - null, undefined, "", "n/a", NaN - is ABSENT, and
+// absent is null, never 0. `Number(x || 0)` was the shape that kept turning
+// missing data into a measured zero all over this layer.
+function numberOrNull(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function summarize({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics = [], sleepSessions = [] }, range) {
   let spend = 0, income = 0, calories = 0, protein = 0, mealCount = 0;
   let steps = 0, stepDays = 0, sleepHours = 0, sleepCount = 0;
   let moodSum = 0, moodCount = 0;
   for (const r of ledger) {
     if (!inRange(r.occurred_at, range)) continue;
-    const amt = Math.abs(Number(r.amount || 0));
+    // A row whose amount is missing or unparseable is NOT a Rs 0 transaction.
+    // `Number(r.amount || 0)` used to fold it in as a measured zero, which is the
+    // same lie one row down from "you spent nothing today".
+    const amt = Math.abs(numberOrNull(r.amount) ?? NaN);
+    if (!Number.isFinite(amt)) continue;
     // counts_as_spending, not direction: a statement import fills the ledger
     // with credit-card bill payments, mutual-fund purchases and money moved
     // between the user's own accounts, none of which is spending.
@@ -71,8 +85,14 @@ function summarize({ ledger = [], foodLogs = [], wellnessLogs = [], bodyMetrics 
   }
   for (const b of bodyMetrics) {
     if (!inRange(b.occurred_at, range)) continue;
-    if (b.metric_type === "steps") { steps += Number(b.value || 0); stepDays += 1; }
-    else if (b.metric_type === "sleep_hours") { sleepHours += Number(b.value || 0); sleepCount += 1; }
+    // Only a row carrying a real number counts as a measurement. The old
+    // `Number(b.value || 0)` incremented stepDays/sleepCount for a row with a
+    // null value, which flipped the "was this measured?" flag on while adding
+    // nothing - so the tile read a confident "0 steps" it had never measured.
+    const v = numberOrNull(b.value);
+    if (v === null) continue;
+    if (b.metric_type === "steps") { steps += v; stepDays += 1; }
+    else if (b.metric_type === "sleep_hours") { sleepHours += v; sleepCount += 1; }
   }
   // Sleep from completed sessions - a night belongs to the day you WOKE. This is
   // the primary source; bodyMetrics sleep_hours is the legacy path above.
@@ -139,19 +159,37 @@ export function aggregatePeriods({ ledger = [], foodLogs = [], wellnessLogs = []
   };
 }
 
-// Helper used by the dashboard UI: build a sparkline series of `days` length
-// of the requested metric.
+// Helper used by the dashboard UI: build a sparkline series of `days` length of
+// the requested metric.
+//
+// ABSENT IS NOT ZERO. This function used to emit `value: 0` for every day it had
+// no rows for, and those zeroes flowed straight into the trend lines as "you ate
+// nothing" / "you spent nothing" for days the user simply had not captured yet -
+// a 30-day chart of a 3-day-old account drew 27 confident zeroes. lib/jarvis-brief.mjs
+// has mandated exactly this discipline for briefings since it was written ("NULL
+// MEANS NOT MEASURED... Never render null as zero"); the analytics layer was the
+// one place that did not follow it.
+//
+// Each point is { date, value, measured }:
+//   measured true  + value 0     -> rows existed and summed to zero (a real zero)
+//   measured false + value null  -> no rows at all (we do not know)
+// Renderers must GAP a `measured: false` point, never plot it at the baseline.
 export function dailySeries({ rows = [], today = new Date(), days = 30, valueOf = () => 1 } = {}) {
   const out = [];
   for (let i = days - 1; i >= 0; i--) {
     const dayStart = addDays(startOfDay(today), -i);
     const dayEnd = addDays(dayStart, 1);
-    const sum = rows.reduce((acc, r) => {
+    let sum = 0;
+    let measured = false;
+    for (const r of rows) {
       const t = new Date(r.occurred_at).getTime();
-      if (t >= dayStart.getTime() && t < dayEnd.getTime()) return acc + (Number(valueOf(r)) || 0);
-      return acc;
-    }, 0);
-    out.push({ date: dayStart.toISOString().slice(0, 10), value: Math.round(sum) });
+      if (!(t >= dayStart.getTime() && t < dayEnd.getTime())) continue;
+      const v = numberOrNull(valueOf(r));
+      if (v === null) continue; // a row with no usable number is not a measurement
+      sum += v;
+      measured = true;
+    }
+    out.push({ date: dayStart.toISOString().slice(0, 10), value: measured ? Math.round(sum) : null, measured });
   }
   return out;
 }

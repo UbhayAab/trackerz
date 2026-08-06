@@ -1,0 +1,172 @@
+/* quick-log.html - the two-second confirmation screen.
+   Reached from the launcher long-press shortcut, the Android home-screen widget
+   and the Quick Settings tile. It is looked at for about as long as it takes to
+   read one number, so the number is the entire layout and everything else is a
+   caption. No nav, no panels, no cards: this is not a page you navigate, it is a
+   receipt you glance at and dismiss.
+
+   Sized for a thumb held at arm's length, one-handed, often mid-gulp. */
+
+.quick-log {
+  min-height: 100svh;
+  /* svh, not vh: on Android Chrome the URL bar makes 100vh taller than the
+     visible viewport, which pushed "+250 ml again" under the chrome exactly when
+     the user reached for it. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  text-align: center;
+}
+
+.quick-log-eyebrow {
+  margin: 0;
+  font-size: var(--fs-xs, 0.72rem);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--muted, #787d87);
+}
+
+.quick-log-headline {
+  margin: 2px 0 10px;
+  font-size: var(--fs-lg, 1.18rem);
+  font-weight: var(--weight-semibold, 600);
+  line-height: var(--lh-tight, 1.16);
+  color: var(--ink, #17191e);
+}
+
+/* THE NUMBER. Deliberately enormous - this is the only thing the user came for,
+   and at a glance from across a room "1.5L" has to be unmistakable. Tabular
+   figures so a tick from 1.5L to 1.75L does not shuffle the layout sideways. */
+.quick-log-total {
+  margin: 0;
+  font-size: clamp(3.4rem, 22vw, 5.4rem);
+  font-weight: var(--weight-bold, 700);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--wellness, #3a5fb0);
+}
+
+.quick-log-goal {
+  margin: 6px 0 0;
+  font-size: var(--fs-base, 0.94rem);
+  color: var(--muted, #787d87);
+}
+
+.quick-log-meter {
+  width: min(280px, 78%);
+  height: 8px;
+  margin: 14px 0 4px;
+  border-radius: 999px;
+  background: var(--line, #eae9e3);
+  overflow: hidden;
+}
+.quick-log-meter > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--wellness, #3a5fb0);
+  transition: width var(--dur-slow, 320ms) var(--ease-standard, ease);
+}
+
+/* Water that is only on this phone. Amber, never green: it has NOT been saved to
+   the account, and the difference has to be visible without reading. */
+.quick-log-queued {
+  margin: 10px 0 0;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(192, 135, 28, 0.4);
+  background: rgba(192, 135, 28, 0.1);
+  color: var(--sun, #c0871c);
+  font-size: var(--fs-sm, 0.82rem);
+  font-weight: var(--weight-semibold, 600);
+}
+
+.quick-log-status {
+  margin: 12px 0 0;
+  max-width: 34ch;
+  min-height: 2.8em;   /* reserve the space so the buttons do not jump on update */
+  font-size: var(--fs-sm, 0.82rem);
+  line-height: var(--lh, 1.5);
+  color: var(--muted, #787d87);
+}
+.quick-log-status[data-kind="ok"] { color: var(--accent, #0f7a52); }
+.quick-log-status[data-kind="warn"] { color: var(--sun, #c0871c); }
+.quick-log-status[data-kind="error"] { color: var(--risk, #b5392a); font-weight: var(--weight-medium, 500); }
+
+.quick-log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* The repeat button is the second reason this page exists: two glasses should be
+   two taps, not two trips through the launcher. 56px tall, well past the 44px
+   minimum, because it is pressed in a hurry and often repeatedly. */
+.quick-log-again {
+  min-height: 56px;
+  padding: 0 26px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--wellness, #3a5fb0);
+  color: #fff;
+  font: inherit;
+  font-size: var(--fs-md, 1.02rem);
+  font-weight: var(--weight-semibold, 600);
+  cursor: pointer;
+  /* A fast double tap must log twice, not zoom the page - the same guard the
+     in-app water drop needs, and for the same reason: without it the browser
+     swallows the second tap of any pair inside 300ms as a zoom gesture, which on
+     a repeat-tap button loses every other glass. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--dur-instant, 90ms) ease, opacity var(--dur-fast, 150ms) ease;
+}
+.quick-log-again:active:not([disabled]) { transform: scale(0.96); }
+.quick-log-again[disabled] { opacity: 0.5; cursor: default; }
+
+.quick-log-undo {
+  min-height: 56px;
+  padding: 0 22px;
+  border: 1px solid var(--line-strong, #dcdbd3);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft, #3b4049);
+  font: inherit;
+  font-size: var(--fs-base, 0.94rem);
+  font-weight: var(--weight-medium, 500);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.quick-log-undo[disabled] { opacity: 0.4; cursor: default; }
+
+.quick-log-again:focus-visible,
+.quick-log-undo:focus-visible,
+.quick-log-open:focus-visible {
+  outline: 2px solid var(--wellness, #3a5fb0);
+  outline-offset: 3px;
+}
+
+.quick-log-open {
+  margin-top: 22px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-sm, 0.82rem);
+  color: var(--muted, #787d87);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-log-meter > span, .quick-log-again { transition: none; }
+  .quick-log-again:active:not([disabled]) { transform: none; }
+}

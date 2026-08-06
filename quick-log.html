@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Deno - Quick log</title>
+    <!-- Theme before first paint, same inline guard as index.html: this page is on
+         screen for about two seconds, so a light flash then a dark repaint IS the
+         whole visual experience of it. -->
+    <script>(function(){try{var p=localStorage.getItem('trackerz.theme')||'system';var d=p==='dark'||(p==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light'}catch(e){}})();</script>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon-192.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.svg" />
+    <meta name="theme-color" content="#138a5b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Deno" />
+  </head>
+  <body>
+    <!--
+      THE NO-CHROME PAGE. Reached from the launcher long-press shortcut
+      ("Log 250 ml water"), from the Android home-screen widget, and from the
+      Quick Settings tile. It logs on load and shows the result - there is
+      deliberately no nav, no capture box, no sign-in card and nothing to
+      confirm. Choosing the shortcut WAS the confirmation.
+
+      There is no bottom nav on purpose, which is why this file is not in
+      scripts/build-nav.mjs NAV_PAGES: a two-second confirmation screen with a
+      five-tab bar is a page you have to escape from, not a receipt.
+    -->
+    <main class="quick-log" id="quickLog" aria-labelledby="qlHeadline">
+      <p class="quick-log-eyebrow">Deno</p>
+
+      <h1 class="quick-log-headline" id="qlHeadline">Logging water…</h1>
+
+      <!-- The number is the page. Everything else is a caption for it. -->
+      <p class="quick-log-total" id="qlTotal" aria-live="polite">–</p>
+      <p class="quick-log-goal" id="qlGoal">today</p>
+
+      <div class="quick-log-meter" aria-hidden="true"><span id="qlMeter" style="width:0%"></span></div>
+
+      <!-- Water that exists only on this device (offline / signed out). Hidden
+           until there is some, because a permanent "0 queued" chip trains the
+           eye to ignore the one time it says 250. -->
+      <p class="quick-log-queued" id="qlQueued" hidden></p>
+
+      <p class="quick-log-status" id="qlStatus" role="status" aria-live="polite">Saving…</p>
+
+      <div class="quick-log-actions">
+        <button type="button" class="quick-log-again" id="qlAgain" disabled>+250 ml again</button>
+        <button type="button" class="quick-log-undo" id="qlUndo" disabled>Undo</button>
+      </div>
+
+      <a class="quick-log-open" href="./index.html">Open Deno</a>
+    </main>
+
+    <script type="module" src="./src/pages/quick-log.js"></script>
+  </body>
+</html>
