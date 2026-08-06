@@ -173,6 +173,55 @@
             </intent-filter>
         </service>
 
+        <!--
+          WATER WIDGET. The owner's ask was "a widget kind of a thing, which
+          whenever I tap on, it logs water" - this receiver is it. The tap goes to
+          a durable local queue first and to Supabase second, so a tap made
+          offline or with an expired sign-in is queued and SAID, never lost.
+
+          exported="false" is correct and deliberate: the only things that talk to
+          this receiver are the platform's own APPWIDGET_UPDATE broadcast and the
+          PendingIntents this app creates for its own widget. A PendingIntent runs
+          with the creating app's identity, so the launcher can still fire it.
+
+          `npx cap sync` may drop this block; the CI workflow's "Verify the native
+          manifest survived sync" step greps for WaterWidgetProvider.
+        -->
+        <receiver
+            android:name=".water.WaterWidgetProvider"
+            android:label="@string/water_widget_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.ubhayaab.trackerz.water.LOG" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/water_widget_info" />
+        </receiver>
+
+        <!--
+          QUICK SETTINGS TILE - the same 250 ml from the notification shade, which
+          is nearer to hand than the home screen when the phone is already in use.
+
+          exported="true" is REQUIRED here, unlike the receiver above: SystemUI
+          lives in another process and binds this service directly. The
+          BIND_QUICK_SETTINGS_TILE permission is what keeps that binding limited
+          to the system.
+        -->
+        <service
+            android:name=".water.WaterTileService"
+            android:label="@string/water_tile_label"
+            android:icon="@drawable/ic_water_drop"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

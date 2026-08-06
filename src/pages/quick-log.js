@@ -171,7 +171,15 @@ function setHeadline(text) {
 // Infinity, which is what a goal of 0 used to render as `width:Infinity%`.
 function paint() {
   const v = waterView(state);
-  const shown = v.totalMl + queuedMl;
+  // THE LAST GATE BEFORE THE DOM. pctOf already cannot return Infinity or NaN,
+  // but fmtMl can: fmtMl(Infinity) is the string "InfinityL", because
+  // lib/water.mjs coerces NaN to 0 and leaves Infinity alone. Nothing on this
+  // page can produce an infinite total today - parseQuickLogRequest refuses a
+  // non-finite ml and every other input is an already-rounded integer - but this
+  // number is rendered for three different entry points (shortcut, widget, tile)
+  // and "Infinity ml of water" reaching the screen is the exact failure the app
+  // has already shipped once, as width:Infinity% on the in-app meter.
+  const shown = Number.isFinite(v.totalMl + queuedMl) ? v.totalMl + queuedMl : 0;
   const total = el("qlTotal");
   if (total) total.textContent = fmtMl(shown);
   const goal = el("qlGoal");
@@ -191,7 +199,11 @@ function paint() {
     again.disabled = false;
   }
   const undo = el("qlUndo");
-  if (undo) undo.disabled = !v.canUndo;
+  // Enabled when there is queued water too, even though queued water cannot be
+  // pulled back from here. A disabled button in that state hides the one
+  // explanation the user needs - that the glass is on the phone, not in the
+  // account, and where to go to remove it.
+  if (undo) undo.disabled = !(v.canUndo || queuedMl > 0);
 }
 
 // THE TAP. Identical shape to src/ui/quick-actions.js on purpose: zero network,
@@ -440,7 +452,9 @@ async function start() {
     setHeadline("Nothing logged.");
     setStatus(req.error, "error");
     const total = el("qlTotal");
-    if (total) total.textContent = "–";
+    // Blank, not a placeholder glyph: a number here would look like a reading,
+    // and the whole point of this branch is that nothing was read or written.
+    if (total) total.textContent = "";
     const again = el("qlAgain");
     if (again) again.disabled = false;   // the button still works; the URL did not
     return;

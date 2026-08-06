@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import {
   nextOccurrence, occurrencesBetween, describeRule, dueReminders, upcoming,
   whenLabel, reminderLines, weekdayOf, addDays, daysBetween, clampDay, isLeapYear, daysInMonth,
+  occurrenceKey, timedDue, agendaBetween, ruleProblem, weekdayList, nthWeekdayOfMonth,
+  minutesOfDay, formatTime, weekIndex,
 } from "../lib/reminders.mjs";
 
 // ---------------------------------------------------------------------------
@@ -130,5 +132,190 @@ assert.equal(nextOccurrence({ freq: "yearly", month_of_year: 8, day_of_month: 14
 
 // An inactive reminder is never due and never upcoming.
 assert.equal(dueReminders([{ title: "x", freq: "daily", active: false }], "2026-08-05").length, 0);
+
+// ===========================================================================
+// 2026-08-06: the modifiers a real calendar needs. Everything above still
+// passes unchanged, which is the point - these are additions, not a rewrite.
+// ===========================================================================
+
+// --- multi-weekday. Before this, Number([1,3,5]) was NaN and the rule silently
+// returned no date at all: a Mon/Wed/Fri reminder that never fired and never
+// said why.
+assert.deepEqual(weekdayList({ weekdays: [5, 1, 3, 1] }), [1, 3, 5], "sorted, deduped");
+assert.deepEqual(weekdayList({ weekday: [1, 5] }), [1, 5], "an array in the legacy scalar field still works");
+assert.deepEqual(weekdayList({ weekday: 3 }), [3]);
+assert.deepEqual(weekdayList({ weekdays: [9, -1, "x"] }), [], "garbage is dropped, not guessed at");
+assert.deepEqual(
+  occurrencesBetween({ freq: "weekly", weekdays: [1, 3, 5] }, "2026-08-03", "2026-08-10"),
+  ["2026-08-03", "2026-08-05", "2026-08-07", "2026-08-10"],
+);
+
+// --- interval, anchored to dtstart. Unanchored it is unanswerable, so the
+// engine refuses rather than guessing a phase off the day you happened to ask.
+{
+  const fortnightly = { freq: "weekly", weekday: 3, interval: 2, dtstart: "2026-08-05" };
+  assert.equal(nextOccurrence(fortnightly, "2026-08-05"), "2026-08-05");
+  assert.equal(nextOccurrence(fortnightly, "2026-08-06"), "2026-08-19", "skips the 12th - that is the off week");
+  assert.deepEqual(
+    occurrencesBetween(fortnightly, "2026-08-01", "2026-10-01"),
+    ["2026-08-05", "2026-08-19", "2026-09-02", "2026-09-16", "2026-09-30"],
+  );
+  assert.equal(nextOccurrence({ freq: "weekly", weekday: 3, interval: 2 }, "2026-08-05"), null, "no anchor, no answer");
+  assert.match(ruleProblem({ freq: "weekly", weekday: 3, interval: 2 }), /start date/);
+
+  // Every 3 months from a specific month, and every 3 days.
+  assert.deepEqual(
+    occurrencesBetween({ freq: "monthly", day_of_month: 20, interval: 3, dtstart: "2026-05-20" }, "2026-01-01", "2027-06-30"),
+    ["2026-05-20", "2026-08-20", "2026-11-20", "2027-02-20", "2027-05-20"],
+  );
+  assert.deepEqual(
+    occurrencesBetween({ freq: "daily", interval: 3, dtstart: "2026-08-05" }, "2026-08-01", "2026-08-15"),
+    ["2026-08-05", "2026-08-08", "2026-08-11", "2026-08-14"],
+  );
+  // Nothing fires before the series starts, whatever the caller asks from.
+  assert.equal(nextOccurrence({ freq: "daily", dtstart: "2026-09-01" }, "2026-08-05"), "2026-09-01");
+}
+
+// --- nth weekday of the month: "the 3rd Tuesday", "the last Friday".
+assert.equal(nthWeekdayOfMonth(2026, 8, 2, 3), "2026-08-18");
+assert.equal(nthWeekdayOfMonth(2026, 8, 5, -1), "2026-08-28");
+assert.equal(nthWeekdayOfMonth(2026, 8, 1, 5), "2026-08-31", "August 2026 does have a 5th Monday");
+assert.equal(nthWeekdayOfMonth(2026, 8, 2, 5), null, "and no 5th Tuesday - null, not a guess");
+assert.deepEqual(
+  occurrencesBetween({ freq: "monthly", nth_weekday: 3, weekday: 2 }, "2026-08-01", "2026-12-31"),
+  ["2026-08-18", "2026-09-15", "2026-10-20", "2026-11-17", "2026-12-15"],
+);
+assert.deepEqual(
+  occurrencesBetween({ freq: "monthly", nth_weekday: -1, weekday: 5 }, "2026-08-01", "2026-12-31"),
+  ["2026-08-28", "2026-09-25", "2026-10-30", "2026-11-27", "2026-12-25"],
+);
+assert.equal(describeRule({ freq: "monthly", nth_weekday: 3, weekday: 2 }), "the 3rd Tuesday of every month");
+assert.equal(describeRule({ freq: "monthly", nth_weekday: -1, weekday: 5 }), "the last Friday of every month");
+
+// --- until / count. COUNT sizes the RULE's set, so an EXDATE inside it still
+// consumes one of the N (RFC 5545), and this engine does the same.
+assert.deepEqual(
+  occurrencesBetween({ freq: "monthly", day_of_month: 1, until: "2026-11-01" }, "2026-08-01", "2027-06-30"),
+  ["2026-08-01", "2026-09-01", "2026-10-01", "2026-11-01"],
+);
+assert.deepEqual(
+  occurrencesBetween({ freq: "monthly", day_of_month: 1, count: 3, dtstart: "2026-08-01" }, "2026-08-01", "2027-06-30"),
+  ["2026-08-01", "2026-09-01", "2026-10-01"],
+);
+assert.deepEqual(
+  occurrencesBetween({ freq: "monthly", day_of_month: 1, count: 3, dtstart: "2026-08-01", exdates: ["2026-09-01"] }, "2026-08-01", "2027-06-30"),
+  ["2026-08-01", "2026-10-01"],
+  "the excluded date still used up one of the three",
+);
+assert.match(ruleProblem({ freq: "daily", count: 5 }), /count needs a start date/);
+// max_count is the DB spelling of the same thing (`count` is a Postgres aggregate).
+assert.deepEqual(
+  occurrencesBetween({ freq: "monthly", day_of_month: 1, max_count: 2, dtstart: "2026-08-01" }, "2026-08-01", "2027-06-30"),
+  ["2026-08-01", "2026-09-01"],
+);
+// rule_interval likewise (`interval` is a Postgres type name).
+assert.equal(nextOccurrence({ freq: "weekly", weekday: 3, rule_interval: 2, dtstart: "2026-08-05" }, "2026-08-06"), "2026-08-19");
+
+// --- exdates and rdates. An RDATE is added to the set independently of COUNT
+// and UNTIL: it is the user saying "and also this one", not part of the pattern.
+assert.deepEqual(
+  occurrencesBetween({ freq: "monthly", day_of_month: 1, exdates: ["2026-10-01"] }, "2026-08-01", "2026-12-31"),
+  ["2026-08-01", "2026-09-01", "2026-11-01", "2026-12-01"],
+);
+assert.deepEqual(
+  occurrencesBetween({ freq: "yearly", month_of_year: 8, day_of_month: 14, rdates: ["2026-09-02"] }, "2026-08-01", "2026-12-31"),
+  ["2026-08-14", "2026-09-02"],
+);
+assert.deepEqual(
+  occurrencesBetween({ freq: "yearly", month_of_year: 8, day_of_month: 14, rdates: ["2026-09-02"], exdates: ["2026-09-02"] }, "2026-08-01", "2026-12-31"),
+  ["2026-08-14"],
+  "an exdate beats an rdate for the same day",
+);
+
+// --- time of day.
+assert.equal(minutesOfDay("18:30"), 1110);
+assert.equal(minutesOfDay("18:30:00"), 1110, "a Postgres `time` column comes back with seconds");
+assert.equal(minutesOfDay("9:05"), 545);
+assert.equal(minutesOfDay("25:00"), null, "a time we cannot parse must not become midnight");
+assert.equal(minutesOfDay(""), null);
+assert.equal(minutesOfDay(null), null);
+assert.equal(formatTime(1110), "18:30");
+assert.equal(formatTime(545), "09:05");
+
+// occurrenceKey is the identity of ONE firing - the string the server INSERTs to
+// claim it. Without a time it is just the date key, so every row written before
+// at_time existed keys exactly as it always did.
+assert.equal(occurrenceKey({}, "2026-08-14", null), "2026-08-14");
+assert.equal(occurrenceKey({ at_time: "18:30" }, "2026-08-14", null), "2026-08-14T18:30");
+assert.equal(occurrenceKey({ at_time: "18:30:00" }, "2026-08-14", null), "2026-08-14T18:30", "normalised, so the two spellings claim the same slot");
+assert.equal(occurrenceKey({ at_time: "9:05" }, "2026-08-14", null), "2026-08-14T09:05");
+assert.equal(occurrenceKey({}, "2026-08-14", "07:00"), "2026-08-14T07:00", "an explicit time overrides the rule's");
+assert.equal(occurrenceKey({}, "garbage", null), null);
+// The zone is deliberately NOT in the key: moving zones does not turn "the 10th
+// at 09:00" into a different occurrence, it only moves the instant.
+assert.equal(
+  occurrenceKey({ at_time: "18:30", timezone: "Asia/Kolkata" }, "2026-08-14", null),
+  occurrenceKey({ at_time: "18:30", timezone: "Europe/London" }, "2026-08-14", null),
+);
+
+// timedDue: what the per-minute runner picks up.
+{
+  const timed = { id: "t", title: "Call mum", freq: "weekly", weekday: 3, at_time: "18:30" };
+  const dateOnly = { id: "d", title: "Birthday", freq: "yearly", month_of_year: 8, day_of_month: 5 };
+  assert.deepEqual(timedDue([timed, dateOnly], "2026-08-05", 1110).map((r) => r.id), ["t"],
+    "a reminder with no at_time belongs to the 07:00 brief, not the minute runner");
+  assert.deepEqual(timedDue([timed], "2026-08-05", 1109), [], "not before its time");
+  assert.deepEqual(timedDue([timed], "2026-08-05", 1111).map((r) => r.occurrence_key), ["2026-08-05T18:30"]);
+  assert.deepEqual(timedDue([timed], "2026-08-05", 1439), [], "and not four hours late either - the grace window is 3h");
+  assert.deepEqual(timedDue([timed], "2026-08-06", 1110), [], "wrong day");
+  assert.deepEqual(timedDue([{ ...timed, active: false }], "2026-08-05", 1110), []);
+}
+
+// Every due/upcoming row carries its claim key, so the brief, the minute runner
+// and any on-device scheduler cannot disagree about WHICH firing they mean.
+assert.equal(dueReminders([{ id: "a", title: "Rent", freq: "monthly", day_of_month: 5 }], "2026-08-05")[0].occurrence_key, "2026-08-05");
+assert.equal(upcoming([{ id: "a", title: "Rent", freq: "monthly", day_of_month: 5, at_time: "10:00" }], "2026-08-05")[0].occurrence_key, "2026-08-05T10:00");
+
+// --- the calendar's data shape.
+{
+  const rows = [
+    { id: "a", title: "Standup", freq: "weekly", weekdays: [1, 3], at_time: "09:30" },
+    { id: "b", title: "Birthday", freq: "yearly", month_of_year: 8, day_of_month: 5 },
+    { id: "c", title: "Paused", freq: "daily", active: false },
+  ];
+  const byDay = agendaBetween(rows, "2026-08-03", "2026-08-10");
+  assert.deepEqual(Object.keys(byDay).sort(), ["2026-08-03", "2026-08-05", "2026-08-10"]);
+  assert.deepEqual(byDay["2026-08-05"].map((r) => r.id), ["a", "b"], "timed first, then untimed alphabetically");
+  assert.equal(byDay["2026-08-05"][0].occurrence_key, "2026-08-05T09:30");
+  assert.ok(!Object.values(byDay).flat().some((r) => r.id === "c"), "a paused rule is on no day");
+}
+
+// --- ruleProblem says WHY, in words. A rule that is stored, never fires, and
+// never explains itself is the exact failure this codebase keeps rediscovering.
+assert.equal(ruleProblem({ freq: "yearly", month_of_year: 8, day_of_month: 14 }), null);
+assert.match(ruleProblem({ freq: "nope" }), /unknown frequency/);
+assert.match(ruleProblem({ freq: "once" }), /needs a date/);
+assert.match(ruleProblem({ freq: "weekly" }), /at least one weekday/);
+assert.match(ruleProblem({ freq: "monthly" }), /day of the month/);
+assert.match(ruleProblem({ freq: "yearly", day_of_month: 14 }), /anchor month/);
+assert.match(ruleProblem({ freq: "monthly", nth_weekday: 9, weekday: 1 }), /1\.\.5/);
+assert.match(ruleProblem({ freq: "monthly", nth_weekday: 3 }), /needs a weekday/);
+assert.match(ruleProblem({ freq: "daily", at_time: "half past six" }), /HH:MM/);
+assert.match(ruleProblem({ freq: "daily", until: "next year" }), /until must be/);
+assert.match(ruleProblem({ freq: "daily", dtstart: "soon" }), /dtstart must be/);
+
+// --- weekIndex is Sunday-based, matching weekdayOf.
+assert.equal(weekIndex("2026-08-05") - weekIndex("2026-07-29"), 1, "one week apart");
+assert.equal(weekIndex("2026-08-02"), weekIndex("2026-08-08"), "Sunday to Saturday is one week");
+
+// --- phrasing, with the modifiers on.
+assert.equal(describeRule({ freq: "weekly", weekdays: [1, 3], interval: 2, dtstart: "2026-08-03" }), "Monday, Wednesday, every 2nd week");
+assert.equal(describeRule({ freq: "daily", interval: 3, dtstart: "2026-08-05" }), "every 3 days");
+assert.equal(describeRule({ freq: "monthly", day_of_month: 5, at_time: "18:30" }), "the 5th of every month at 18:30");
+assert.equal(describeRule({ freq: "monthly", day_of_month: 1, count: 3, dtstart: "2026-08-01" }), "the 1st of every month, 3 times");
+assert.equal(describeRule({ freq: "monthly", day_of_month: 1, until: "2026-11-01" }), "the 1st of every month, until 2026-11-01");
+assert.equal(describeRule({ freq: "monthly", day_of_month: 1, exdates: ["2026-10-01"] }), "the 1st of every month, except 2026-10-01");
+assert.equal(reminderLines(dueReminders([{ title: "Call mum", freq: "daily", at_time: "18:30" }], "2026-08-05"))[0],
+  "Call mum is due today at 18:30 (2026-08-05).");
 
 console.log("reminders tests passed");

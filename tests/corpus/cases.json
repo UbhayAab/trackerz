@@ -1,0 +1,222 @@
+{
+  "$schema": "1",
+  "note": "REAL captures from raw_ingestions. `model` is what the brain emitted on the recorded run; `expect` is the hand-written CONTRACT for what must survive the deterministic layers. Never seed `expect` from recorded behaviour - that encodes the bug as the expectation. Ids are stable forever; never renumber.",
+  "now": "2026-08-06T12:00:00+05:30",
+  "cases": [
+    {
+      "id": "b658bc19-stutter-gym",
+      "source": "live 2026-08-06T01:51",
+      "input": "I I went I went I went to I went to the I went to the gym I went to the gym today I went to the gym today",
+      "model": [],
+      "expect": {
+        "must": [{ "tool": "create_workout_log_candidate", "min": 1, "max": 1 }],
+        "must_not": ["create_food_log_candidate", "create_expense_candidate"],
+        "max_rows": 1
+      },
+      "tags": ["voice", "stutter", "deterministic"],
+      "weight": 3
+    },
+    {
+      "id": "889abba1-instruction-is-not-a-meal",
+      "source": "live 2026-08-06T01:44",
+      "input": "Hey actually my diet has changed I every single day now have two scoops of whey protein with 500 grams of curd and in the afternoon I have 6 whole eggs boiled eggs",
+      "model": [
+        { "name": "update_plan_candidate", "arguments": { "kind": "diet", "scope": "permanent", "summary": "2 scoops whey + 500g curd; 6 boiled eggs" }, "confidence": 0.95 },
+        { "name": "remember_fact", "arguments": { "key": "daily_foods", "value": "2 scoops whey with 500g curd; 6 boiled eggs" }, "confidence": 0.85 }
+      ],
+      "expect": {
+        "must": [
+          { "tool": "update_plan_candidate", "min": 1, "max": 1, "args": { "scope": "permanent" } },
+          { "tool": "remember_fact", "min": 1 }
+        ],
+        "must_not": ["create_food_log_candidate", "create_workout_log_candidate", "create_expense_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["plan-change", "not-a-log", "regression"],
+      "weight": 3
+    },
+    {
+      "id": "889abba1-no-model-output",
+      "source": "same text, brain unavailable",
+      "note": "Salvage runs even when the model returns nothing at all, so the cue list has to catch this on its own.",
+      "input": "Hey actually my diet has changed I every single day now have two scoops of whey protein with 500 grams of curd and in the afternoon I have 6 whole eggs boiled eggs",
+      "model": [],
+      "expect": {
+        "must": [],
+        "must_not": ["create_food_log_candidate", "create_workout_log_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["plan-change", "not-a-log", "deterministic", "regression"],
+      "weight": 3
+    },
+    {
+      "id": "d4ba8310-note-about-eating",
+      "source": "live 2026-08-04T11:15",
+      "note": "Talking about eating is not eating. This produced a 432 kcal phantom meal whose description was the note text.",
+      "input": "When you see me eating 6 boiled eggs daily. Why not add it in the json structure. When you see I eat protein powder daily with 500g curd or 500g milk, why not add these. This is a note. For claude to see later.",
+      "model": [
+        { "name": "create_note_candidate", "arguments": { "body": "auto-add recurring daily foods", "kind": "idea", "domain": "general" }, "confidence": 0.85 },
+        { "name": "remember_fact", "arguments": { "key": "daily_foods", "value": "6 boiled eggs; protein powder with 500g curd" }, "confidence": 0.85 }
+      ],
+      "expect": {
+        "must": [{ "tool": "create_note_candidate", "min": 1 }],
+        "allowed": ["remember_fact"],
+        "must_not": ["create_food_log_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["meta", "not-a-log", "regression"],
+      "weight": 3
+    },
+    {
+      "id": "f6adb92b-plain-meal",
+      "source": "live 2026-08-05T12:22",
+      "note": "CONTRAST to the two above: identical foods, but framed as an occasion. The words that decide are the framing words, never the food words.",
+      "input": "2 scoops whey and 500g curd",
+      "model": [],
+      "expect": {
+        "must": [{ "tool": "create_food_log_candidate", "min": 1, "max": 1 }],
+        "must_not": ["update_plan_candidate", "create_workout_log_candidate"]
+      },
+      "tags": ["food", "deterministic", "contrast"],
+      "weight": 3
+    },
+    {
+      "id": "negation-no-gym",
+      "source": "corpus",
+      "input": "no gym today",
+      "model": [],
+      "expect": {
+        "must": [{ "tool": "create_workout_log_candidate", "min": 1, "max": 1, "args": { "status": "skipped" } }],
+        "must_not": ["create_food_log_candidate"]
+      },
+      "tags": ["negation", "deterministic"],
+      "weight": 3
+    },
+    {
+      "id": "negation-mixed-clause",
+      "source": "corpus",
+      "note": "Clause-scoped: the denial covers the gym only, and the eggs still land.",
+      "input": "no gym but ate 6 eggs",
+      "model": [],
+      "expect": {
+        "must": [
+          { "tool": "create_workout_log_candidate", "min": 1, "max": 1, "args": { "status": "skipped" } },
+          { "tool": "create_food_log_candidate", "min": 1, "max": 1 }
+        ],
+        "must_not": []
+      },
+      "tags": ["negation", "mixed-clause", "deterministic"],
+      "weight": 3
+    },
+    {
+      "id": "dated-plan-delta-keeps-the-meal",
+      "source": "derived from the 'drakn 500 g curd ... and no gym today' regression",
+      "note": "A DATE-scoped delta is what the log-contradicts-the-plan rule emits ALONGSIDE a real log. An earlier fix treated any plan tool as a command and silently ate 500 g of curd.",
+      "input": "drank 500 g curd, with 2 scoops of protein powder. and no gym today",
+      "model": [
+        { "name": "update_plan_candidate", "arguments": { "kind": "gym", "scope": "2026-08-06", "payload": { "op": "replace_workout" } }, "confidence": 0.55 }
+      ],
+      "expect": {
+        "must": [
+          { "tool": "create_food_log_candidate", "min": 1, "max": 1 },
+          { "tool": "create_workout_log_candidate", "min": 1, "max": 1, "args": { "status": "skipped" } }
+        ],
+        "must_not": []
+      },
+      "tags": ["plan-change", "negation", "regression", "contrast"],
+      "weight": 3
+    },
+    {
+      "id": "target-change-is-not-a-meal",
+      "source": "corpus",
+      "input": "my protein needs to be 180 a day now, I get it from eggs and curd",
+      "model": [
+        { "name": "set_target_candidate", "arguments": { "kind": "daily_protein", "amount": 180 }, "confidence": 0.9 }
+      ],
+      "expect": {
+        "must": [{ "tool": "set_target_candidate", "min": 1 }],
+        "must_not": ["create_food_log_candidate"],
+        "max_rows": 0
+      },
+      "tags": ["target", "not-a-log"],
+      "weight": 2
+    },
+    {
+      "id": "mixed-standing-plus-real-log",
+      "source": "corpus",
+      "note": "carriesLoggedEvent is what keeps the honest mixed capture working.",
+      "input": "from now on 2 scoops whey daily. also I just had dal rice",
+      "model": [
+        { "name": "update_plan_candidate", "arguments": { "kind": "diet", "scope": "permanent" }, "confidence": 0.9 }
+      ],
+      "expect": {
+        "must": [
+          { "tool": "update_plan_candidate", "min": 1 },
+          { "tool": "create_food_log_candidate", "min": 1 }
+        ],
+        "must_not": []
+      },
+      "tags": ["plan-change", "mixed-clause", "contrast"],
+      "weight": 3
+    },
+    {
+      "id": "already-logged-per-row",
+      "source": "derived from the 2026-08-01 day-journal incident",
+      "note": "Re-logging a journal took that day from ~1,850 kcal to 3,315. Suppression is per ROW, not per capture, so one breath can mix a flagged item and a new one: the popcorn is dropped and the burrito survives. Model rows are used here because that is the path dropAlreadyRecordedRows guards.",
+      "input": "had popcorn today, already logged that, then had a burrito",
+      "model": [
+        { "name": "create_food_log_candidate", "arguments": { "description": "popcorn", "occurred_at": "2026-08-06T12:00:00+05:30" }, "confidence": 0.9 },
+        { "name": "create_food_log_candidate", "arguments": { "description": "burrito", "occurred_at": "2026-08-06T12:05:00+05:30" }, "confidence": 0.9 }
+      ],
+      "expect": {
+        "must": [{ "tool": "create_food_log_candidate", "min": 1, "max": 1, "args": { "description": { "contains": ["burrito"] } } }],
+        "must_not": []
+      },
+      "tags": ["already-recorded", "deterministic"],
+      "weight": 2
+    },
+    {
+      "id": "already-logged-blocks-salvage",
+      "source": "observed behaviour, documented so a change is deliberate",
+      "note": "KNOWN GAP. With no model output, an already-logged flag suppresses salvage for the WHOLE domain, so the burrito is lost too. dropAlreadyRecordedRows is per-row but salvage synthesis is all-or-nothing. Recorded as the current contract rather than silently accepted - if this is ever made per-clause, this case changes and that is the signal.",
+      "input": "had popcorn today, already logged that, then had a burrito",
+      "model": [],
+      "expect": { "must": [], "must_not": [] },
+      "tags": ["already-recorded", "known-gap"],
+      "weight": 1
+    },
+    {
+      "id": "grocery-is-not-a-meal",
+      "source": "corpus",
+      "note": "The deterministic layer alone extracts no amount here - MONEY_CUE wants the number adjacent to the cue word, and 'bought paneer and curd 640' has 'bought' next to 'paneer'. The model supplies the expense. What matters is that buying is never eating.",
+      "input": "bought paneer and curd 640",
+      "model": [
+        { "name": "create_expense_candidate", "arguments": { "amount": 640, "merchant": "grocery", "occurred_at": "2026-08-06T12:00:00+05:30" }, "confidence": 0.9 }
+      ],
+      "expect": {
+        "must": [{ "tool": "create_expense_candidate", "min": 1, "max": 1 }],
+        "must_not": ["create_food_log_candidate"]
+      },
+      "tags": ["money", "deterministic"],
+      "weight": 2
+    },
+    {
+      "id": "empty-capture",
+      "source": "corpus",
+      "input": "",
+      "model": [],
+      "expect": { "must": [], "must_not": ["create_food_log_candidate", "create_workout_log_candidate", "create_expense_candidate"], "max_rows": 0 },
+      "tags": ["edge", "deterministic"],
+      "weight": 1
+    },
+    {
+      "id": "emoji-only",
+      "source": "corpus",
+      "input": "🍳🍳🍳🍳",
+      "model": [],
+      "expect": { "must": [], "must_not": ["create_food_log_candidate"], "max_rows": 0 },
+      "tags": ["edge", "deterministic"],
+      "weight": 1
+    }
+  ]
+}

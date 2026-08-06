@@ -27,8 +27,10 @@ import { nutrientsSoFar, gauge } from "../domain/diet/nutrients.js";
 import { resolveDietTargets } from "../domain/goals.js";
 import { getSupabaseClient } from "../services/supabase-client.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
-import { fetchDayLogs } from "../services/supabase-data.js";
+import { fetchDayLogs, fetchWaterGoalMl } from "../services/supabase-data.js";
+import { resolveGoalMl } from "../../lib/water.mjs";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { refreshAfterWrite } from "./refresh.js";
 import { showToast } from "./toast.js";
 import {
   buildDayStrip, clampToToday, dayDotState, dayKeyOf, dayLabel, loggedDayKeys, parseDayKey,
@@ -46,6 +48,10 @@ let _recon = {};
 let _dayFood = [];
 let _dayWorkout = [];
 let _dayHydration = [];
+// The user's own water goal, read once. null means they never set one, and
+// resolveGoalMl falls back to the scaffold sum - the same path the quick row
+// takes, so the two can never disagree.
+let _waterGoalMl = null;
 // How the view date's rows were obtained. "idle"/"loading" = we do NOT yet know
 // what happened that day; "error" = the read failed (never render it as empty).
 let _dayLoad = { status: "idle", error: null };
@@ -374,7 +380,12 @@ function hydrationLogRow(rows) {
 // say. The target comes from the same schedule the quick row derives its goal from,
 // so the two numbers cannot disagree.
 function waterSummary(plan) {
-  const goal = (plan.water || []).reduce((a, w) => a + w.ml, 0);
+  // The SAME goal the quick row shows. This used to sum the scaffold slots on its
+  // own, which was fine while the goal was hardcoded and wrong the moment it
+  // became editable: setting 4 L made the quick row say 4 L and this panel say
+  // 3.5 L, on the same screen, for the same number. Two figures for one quantity
+  // is the 3000-vs-3450 bug this file's own history already records.
+  const goal = resolveGoalMl(_waterGoalMl, (plan.water || []).reduce((a, w) => a + w.ml, 0));
   const withMl = _dayHydration.filter((r) => num(r.ml) != null);
   const total = withMl.reduce((a, r) => a + num(r.ml), 0);
   const unknown = _dayHydration.length - withMl.length;
@@ -523,6 +534,11 @@ async function reconcileViewDate() {
   const forDate = _viewDate; // guard against a rapid re-navigation resolving stale
   try {
     const logs = await fetchDayLogs(forDate);
+    // Best effort: a missing goal simply falls back to the scaffold, and a failed
+    // read must not take the whole day panel down with it.
+    fetchWaterGoalMl()
+      .then((ml) => { _waterGoalMl = ml; })
+      .catch((err) => console.error("[diet-plan] could not read the water goal; using the scaffold:", err));
     if (!isSameViewDate(forDate)) return; // user moved on; drop this result
     _dayFood = logs.foodLogs || [];
     _dayWorkout = logs.workoutLogs || [];
@@ -688,7 +704,7 @@ export function bindDietPlan() {
       }
     }
     if (canSync()) {
-      hydrateStateFromSupabase().catch(() => {});
+      refreshAfterWrite("that");
       reconcileViewDate();
     } else {
       renderDietPlan();

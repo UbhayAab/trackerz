@@ -56,7 +56,7 @@ ok(agg.deltas.mom_spend > 0); // current month > prev month
 // Sparkline series shape
 const series = dailySeries({ rows: ledger.filter((r) => r.direction === "expense"), today, days: 7, valueOf: (r) => Number(r.amount) });
 eq(series.length, 7);
-ok(series.every((p) => "date" in p && "value" in p));
+ok(series.every((p) => "date" in p && "value" in p && "measured" in p));
 
 // Insights composition
 const insights = composeInsights({ aggregates: agg, budgets: [], subscriptions: [], ledger, today });
@@ -104,6 +104,89 @@ ok(insightsLow.some((i) => i.kind === "diet"));
   // The protein warning must not fire on a day with nothing logged.
   const noFood = composeInsights({ aggregates: a, budgets: [], ledger: [], today });
   ok(!noFood.some((i) => i.kind === "diet" && /Protein at/.test(i.text)), "no protein claim without food rows");
+}
+
+// ---- dailySeries: a day with no rows is null, not a measured 0 --------------
+//
+// This is the line the whole failure-surfacing phase was named after. The
+// function used to emit `value: 0` for every day it had no rows for, and those
+// zeroes flowed into the trend lines as "you ate nothing" / "you spent nothing"
+// on days the user had simply not captured yet - a 30-day chart of a three-day-old
+// account drew 27 confident zeroes and there is no way for a reader to tell that
+// flat line from real restraint. lib/jarvis-brief.mjs has mandated exactly this
+// discipline for briefings since it was written ("NULL MEANS NOT MEASURED...
+// Never render null as zero"); the analytics layer was the one place ignoring it.
+{
+  const rows = [
+    { amount: 300, occurred_at: isoLocal(2026, 5, 22, 10) }, // today
+    { amount: 0, occurred_at: isoLocal(2026, 5, 20, 10) },   // two days ago, a real 0
+  ];
+  const s = dailySeries({ rows, today, days: 5, valueOf: (r) => Number(r.amount) });
+  eq(s.length, 5);
+
+  const byDate = Object.fromEntries(s.map((p) => [p.date, p]));
+  const dayKey = (dayOfMonth) => new Date(2026, 4, dayOfMonth).toISOString().slice(0, 10);
+
+  // Measured, non-zero.
+  eq(byDate[dayKey(22)].value, 300);
+  eq(byDate[dayKey(22)].measured, true);
+
+  // MEASURED ZERO: a row existed and it summed to zero. That is a fact and it
+  // must survive as 0, not be flattened into "no data".
+  eq(byDate[dayKey(20)].value, 0, "a row that sums to zero is a measured zero");
+  eq(byDate[dayKey(20)].measured, true);
+
+  // ABSENT: no rows at all. null, never 0.
+  eq(byDate[dayKey(21)].value, null, "a day with no rows is null, not a measured 0");
+  eq(byDate[dayKey(21)].measured, false);
+  eq(byDate[dayKey(19)].value, null);
+  eq(byDate[dayKey(19)].measured, false);
+
+  // Nothing anywhere in the window: every point is a gap, not a flat zero line.
+  const none = dailySeries({ rows: [], today, days: 7, valueOf: (r) => Number(r.amount) });
+  ok(none.every((p) => p.value === null && p.measured === false), "an empty series is all gaps, never a flat zero line");
+
+  // A row whose value is unusable (null / "" / NaN) is not a measurement either -
+  // it must not flip `measured` on while contributing nothing.
+  const junk = dailySeries({
+    rows: [{ amount: null, occurred_at: isoLocal(2026, 5, 22, 10) }],
+    today, days: 2, valueOf: (r) => r.amount,
+  });
+  ok(junk.every((p) => p.measured === false), "a row carrying no usable number is not a measurement");
+}
+
+// ---- a body metric with no value is not a measured 0 ------------------------
+//
+// `Number(b.value || 0)` used to increment stepDays/sleepCount for a row whose
+// value was null: the "was this measured?" flag flipped on while nothing was
+// added, so the tile reported a confident "0 steps" it had never measured.
+{
+  const a = aggregatePeriods({
+    ledger: [], foodLogs: [], wellnessLogs: [],
+    bodyMetrics: [{ metric_type: "steps", value: null, occurred_at: isoLocal(2026, 5, 22, 20) }],
+    today,
+  });
+  eq(a.today.steps, null, "a steps row with no value leaves steps unmeasured");
+
+  const b = aggregatePeriods({
+    ledger: [], foodLogs: [], wellnessLogs: [],
+    bodyMetrics: [{ metric_type: "steps", value: 0, occurred_at: isoLocal(2026, 5, 22, 20) }],
+    today,
+  });
+  eq(b.today.steps, 0, "a steps row that really says 0 is a measured 0 and still renders");
+}
+
+// A ledger row with an unusable amount is skipped rather than folded in as a
+// measured Rs 0 transaction.
+{
+  const a = aggregatePeriods({
+    ledger: [
+      { amount: null, direction: "expense", occurred_at: isoLocal(2026, 5, 22, 9) },
+      { amount: 120, direction: "expense", occurred_at: isoLocal(2026, 5, 22, 10) },
+    ],
+    foodLogs: [], wellnessLogs: [], bodyMetrics: [], today,
+  });
+  eq(a.today.spend, 120, "an amount-less ledger row contributes nothing instead of a fake Rs 0");
 }
 
 console.log(`period-aggregator tests passed: ${n} assertions`);

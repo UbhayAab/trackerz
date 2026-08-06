@@ -1,27 +1,30 @@
-// COMING UP - the calendar strip on Home, and the manage list in Settings.
+// THE CALENDAR on Home, and the manage list in Settings.
 //
-// Two renderers over one data source. Home shows the next few dates and nothing
-// else; Settings shows every rule with its plain-English recurrence and a delete.
+// Two renderers over one data source. Home now shows a real calendar - an agenda
+// of the next three weeks with a month-grid toggle - rendered into the
+// `#remindersStrip` section that already exists, rather than behind a sixth nav
+// tab. src/ui/calendar-panel.js explains why that trade is the right one.
+// Settings shows every rule with its plain-English recurrence and a delete.
 //
-// Deliberately silent on Home when there is nothing due: an empty "Coming up"
-// card is a permanent piece of furniture that teaches you to stop looking at it.
-// A FAILED read is not the same as "nothing due" and says so - the failure shape
-// this codebase keeps rediscovering is absent data rendered as a confident zero.
+// Deliberately silent on Home when there is nothing scheduled at all: an empty
+// "Coming up" card is a permanent piece of furniture that teaches you to stop
+// looking at it. A FAILED read is not the same as "nothing due" and says so -
+// the failure shape this codebase keeps rediscovering is absent data rendered as
+// a confident zero, and a calendar showing an empty month because the query
+// errored has just told the user they have no deadlines.
 
-import { fetchReminders, deleteReminder, setReminderActive } from "../services/supabase-data.js";
-import { upcoming, describeRule, whenLabel } from "../../lib/reminders.mjs";
+import { deleteReminder, setReminderActive } from "../services/supabase-data.js";
+import { fetchCalendarReminders } from "../services/jarvis.js";
+import { upcoming, describeRule, whenLabel, ruleProblem, minutesOfDay, formatTime } from "../../lib/reminders.mjs";
+import {
+  renderCalendar, bindCalendar, initialCalendarState, countUpcoming, escapeHtml, KIND_ICON,
+} from "./calendar-panel.js";
 import { showToast } from "./toast.js";
 
 const HOME_ID = "remindersStrip";
 const MANAGE_ID = "remindersManage";
 
-let state = { rows: [], loaded: false, error: null, busy: false };
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => (
-    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
-  ));
-}
+let state = { rows: [], loaded: false, error: null, busy: false, cal: null };
 
 // Today in IST as a YYYY-MM-DD key. The whole engine works on calendar keys, so
 // the ONE place a clock is read is here, and it is read in the user's zone.
@@ -33,48 +36,45 @@ export function todayKey(now = new Date(), timeZone = "Asia/Kolkata") {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-const KIND_ICON = {
-  birthday: "🎂", anniversary: "💍", bill: "💸", filing: "🧾",
-  appointment: "📅", task: "🔔", other: "🔔",
-};
-
 export async function loadReminders() {
   try {
-    state.rows = await fetchReminders();
+    // The calendar-specific column list: a rule read WITHOUT its interval or its
+    // nth_weekday silently degrades to a different, wrong rule.
+    state.rows = await fetchCalendarReminders();
     state.loaded = true;
     state.error = null;
   } catch (err) {
     state.error = err?.message || String(err);
     state.loaded = false;
   }
+  if (!state.cal) state.cal = initialCalendarState(todayKey());
   renderRemindersStrip();
   renderRemindersManage();
 }
 
-// ---- Home: the next few dates ------------------------------------------------
+// ---- Home: the calendar ------------------------------------------------------
 export function renderRemindersStrip() {
   const el = document.getElementById(HOME_ID);
   if (!el) return;
 
   if (state.error) {
     el.hidden = false;
-    el.innerHTML = `<p class="chips-error">Couldn't load your reminders: ${escapeHtml(state.error)}</p>`;
+    el.innerHTML = `<p class="chips-error">Couldn't load your calendar: ${escapeHtml(state.error)}</p>`;
     return;
   }
-  const next = state.loaded ? upcoming(state.rows, todayKey(), { limit: 3, withinDays: 45 }) : [];
-  if (!next.length) { el.hidden = true; el.innerHTML = ""; return; }
+  // Nothing scheduled AT ALL (not "nothing this month") is the only case that
+  // hides the card, so paging to a quiet month does not make the calendar vanish
+  // under the user's finger.
+  const anything = state.loaded && upcoming(state.rows, todayKey(), { limit: 1, withinDays: 4000 }).length > 0;
+  if (!anything) { el.hidden = true; el.innerHTML = ""; return; }
 
+  if (!state.cal) state.cal = initialCalendarState(todayKey());
   el.hidden = false;
-  el.innerHTML = `
-    <p class="chips-label">Coming up</p>
-    <ul class="reminder-strip">
-      ${next.map((r) => `
-        <li class="reminder-item${r.days_away === 0 ? " is-today" : ""}">
-          <span class="reminder-icon" aria-hidden="true">${KIND_ICON[r.kind] || "🔔"}</span>
-          <span class="reminder-title">${escapeHtml(r.title)}</span>
-          <span class="reminder-when">${escapeHtml(whenLabel(r.days_away))}</span>
-        </li>`).join("")}
-    </ul>`;
+  el.innerHTML = renderCalendar(state.cal, state.rows, todayKey(), { error: null, loaded: state.loaded });
+  bindCalendar(el, () => state.cal, (next) => {
+    state.cal = next;
+    renderRemindersStrip();
+  });
 }
 
 // ---- Settings: the full list -------------------------------------------------
@@ -88,7 +88,7 @@ export function renderRemindersManage() {
   }
   if (!state.loaded) { el.innerHTML = `<p class="muted">Loading…</p>`; return; }
   if (!state.rows.length) {
-    el.innerHTML = `<p class="muted">No reminders yet. Say something like "my birthday is 14 August" or "remind me to file GST on the 10th of every 3rd month" in a capture and it lands here.</p>`;
+    el.innerHTML = `<p class="muted">No reminders yet. Say something like "my birthday is 14 August", "remind me to file GST on the 10th of every 3rd month", or "every other Wednesday at 18:30 call mum" in a capture and it lands here.</p>`;
     return;
   }
 
@@ -100,17 +100,26 @@ export function renderRemindersManage() {
     <ul class="reminder-list">
       ${state.rows.map((r) => {
         const n = nextById.get(r.id);
-        // A rule with no computable next date is a real state, not a blank: say so
-        // rather than render an empty cell that looks like "nothing scheduled".
+        // A rule with no computable next date is a real state, not a blank: say
+        // so, and say WHY. ruleProblem() turns "this quietly never fires" into a
+        // sentence, which is the difference between a bug and a fixable setting.
+        const problem = ruleProblem(r);
         const when = r.active === false
           ? "paused"
           : n ? `next ${n.next_due_on} (${whenLabel(n.days_away)})` : "no future date";
+        const times = n ? countUpcoming(r, today, 365) : 0;
+        const at = minutesOfDay(r.at_time);
         return `
         <li class="reminder-row${r.active === false ? " is-paused" : ""}" data-id="${escapeHtml(r.id)}">
           <span class="reminder-icon" aria-hidden="true">${KIND_ICON[r.kind] || "🔔"}</span>
           <span class="reminder-main">
             <strong>${escapeHtml(r.title)}</strong>
-            <small>${escapeHtml(describeRule(r))} · ${escapeHtml(when)}${Number(r.lead_days) > 0 ? ` · ${r.lead_days}d warning` : ""}</small>
+            <small><span class="reminder-next">${escapeHtml(describeRule(r))}</span> · ${escapeHtml(when)}${
+              Number(r.lead_days) > 0 ? ` · ${r.lead_days}d warning` : ""
+            }${at != null ? ` · fires at ${escapeHtml(formatTime(at))}` : " · announced in the 07:00 brief"}${
+              times > 1 ? ` · ${times}x in the next year` : ""
+            }</small>
+            ${problem ? `<small class="reminder-warn">This rule cannot fire: ${escapeHtml(problem)}</small>` : ""}
             ${r.note ? `<small class="reminder-note">${escapeHtml(r.note)}</small>` : ""}
           </span>
           <span class="reminder-actions">

@@ -277,3 +277,315 @@ being served over new code.
 **Still unverified:** whether the APK installs on the actual phone. Everything
 above is reasoning from the artifact and the launch context; the first on-device
 install is the real test.
+
+---
+
+## Phase 3 - the outbox
+
+**The old queue guarded the wrong thing.** It keyed on `navigator.onLine`, which
+reports whether an interface is up, not whether anything is reachable. In a metro
+tunnel or a basement car park it stays TRUE while every request hangs; those hangs
+landed in the `catch`, and `resetForm()` in the `finally` erased the words. The
+one path that reliably destroyed a capture was the one you hit furthest from a
+keyboard.
+
+Now every capture is written to IndexedDB **before** any network call, and the
+network is a drainer rather than a gate. That single inversion is what lets the
+box clear instantly AND guarantees nothing disappears on bad signal: the text does
+not vanish, it moves into a visible row that carries the truth.
+
+**`lib/outbox.mjs`** (pure, fuzz-tested):
+- Full-jitter backoff. Without jitter a batch queued during one outage all wakes
+  in the same millisecond and hammers a server that is still recovering.
+- Failure classification that knows 401 and 402 are terminal (retrying a
+  signed-out session forever drains the battery; retrying an over-budget capture
+  just spends more money) while a timeout is not.
+- **Captive-portal detection.** Hotel and airport wifi answer every request with
+  200 and an HTML login page. A naive "status === 200" check reads that as
+  success and the capture is lost while the UI says saved.
+- 60-seed fuzz asserting the only two invariants that matter: a capture is never
+  lost, and never applied twice.
+
+**Crash recovery.** A crash is not an event the running code observes, so anything
+left in `sending` was interrupted mid-flight. `recoverInterrupted()` on boot hands
+it back to the retry machine. Without it, a capture in the air when Android
+reclaimed the WebView - the camera Activity is a common trigger - would sit in
+`sending` forever, never sent and never surfaced.
+
+**Migration, not replacement.** `outbox-store.js` upgrades the existing v1
+database in place and rewrites the rows already in it. Dropping the store on
+upgrade would lose exactly the data this exists to protect. Also added `onblocked`
+handling: a second tab holding v1 open used to make `enqueueCapture` hang forever,
+so the capture was neither sent nor visibly queued.
+
+**The outbox is now the row.** `pushOptimistic`/`updateOptimistic` built a DOM
+node that existed only in memory, so a reload erased it while the capture was
+still queued in IndexedDB - no way to tell "still trying" from "gone".
+`src/ui/outbox-panel.js` renders the same container from storage, so what is on
+screen is what is actually persisted. Four states, never silence: queued,
+sending, retrying (with the reason and a live countdown), needs-attention (with
+what to DO about it, because a user who cannot act re-submits, and that is how a
+failure becomes a duplicate row).
+
+**Judgement calls a reviewer might want to reverse:**
+1. The interactive submit does NOT go through the drainer. It needs the result
+   synchronously to render an answer or a spend suggestion, so it writes to the
+   outbox first and then owns the item via `markSending`/`markSent`/`markFailed`.
+   The alternative - everything through the drainer - would make questions
+   asynchronous, which is a worse product.
+2. On success the item is REMOVED rather than kept as `sent`. The domain rows are
+   the record from that point, and a lingering item would sit in the queue depth
+   forever. The cost is that there is no local history of successful captures.
+3. `markSent` and `markFailed` swallow their own errors (`.catch(() => null)`).
+   A bookkeeping failure must not turn a successful capture into a user-visible
+   error - but it does mean a storage failure at exactly that moment leaves an
+   item that will be retried once more. The server's fingerprint guard catches it.
+4. The sw.js share-target now writes the v2 shape with a client-minted UUID as
+   both primary key and idempotency key. An auto-incremented key cannot serve as
+   one, which is why the old `add()` became `put()`.
+
+---
+
+## INCIDENT: the app was live-broken for a few minutes, and unit tests said nothing
+
+Soft-delete landed as code and migration together, but the migration had not been
+applied to the live database. Every read in `supabase-data.js` now carries
+`deleted_at=is.null`, so **every single query returned HTTP 400**: food, water,
+workouts, sleep, reminders, ledger. 32 console errors, 33 failed requests, and
+water undo silently stopped working.
+
+`npm test` was **green throughout**. Nothing in the suite talks to PostgREST, so a
+column that exists in a migration file but not in the database is invisible to it.
+`node scripts/smoke-ui.mjs` caught it in one run, because it drives the real
+signed-in app against the real database.
+
+Fixed by applying `20260806000022_soft_delete.sql` (11 tables, idempotent). Verified
+after: 0 console errors, 1 failed request (a pre-existing benign vendor probe for
+a Node-only module), water 0 -> 250 -> 0 with undo working.
+
+**The rule this proves, and it is already in the plan:** additive column ->
+deploy code that tolerates BOTH shapes -> backfill -> only then constrain. Never
+one step. Shipping a read that requires a column is not additive, whatever the
+migration file says, and the gap between "the migration exists" and "the migration
+ran" is where the outage lives.
+
+**Process change:** a schema change is not done when `npm test` passes. It is done
+when `scripts/smoke-ui.mjs` passes against the live database. That script is the
+only thing in this repo that would have caught this.
+
+---
+
+## The eval harness (cross-cutting)
+
+`tests/agent-eval.test.mjs` replays 15 real captures through the live
+deterministic layers and scores them against a hand-written contract. Runs inside
+`npm test`: hermetic, offline, free, no model call.
+
+That is not a compromise. On 2026-08-06 the brain routed a permanent diet change
+perfectly and `fan-out-expander` appended a 540 kcal meal built from the
+instruction text; on 2026-08-04 a note about the app's JSON structure became a
+432 kcal meal. In both cases the model was right and this layer was wrong, so
+replaying recorded model output through the live guards is exactly where the
+value is.
+
+Scoring is partial-credit except for one thing: **a `must_not` hit is a hard zero
+for the case.** A phantom meal averaged against fourteen passing cases is how it
+survives a green build. Current state: 15 cases, weighted mean 1.000, 0 hard
+failures.
+
+The corpus deliberately includes CONTRAST cases (a plain meal, a date-scoped
+delta alongside a real log, a mixed "also I just had dal rice"). A guard that
+blocks the phantom AND the real meal is not a fix, and without those cases the
+suite would happily pass an over-broad guard that logs nothing at all.
+
+`scripts/eval-import.mjs` regenerates the raw half from the live DB but
+deliberately does NOT fill in `expect` - seeding the expectation from recorded
+behaviour would encode every bug as the contract, and the two phantom meals would
+both become "correct" forever.
+
+One case is recorded as a KNOWN GAP rather than silently accepted: with no model
+output, an already-logged flag suppresses salvage for the whole domain, so
+"had popcorn, already logged, then had a burrito" loses the burrito too.
+`dropAlreadyRecordedRows` is per-row but salvage synthesis is all-or-nothing.
+
+---
+
+## Absent is not zero (charts)
+
+`period-aggregator.dailySeries` now returns `null` for a day with no rows and `0`
+only for a measured zero - but `src/ui/charts.js` did `Math.round(p.value)`, and
+`Math.round(null)` is `0`. So the fix was being silently undone one layer later
+and the chart still drew a confident flat bar for a day nothing was logged. Over
+a 30-day window that reads as "your intake collapsed" for a week you were on
+holiday.
+
+Absent now survives to the renderer and draws as a dashed gap. The one exception
+is the CUMULATIVE line, where carrying the previous total forward is correct -
+"total spent so far" on an unlogged day is still the previous total, not unknown.
+Written explicitly so the next reader does not "fix" it into a gap.
+
+---
+
+## A failed refresh is not a failed write
+
+Nine call sites did `await hydrateStateFromSupabase().catch(() => {})` after
+writing a row. Swallowing the refresh looks harmless because the write already
+succeeded - and it is the opposite, because of what the user sees: **the row IS
+saved and the screen does NOT change**, which is indistinguishable from "my tap
+did nothing". So they tap again. That is how one workout became two rows on
+2026-07-22.
+
+All nine now go through `refreshAfterWrite(what)`, which says "Saved X, but
+couldn't refresh the screen" - a different sentence with a different action
+attached - rate-limited to one warning per 30 s so a burst of quick actions
+during an outage does not stack six identical toasts.
+
+The swallow ratchet dropped from 99 to 90 as a result, and the guard itself
+caught the stale allowlist entries and refused to pass until they were removed.
+
+---
+
+## Audio: the format was always wrong
+
+Gemini accepts wav, mp3, aiff, aac, ogg and flac. It does **not** accept
+audio/webm, which is exactly what MediaRecorder produces by default in Chrome and
+exactly what this app uploaded. The 400 was caught in the edge function, which
+continued with `geminiEvidence = ""`, and the UI still said "Capture saved".
+
+In the browser this was masked because Web Speech supplied a transcript anyway.
+In the Android app there is no Web Speech API at all, so voice was completely and
+silently dead - which is what the owner was reporting.
+
+Now: `pickRecorderMime()` asks MediaRecorder for a container the API can already
+read (ogg/opus first), and anything still unacceptable is converted client-side
+to 16 kHz mono WAV before upload. Client-side rather than server-side on purpose:
+it also cuts the upload to roughly a tenth of a 48 kHz stereo capture, which
+matters far more on a phone than the CPU cost of the decode. Conversion failure
+returns the ORIGINAL file rather than throwing - a slightly-wrong upload still
+reaches the server where a MIME guard can refuse it loudly, and losing the
+recording outright would be worse than either.
+
+---
+
+## Route invariants (Phase 5, ahead of its wiring)
+
+`lib/route-invariants.mjs` turns four prompt rules into enforced contracts:
+a standing change may not write a tracker row; standing LANGUAGE alone is enough
+even when the model emitted no plan tool; a permanent scope may not carry a delta
+(flagged, not dropped - a rejected plan change is a lost instruction); and a plan
+change that resolves to nothing is a silent no-op reported as success.
+
+Every violation is counted rather than merely fixed. A rising
+`log_from_standing_language` count is the early warning that a model change has
+started drifting, and it arrives before the user sees a phantom meal.
+
+---
+
+## Phase 4 - native dictation in the APK
+
+`android/.../speech/SpeechPlugin.kt`, registered in `MainActivity`, preferred by
+`src/services/speech.js` whenever `Capacitor.isNativePlatform()`.
+
+**Why it had to exist:** the Web Speech API is a Chrome-the-BROWSER feature, not a
+WebView feature. Inside the APK both `SpeechRecognition` and
+`webkitSpeechRecognition` are undefined, so `isLiveTranscriptionSupported()`
+returned false and the app fell back to record-and-upload - which, until the WAV
+conversion landed, produced nothing at all. On the phone, the one place voice
+matters most, there was no live text and no working fallback either.
+
+Design points worth knowing:
+- The plugin emits the WHOLE transcript on every update, never a fragment. The
+  web wrapper treats each update as a replace. Appending is exactly the bug that
+  turned one spoken sentence into "I I went I went to the gym".
+- Android ends a recognition session at every pause, so a sentence with a breath
+  in it arrives as several sessions. The plugin restarts and joins with the same
+  overlap-aware algorithm as `joinTranscript` in the JS, so the two engines
+  cannot disagree about what the user said.
+- `ERROR_NO_MATCH` and `ERROR_SPEECH_TIMEOUT` restart silently rather than
+  reporting a failure - the recogniser simply heard nothing for a stretch, and
+  surfacing that as an error reads as "voice is broken".
+- Error codes deliberately match the Web Speech names (`not-allowed`,
+  `audio-capture`, `network`, `no-speech`), so one set of user-facing copy serves
+  both engines.
+- Reached via `globalThis.Capacitor.Plugins.Speech` - no npm specifier, so the
+  no-bundler web build is untouched and it is simply `undefined` in a browser.
+
+**Untested on hardware.** It compiles against the documented SpeechRecognizer
+surface and every failure path returns a named code, but which recogniser a given
+OEM ships, and how it handles Indian English, has never been observed.
+
+CI now hard-fails if any of the five app-local plugins stops being registered.
+`cap add` would replace `MainActivity.kt` with a stock Java stub and drop them
+all, and the resulting APK would install perfectly and simply have no microphone,
+no SMS capture, no Health Connect and no water widget.
+
+---
+
+## Phase 5 - route invariants wired and deployed
+
+`lib/route-invariants.mjs` is now mirrored into the agent edge function and runs
+as the LAST gate in `runPipeline`, after expansion.
+
+**After expansion on purpose.** The 2026-08-06 phantom meal was appended by the
+expander, not emitted by the brain, so a guard that checked the model's raw
+output would have missed it entirely.
+
+Mirror note: the block deliberately excludes `LOG_TOOLS` and `isStandingChange`,
+because the edge function already defines both for the fan-out expander. The
+first attempt mirrored them too and produced `TS2393: Duplicate function
+implementation`. `scripts/sync-mirror.mjs` also requires the marker pair to
+already exist in the destination before it will fill it.
+
+**Deployed as agent v103 and verified live.** Capture:
+"from now on I have 6 boiled eggs every single day for lunch"
+- routed as `plan_change`
+- `salvage alone would emit: (nothing)`
+- model emitted `update_plan_candidate` (0.85) + `remember_fact` (0.95)
+- **both landed as `proposed`, not `auto_applied`** - the confirm gate holding
+- zero rows in `food_logs`
+- the real permanent diet plan untouched (still exactly 1)
+
+That is the "two signals for a permanent rewrite" rule working end to end: an
+explicit instruction now waits for one tap instead of silently rewriting the
+plan, and it cannot produce a meal on the way past.
+
+Measured blast radius of the gate against all 158 historical auto-applied
+actions: **8 (5.1%) would now need a tap**, 150 unchanged. Of 6 historical plan
+calls, 5 were date-scoped and still auto-apply.
+
+---
+
+## Phase 7 - the timezone bug was live in the data, not just the code
+
+The pattern engine's `lib/tz.mjs` work was gated on proving the day-key bug is
+real. It is:
+
+```
+select count(*) from workout_logs
+where (occurred_at at time zone 'Asia/Kolkata')::date <> occurred_at::date;  -> 2
+```
+
+Both rows are 2026-07-22 23:30 and 23:55 UTC, which is **2026-07-23 05:00 and
+05:25 IST** - a day AND weekday flip in shipped rows. Also 3 of 76 `food_logs`
+and 125 `ledger_entries`. Any weekday pattern built on `toISOString().slice(0,10)`
+would have reported those as Wednesday when the user experienced Thursday.
+
+A tz lint now fails the build on any NEW `toISOString().slice(0, 10)`, with the
+15 legacy uses frozen as a named budget rather than silently tolerated.
+
+**Gate table, verified numerically in both directions.** Fires at 3/3, 4/4, 4/5,
+5/6, 6/7, 6/8. Does not fire at 1/1, 2/2, 3/4, 3/6, 4/6, 5/8. The tightest pass
+is 4/5 at a Wilson lower bound of 0.5135 against a 0.50 floor.
+
+The row that justifies the whole design is **2/2**: p = 0.0204, which passes a
+naive p<0.05, AND its Wilson bound of 0.5491 passes the coverage gate. Only the
+support floor stops it. Two Saturdays is not a habit, and a p-value alone would
+have called it one.
+
+**Window anchoring is the judgement call most worth reviewing.** A weekday window
+starts at the item's first occurrence rather than at history start. Without it
+the flagship case reads 4/6 against six weeks of logs and can never fire. The
+bias is that the first trial is a guaranteed success; it is bounded by the
+support floor, the 3-distinct-week floor, and specificity computed on the
+untouched total. A lapsed habit is still not protected: 3 pizzas then 3 empty
+Saturdays is 3/6 and stays silent.

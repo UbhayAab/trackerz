@@ -21,6 +21,8 @@ import com.getcapacitor.BridgeActivity
 import com.ubhayaab.trackerz.health.HealthConnectPlugin
 import com.ubhayaab.trackerz.sms.SmsReaderPlugin
 import com.ubhayaab.trackerz.notify.NotifyReaderPlugin
+import com.ubhayaab.trackerz.water.WaterWidgetPlugin
+import com.ubhayaab.trackerz.speech.SpeechPlugin
 
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,6 +31,18 @@ class MainActivity : BridgeActivity() {
         registerPlugin(HealthConnectPlugin::class.java)
         registerPlugin(SmsReaderPlugin::class.java)
         registerPlugin(NotifyReaderPlugin::class.java)
+        // WaterWidget is registered for its LIFECYCLE, not only for the two
+        // methods quick-log.html calls: its handleOnResume/handleOnPause copy the
+        // signed-in access token out of the WebView so the home-screen widget and
+        // the Quick Settings tile can write to Supabase while the app is closed.
+        // Without this line the widget still never loses a tap - it just queues
+        // every one of them until someone opens the app.
+        registerPlugin(WaterWidgetPlugin::class.java)
+        // Native dictation. The Web Speech API does not exist in an Android
+        // WebView at all, so without this the app has no live transcription -
+        // only record-and-upload, which is slower and was silently producing
+        // nothing until the WAV conversion landed.
+        registerPlugin(SpeechPlugin::class.java)
         super.onCreate(savedInstanceState)
     }
 }

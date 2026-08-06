@@ -10,7 +10,8 @@ import { renderNav } from "../ui/navigation.js";
 // Response body instead of printing "[object Object]". It now lives in
 // lib/failure.mjs so every surface gets the same quality, and diagnostics
 // imports it rather than keeping a private copy that can drift.
-import { describeError } from "../../lib/failure.mjs";
+import { describeError, Ok, Err, classify } from "../../lib/failure.mjs";
+import { renderDegradedBanner } from "../ui/degraded-banner.js";
 
 bootWithAuth(async () => {
   renderNav();
@@ -36,27 +37,30 @@ async function runChecks() {
 
   const checks = [
     {
+      source: "your Supabase config",
       name: "Supabase config present",
       run: () => (hasSupabaseConfig()
         ? ok()
         : fail("no Supabase URL + anon key from config.local.js, localStorage, or built-in defaults")),
     },
     {
+      source: "your sign-in",
       name: "Auth session active",
       run: () => (getCurrentSession() ? ok() : fail("no active session")),
     },
     {
+      source: "voice capture",
       name: "Web Speech (Chrome only)",
       run: () => (isLiveTranscriptionSupported()
         ? ok()
         : warn("no SpeechRecognition in this browser - voice capture falls back to upload")),
     },
-    { name: "Supabase reachable", run: pingSupabase },
-    { name: "Profile row exists", run: profileExists },
-    { name: "Read ledger_entries", run: readLedger },
-    { name: "Read food_logs", run: readFoodLogs },
-    { name: "Read storage bucket", run: readBucket },
-    { name: "Edge function 'agent' reachable", run: pingEdgeFn },
+    { source: "the database", name: "Supabase reachable", run: pingSupabase },
+    { source: "your profile", name: "Profile row exists", run: profileExists },
+    { source: "money", name: "Read ledger_entries", run: readLedger },
+    { source: "diet", name: "Read food_logs", run: readFoodLogs },
+    { source: "uploaded media", name: "Read storage bucket", run: readBucket },
+    { source: "the AI agent", name: "Edge function 'agent' reachable", run: pingEdgeFn },
   ];
 
   const list = document.getElementById("diagList");
@@ -64,22 +68,37 @@ async function runChecks() {
     .map((c, i) => `<div class="diag-row" data-i="${i}"><span>${c.name}</span><span class="diag-status">…</span></div>`)
     .join("");
 
+  // Each check is ALSO recorded as an Ok()/Err() result so the degraded banner
+  // can name what is broken in one sentence at the top of the page. The row list
+  // below already says it per line, but a reader who has to scan nine rows to
+  // learn that money and diet are unreadable is being made to do the app's job.
+  const results = [];
+
   try {
     for (let i = 0; i < checks.length; i++) {
+      const check = checks[i];
       const cell = list.querySelector(`[data-i="${i}"] .diag-status`);
       cell.textContent = "running";
       cell.className = "diag-status";
       let result;
+      let thrown = null;
       try {
-        result = normalize(await checks[i].run());
+        result = normalize(await check.run());
       } catch (err) {
+        thrown = err;
         result = fail(await describeError(err));
       }
+      // A WARN is a working source with a caveat (no SpeechRecognition in this
+      // browser), so it must not be reported as unloadable. Only a FAIL is.
+      results.push(result.status === "fail"
+        ? Err(thrown ? classify(thrown) : "unknown", thrown || result.detail, { source: check.source })
+        : Ok(result.status, { source: check.source }));
       paint(cell, result);
     }
   } finally {
     running = false;
     btn.disabled = false;
+    renderDegradedBanner(results, { onRetry: runChecks, root: document.querySelector("main") });
   }
 }
 

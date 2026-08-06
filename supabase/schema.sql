@@ -162,6 +162,9 @@ create table if not exists public.ledger_entries (
   counts_as_income boolean not null default false,
   classification_confidence numeric(5,4),
   classification_reasons text[] not null default '{}',
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -294,6 +297,9 @@ create table if not exists public.food_logs (
   duplicate_state text not null default 'unique',
   event_group_id uuid,                                                   -- links a meal to its spend (cross-domain, never merged)
   occurred_at timestamptz not null,
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -305,6 +311,9 @@ create table if not exists public.body_metrics (
   unit text not null,
   occurred_at timestamptz not null,
   ingestion_id uuid references public.raw_ingestions(id) on delete set null,
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -317,6 +326,9 @@ create table if not exists public.wellness_logs (
   stress_score integer check (stress_score between 1 and 10),
   occurred_at timestamptz not null,
   ingestion_id uuid references public.raw_ingestions(id) on delete set null,
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -359,6 +371,9 @@ create table if not exists public.workout_logs (
   -- a workout is what made the brief report gym sessions the user had denied.
   status text not null default 'done' check (status in ('done','skipped','rest')),
   occurred_at timestamptz not null,
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -373,6 +388,9 @@ create table if not exists public.sleep_sessions (
   quality smallint check (quality is null or quality between 1 and 5),
   note text,
   source text not null default 'button',
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now(),
   constraint sleep_sessions_order_check check (ended_at is null or ended_at > started_at)
 );
@@ -447,6 +465,9 @@ create table if not exists public.hydration_logs (
   user_id uuid not null references public.profiles(id) on delete cascade,
   ml integer not null,
   occurred_at timestamptz not null default now(),
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -471,6 +492,9 @@ create table if not exists public.user_plans (
   payload jsonb not null default '{}'::jsonb,
   source text not null default 'ai',
   active boolean not null default true,
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 create index if not exists ix_user_plans_lookup on public.user_plans(user_id, kind, scope, active, created_at desc);
@@ -487,6 +511,9 @@ create table if not exists public.memory_facts (
   confidence numeric(5,4) not null default 0.7,
   source text not null default 'ai',
   updated_at timestamptz not null default now(),
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now(),
   unique(user_id, key)
 );
@@ -502,6 +529,9 @@ create table if not exists public.notes (
   due_on date,
   event_group_id uuid,
   occurred_at timestamptz not null default now(),
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -528,6 +558,9 @@ create table if not exists public.reminders (
   lead_days int not null default 0 check (lead_days between 0 and 60),
   active boolean not null default true,
   last_fired_on date,
+  -- Soft delete (20260806000022). A tombstone, not a removal: every read
+  -- filters `deleted_at is null`; only the 30-day purge hard-deletes.
+  deleted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   -- A rule must be computable. Without this a 'yearly' row with no month is
@@ -802,6 +835,66 @@ create index if not exists ix_habit_days_user_day on public.habit_days(user_id, 
 create index if not exists ix_push_subs_user on public.push_subscriptions(user_id);
 
 -- ============================================================================
+-- Soft delete (20260806000022). The `deleted_at` columns are declared inline on
+-- each table above; this block backfills them on a database created before the
+-- migration, adds the partial index every read now matches, and defines the ONLY
+-- hard delete in the system. Idempotent - safe to re-run.
+--
+-- The model gets NO hard-delete path at any risk tier: a delete it asks for is a
+-- tombstone, which is what makes "undo the delete" possible at all.
+-- ============================================================================
+do $softdel$
+declare
+  t text;
+  tables text[] := array[
+    'ledger_entries','food_logs','workout_logs','hydration_logs','sleep_sessions',
+    'body_metrics','wellness_logs','notes','reminders','user_plans','memory_facts'
+  ];
+begin
+  foreach t in array tables loop
+    execute format('alter table public.%I add column if not exists deleted_at timestamptz', t);
+    execute format(
+      'create index if not exists ix_%s_live on public.%I (user_id, deleted_at) where deleted_at is null',
+      t, t
+    );
+  end loop;
+end$softdel$;
+
+create or replace function public.purge_soft_deleted(older_than_days int default 30)
+returns table(table_name text, removed bigint)
+language plpgsql
+security definer
+set search_path = public
+as $purge$
+declare
+  t text;
+  tables text[] := array[
+    'ledger_entries','food_logs','workout_logs','hydration_logs','sleep_sessions',
+    'body_metrics','wellness_logs','notes','reminders','user_plans','memory_facts'
+  ];
+  n bigint;
+begin
+  -- A tiny window would turn "soft delete" back into "hard delete with extra
+  -- steps". 7 days is the floor; anything below it falls back to 30.
+  if older_than_days is null or older_than_days < 7 then
+    older_than_days := 30;
+  end if;
+  foreach t in array tables loop
+    execute format(
+      'delete from public.%I where deleted_at is not null and deleted_at < now() - ($1 || '' days'')::interval',
+      t
+    ) using older_than_days;
+    get diagnostics n = row_count;
+    table_name := t;
+    removed := n;
+    return next;
+  end loop;
+end$purge$;
+
+revoke all on function public.purge_soft_deleted(int) from public;
+revoke all on function public.purge_soft_deleted(int) from anon, authenticated;
+
+-- ============================================================================
 -- Jarvis engine scheduler (20260706000015_jarvis_engine.sql): pg_cron fires
 -- jarvis_ping() at three IST slots; it reads JARVIS_CRON_SECRET from app_secrets
 -- and pg_net-POSTs to the `jarvis` edge function, which closes out the day,
@@ -866,3 +959,205 @@ exception when others then
   -- Realtime is a nice-to-have (live strip refresh); never block the migration.
   raise warning 'could not add briefings to supabase_realtime: %', sqlerrm;
 end$jpub$;
+
+-- ============================================================================
+-- THE CALENDAR ENGINE (20260806000030_calendar_engine.sql)
+--
+-- Recurrence modifiers, fire-once claims, and the minute-resolution autonomous
+-- scheduler. Asked for out loud: "Calendar is where it will be putting down all
+-- its scheduled tasks. And when the scheduled task, it has to trigger on its own
+-- and wake up."
+-- ============================================================================
+
+-- 1. Recurrence modifiers on `reminders`. Column names dodge two Postgres
+--    keywords on purpose - `interval` is a type name, `count` is an aggregate -
+--    and lib/reminders.mjs reads either spelling so a DB row can be handed to the
+--    engine unmapped.
+alter table public.reminders add column if not exists rule_interval int not null default 1;
+alter table public.reminders add column if not exists dtstart date;
+alter table public.reminders add column if not exists nth_weekday int;   -- 3 = "3rd Tuesday", -1 = "last Friday"
+alter table public.reminders add column if not exists weekdays int[];    -- [1,3,5] = Mon/Wed/Fri
+alter table public.reminders add column if not exists until date;
+alter table public.reminders add column if not exists max_count int;
+alter table public.reminders add column if not exists exdates date[];
+alter table public.reminders add column if not exists rdates date[];
+alter table public.reminders add column if not exists at_time time;      -- NULL = date granularity, said in the 07:00 brief
+alter table public.reminders add column if not exists timezone text;     -- NULL = the profile's zone
+-- reminders.last_fired_on is DEPRECATED: never read or written by any code, and a
+-- date cannot express two fires in one day. reminder_fires is the claim of record.
+
+-- 2. reminder_fires - the claim that makes a fire happen exactly once.
+--    The INSERT *is* the claim: two schedulers race the same occurrence, one
+--    wins, the loser gets a unique violation and treats it as a successful
+--    no-op. Before this, a reminder inside its lead window re-fired every day -
+--    GST at lead_days=7 was eight identical morning pushes, which is how a
+--    person learns to swipe away every notification the app sends.
+create table if not exists public.reminder_fires (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  reminder_id uuid not null references public.reminders(id) on delete cascade,
+  occurrence_key text not null,             -- occurrenceKey(): "2026-08-14" or "2026-08-14T18:30"
+  channel text not null default 'push',     -- push_lead | push_due | push_timed
+  fired_at timestamptz not null default now(),
+  detail jsonb not null default '{}'::jsonb,
+  constraint reminder_fires_once unique (reminder_id, occurrence_key, channel)
+);
+create index if not exists ix_reminder_fires_user on public.reminder_fires(user_id, fired_at desc);
+
+-- 3. job_runs - the generalised slot claim with a stale lease, so pg_cron and the
+--    GitHub heartbeat COLLIDE rather than double-fire, and a crashed run releases
+--    its slot after the lease instead of wedging it forever.
+create table if not exists public.job_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  job text not null,
+  slot_key text not null,
+  status text not null default 'running' check (status in ('running','done','failed')),
+  attempts int not null default 1,
+  claimed_at timestamptz not null default now(),
+  finished_at timestamptz,
+  detail jsonb not null default '{}'::jsonb,
+  constraint job_runs_slot_once unique (user_id, job, slot_key)
+);
+create index if not exists ix_job_runs_claimed on public.job_runs(job, claimed_at desc);
+
+-- 4. agent_tasks - what the agent scheduled for itself, plus one row per run.
+create table if not exists public.agent_tasks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  fire_at timestamptz not null,
+  tz text not null default 'Asia/Kolkata',
+  recurrence jsonb,                          -- a lib/reminders.mjs rule, or NULL for a one-shot
+  intent text not null default 'check' check (intent in ('check','answer','remind','review')),
+  prompt text not null,
+  created_by text not null default 'user' check (created_by in ('user','agent','system')),
+  status text not null default 'scheduled' check (status in ('scheduled','running','done','failed','disabled')),
+  origin_ingestion_id uuid references public.raw_ingestions(id) on delete set null,
+  dedupe_key text,
+  depth int not null default 0 check (depth between 0 and 3),   -- a task may not create a task
+  claimed_at timestamptz,
+  last_run_at timestamptz,
+  runs int not null default 0,
+  consecutive_failures int not null default 0,                  -- 3 trips a visible breaker
+  disabled_reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists ux_agent_tasks_dedupe on public.agent_tasks(user_id, dedupe_key) where dedupe_key is not null;
+create index if not exists ix_agent_tasks_due on public.agent_tasks(fire_at) where status = 'scheduled';
+create index if not exists ix_agent_tasks_user on public.agent_tasks(user_id, fire_at desc);
+
+create table if not exists public.agent_task_runs (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.agent_tasks(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  slot_key text not null,                    -- the claim: unique per (task, occurrence)
+  status text not null default 'claimed' check (status in ('claimed','silent','spoke','failed','blocked')),
+  result text,                               -- 'silent: on track' is a real outcome, logged as one
+  action_hash text,                          -- same (task, hash) 3x in 24h = a loop
+  actions int not null default 0,
+  -- Autonomous spend is accounted HERE and never in ai_runs, so a background
+  -- agent can consume neither the human's 60-per-5-min rate limit nor their
+  -- $2/day cap and lock them out of their own app.
+  cost_usd numeric(12,6) not null default 0,
+  error text,
+  started_at timestamptz not null default now(),
+  finished_at timestamptz,
+  constraint agent_task_runs_once unique (task_id, slot_key)
+);
+create index if not exists ix_agent_task_runs_user on public.agent_task_runs(user_id, started_at desc);
+create index if not exists ix_agent_task_runs_hash on public.agent_task_runs(task_id, action_hash, started_at desc);
+
+-- 5. Autonomy governance flags. autonomy_enabled is read SERVER-SIDE, FIRST, and
+--    fails CLOSED: a client flag cannot stop a server-side agent, and an
+--    unreadable flag must never read as permission.
+alter table public.profiles add column if not exists autonomy_enabled boolean not null default false;
+alter table public.profiles add column if not exists autonomy_daily_cost_usd numeric(8,4) not null default 0.25;
+
+-- 6. RLS for the new tables ('reminder_fires','job_runs','agent_tasks','agent_task_runs').
+do $calrls$
+declare t text;
+begin
+  for t in select unnest(array['reminder_fires','job_runs','agent_tasks','agent_task_runs'])
+  loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "Users manage own rows" on public.%I', t);
+    execute format(
+      'create policy "Users manage own rows" on public.%I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)',
+      t
+    );
+  end loop;
+end$calrls$;
+
+-- 7. Claim helpers. See the migration for the full reasoning; the load-bearing
+--    detail is `fire_at <= now()` (never `=`) so a minute the scheduler missed
+--    still fires late, and FOR UPDATE SKIP LOCKED so two schedulers arriving
+--    together take DIFFERENT rows.
+create or replace function public.claim_job(
+  p_user uuid, p_job text, p_slot text, p_lease_seconds int default 600
+) returns boolean
+language plpgsql security definer set search_path = public
+as $claim$
+declare got boolean;
+begin
+  insert into public.job_runs (user_id, job, slot_key, status, claimed_at)
+  values (p_user, p_job, p_slot, 'running', now())
+  on conflict (user_id, job, slot_key) do update
+     set claimed_at = now(), status = 'running', attempts = public.job_runs.attempts + 1
+   where public.job_runs.status <> 'done'
+     and public.job_runs.claimed_at < now() - make_interval(secs => p_lease_seconds)
+  returning true into got;
+  return coalesce(got, false);
+end$claim$;
+
+create or replace function public.finish_job(p_user uuid, p_job text, p_slot text, p_status text, p_detail jsonb default '{}'::jsonb)
+returns void language sql security definer set search_path = public
+as $finish$
+  update public.job_runs
+     set status = case when p_status in ('done','failed') then p_status else 'done' end,
+         finished_at = now(), detail = coalesce(p_detail, '{}'::jsonb)
+   where user_id = p_user and job = p_job and slot_key = p_slot;
+$finish$;
+
+create or replace function public.claim_agent_tasks(p_user uuid, p_limit int default 5)
+returns setof public.agent_tasks
+language plpgsql security definer set search_path = public
+as $claimtasks$
+begin
+  update public.agent_tasks
+     set status = 'scheduled', updated_at = now()
+   where user_id = p_user and status = 'running'
+     and claimed_at is not null and claimed_at < now() - interval '10 minutes';
+
+  return query
+  with picked as (
+    select id from public.agent_tasks
+     where user_id = p_user and status = 'scheduled' and fire_at <= now()
+     order by fire_at
+     for update skip locked
+     limit greatest(1, least(p_limit, 20))
+  )
+  update public.agent_tasks t
+     set status = 'running', claimed_at = now(), updated_at = now()
+    from picked
+   where t.id = picked.id
+  returning t.*;
+end$claimtasks$;
+
+revoke all on function public.claim_job(uuid, text, text, int) from public, anon, authenticated;
+revoke all on function public.finish_job(uuid, text, text, text, jsonb) from public, anon, authenticated;
+revoke all on function public.claim_agent_tasks(uuid, int) from public, anon, authenticated;
+
+-- 8. The minute clock. Every minute, not every 5: a reminder set for 18:30 that
+--    fires at 18:34 is a different product. The tick is SILENT by design - with
+--    nothing due it is two indexed queries per profile and writes nothing.
+do $caljcron$
+declare j record;
+begin
+  for j in select jobid from cron.job where jobname = 'jarvis_tasks'
+  loop
+    perform cron.unschedule(j.jobid);
+  end loop;
+end$caljcron$;
+
+select cron.schedule('jarvis_tasks', '* * * * *', $jt$select public.jarvis_ping('task')$jt$);

@@ -12,10 +12,12 @@
 @import "./styles/quick-actions.css";
 @import "./styles/quick-log.css";
 @import "./styles/meal-chips.css";
+@import "./styles/calendar.css";
 @import "./styles/analytics-insights.css";
 @import "./styles/diet-insights.css";
 @import "./styles/money-insights.css";
 @import "./styles/gym-insights.css";
+@import "./styles/outbox.css";
 @import "./styles/nav.css";
 @import "./styles/theme-premium.css";
 @import "./styles/motion.css";

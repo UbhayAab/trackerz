@@ -74,11 +74,20 @@ for (const a of cronActions) {
 const wf = ".github/workflows/jarvis-heartbeat.yml";
 if (existsSync(wf)) {
   const yml = readFileSync(wf, "utf8");
-  const heartbeatActions = new Set([...yml.matchAll(/ACTION=([a-z]+)\b/g)].map((m) => m[1]));
+  // Three shapes, because the workflow gained a helper: the slot mapping
+  // (ACTION=morning), literal sends (fire task), and the workflow_dispatch case
+  // list. Missing any of them would let an unallowlisted action ship silently -
+  // the exact hole that let midday 400 for weeks.
+  const heartbeatActions = new Set([
+    ...[...yml.matchAll(/ACTION=([a-z]+)\b/g)].map((m) => m[1]),
+    ...[...yml.matchAll(/^\s*fire\s+"?([a-z]+)"?\s*$/gm)].map((m) => m[1]),
+    ...[...yml.matchAll(/^\s{10,}((?:[a-z]+\|){2,}[a-z]+)\)/gm)].flatMap((m) => m[1].split("|")),
+  ]);
   assert.ok(heartbeatActions.size >= 3, `heartbeat action mapping looks truncated: ${[...heartbeatActions].join(", ")}`);
   for (const a of heartbeatActions) {
     assert.ok(allowed.has(a), `the GitHub heartbeat sends action "${a}" but the function 400s it`);
   }
+  assert.ok(heartbeatActions.has("task"), "the heartbeat must drain the agent_tasks queue - pg_cron's minute tick is the only other clock");
 }
 
 console.log(`jarvis-actions tests passed: ${allowed.size} actions accepted, dispatched and scheduled in agreement`);

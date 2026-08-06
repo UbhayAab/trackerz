@@ -16,6 +16,7 @@ import { logGymAnswer, fetchTodayGymAnswer } from "../services/supabase-data.js"
 import { runCapture } from "../services/agent-runner.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
+import { refreshAfterWrite } from "./refresh.js";
 import { planForDate } from "../domain/diet/plan.js";
 import { weeklyWorkoutCount } from "../domain/diet/plan.js";
 import { goalDisplayValue } from "../domain/goals.js";
@@ -93,7 +94,7 @@ async function answer(status) {
   try {
     await logGymAnswer(status);
     showToast(status === "done" ? "Gym logged." : "Marked as no gym today.");
-    await hydrateStateFromSupabase().catch(() => {});
+    await refreshAfterWrite("the gym log");
     await refresh();
   } catch (err) {
     setStatus(`Could not save: ${err?.message || err}`);
@@ -122,7 +123,7 @@ async function logFreeText() {
     showToast("Workout logged.");
     const b = document.querySelector("#gymFreeText");
     if (b) b.value = "";
-    await hydrateStateFromSupabase().catch(() => {});
+    await refreshAfterWrite("the gym log");
     await refresh();
   } catch (err) {
     // Never clear the box on failure - the words are the only copy.
