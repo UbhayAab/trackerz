@@ -125,7 +125,7 @@ async function deployFunction() {
   return false;
 }
 
-console.log(`Trackerz backend setup → project ${REF}\n`);
+console.log(`Deno backend setup → project ${REF}\n`);
 try {
   await verifyProject();
   await applySchemaAndMigrations();

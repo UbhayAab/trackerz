@@ -27,6 +27,15 @@ function swScope() {
 // controllerchange listener and another reload.
 export function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return Promise.resolve(null);
+  // NEVER inside the Android app. The APK already ships every asset locally and
+  // serves them through Capacitor's native handler at https://localhost/. Layering
+  // a network-first service worker over that buys nothing (there is no network
+  // fetch to make offline-capable) and actively creates stale-asset bugs: the SW
+  // caches a build under an origin the WebView reuses across app updates, so a
+  // freshly installed APK can keep serving the previous release's JavaScript.
+  // Web Push is the usual reason to want a SW here, and that does not work in an
+  // Android WebView either.
+  if (globalThis.Capacitor?.isNativePlatform?.()) return Promise.resolve(null);
   if (registration) return registration;
   registration = (async () => {
     try {

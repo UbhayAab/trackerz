@@ -1,5 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
-// Trackerz agent edge function.
+// Deno (the app) - agent edge function. Note: the "Deno" in Deno.env below is
+// the edge RUNTIME, unrelated to the app name. Internal identifiers such as the
+// jarvis function slug were deliberately left alone to keep that unambiguous.
 //
 // Wave 7 hardening:
 // 1. Verifies the caller's JWT - userId is derived from auth.uid(), never
@@ -35,10 +37,17 @@ const DEEPSEEK_MODEL = "deepseek-chat";              // strict-JSON fallback bra
 const DEEPSEEK_REASONER_MODEL = "deepseek-reasoner"; // thinking-mode primary brain
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 
-// Rough provider pricing per 1M tokens (used only for the cost meter/cap). The
-// DeepSeek figures track the pricier "reasoner" tier so the daily cap errs toward
-// protecting spend rather than overshooting it.
-const GEMINI_IN_USD = 0.075, GEMINI_OUT_USD = 0.3;
+// Provider pricing per 1M tokens - the ONLY rates in this file, and the input to
+// both the cost meter and the daily cap. They were wrong in two compounding ways:
+// the Gemini pair sat at 0.075/0.3 (a stale rate card, about a quarter of Gemini
+// 2.5 Flash's real 0.30/2.50), and a second helper - estimateCostUsd() - hardcoded
+// those same two stale numbers and priced the DeepSeek answer pass, the DeepSeek
+// summary pass and the whole-run fallback with them. DeepSeek work was therefore
+// billed to the meter at roughly a seventh of its price, so
+// DEFAULT_DAILY_COST_CAP_USD = 2 was really permitting $12-16/day of real spend.
+// estimateCostUsd is gone; every call site now goes through costOf() with the
+// rates of the provider that ACTUALLY served the call.
+const GEMINI_IN_USD = 0.3, GEMINI_OUT_USD = 2.5;
 const DEEPSEEK_IN_USD = 0.55, DEEPSEEK_OUT_USD = 2.2;
 
 // answer_question is the app answering out loud. A question used to route to
@@ -522,6 +531,16 @@ function base64Encode(bytes: Uint8Array): string {
 
 function costOf(inUsdPerM: number, outUsdPerM: number, pt = 0, ot = 0) {
   return ((pt || 0) / 1_000_000) * inUsdPerM + ((ot || 0) / 1_000_000) * outUsdPerM;
+}
+
+// Which rate card priced a run. `provider` is a "+"-joined list of the providers
+// actually called ("gemini-vision+deepseek-reasoner"), so the BRAIN is the last
+// entry - and the brain dominates the token count. Used only where the run's own
+// measured cost is missing; guessing Gemini there is what made DeepSeek runs look
+// cheap enough to sail past the daily cap.
+function ratesForProvider(provider?: string): [number, number] {
+  const brain = String(provider || "").split("+").pop() || "";
+  return /gemini/i.test(brain) ? [GEMINI_IN_USD, GEMINI_OUT_USD] : [DEEPSEEK_IN_USD, DEEPSEEK_OUT_USD];
 }
 
 // STEP 1 - Gemini reads images/audio: OCR, transcription, and a faithful
@@ -1086,7 +1105,7 @@ function isBareMealLabel(label: string): boolean {
 
 // Request router (mirror of lib/request-router.mjs). A capture is a LOG or a
 // COMMAND that must change the scaffolding (plan/budget) - never a checklist tick.
-const PLAN_CHANGE_CUES = ["change my plan", "update my plan", "change my schedule", "update my schedule", "change the schedule", "change the plan", "edit my plan", "modify my plan", "adjust my plan", "adjust my schedule", "set my plan", "my new plan", "my new diet", "new schedule", "new plan", "new routine", "new split", "here is my schedule", "here's my schedule", "here is my new", "here's my new", "here is my latest", "here's my latest", "latest schedule", "latest plan", "dump of my", "switch my plan", "switch my diet", "change my diet", "update my diet", "change my workout", "update my workout", "change my gym", "update my gym", "change my routine", "from now on", "going forward", "starting today", "starting tomorrow", "starting monday", "for the next", "rest day", "make it a rest", "replace", "swap", "swap out", "swap my", "won't do", "wont do", "no longer do", "stop doing", "not do the schedule", "instead of", "reschedule", "rework my", "redo my plan", "i'll be having", "i will be having", "i'll have", "i will have"];
+const PLAN_CHANGE_CUES = ["change my plan", "update my plan", "change my schedule", "update my schedule", "change the schedule", "change the plan", "edit my plan", "modify my plan", "adjust my plan", "adjust my schedule", "set my plan", "my new plan", "my new diet", "new schedule", "new plan", "new routine", "new split", "here is my schedule", "here's my schedule", "here is my new", "here's my new", "here is my latest", "here's my latest", "latest schedule", "latest plan", "dump of my", "switch my plan", "switch my diet", "change my diet", "update my diet", "change my workout", "update my workout", "change my gym", "update my gym", "change my routine", "from now on", "going forward", "starting today", "starting tomorrow", "starting monday", "for the next", "rest day", "make it a rest", "replace", "swap", "swap out", "swap my", "won't do", "wont do", "no longer do", "stop doing", "not do the schedule", "instead of", "reschedule", "rework my", "redo my plan", "i'll be having", "i will be having", "i'll have", "i will have", "has changed", "have changed", "i now have", "i now eat", "i now do", "now i have", "now i eat", "now i do", "every single day", "every day now", "i've switched", "ive switched", "i have switched", "switched to", "these days i", "nowadays i", "my new breakfast", "my new lunch", "my new dinner", "my new routine", "my usual is now", "no longer eat", "no longer have", "stopped eating", "stopped having", "ab se", "ab main", "ab mai"];
 const BUDGET_CHANGE_CUES = ["change my budget", "adjust my budget", "set my budget", "update my budget", "increase my budget", "decrease my budget", "raise my budget", "lower my budget", "set my target", "change my target", "adjust my target", "raise my target", "lower my target", "set my goal", "change my goal", "raise my goal", "lower my goal", "calorie budget", "calorie target", "calorie goal", "protein target", "protein goal", "protein budget", "spend cap", "spending cap", "food cap", "food budget", "money budget", "monthly budget", "weekly budget", "daily budget", "budget cap", "set my calorie", "set my protein", "set my spend", "change my cap", "adjust my cap", "raise my cap", "lower my cap", "budget to", "target to", "cap it at", "cap to", "goal to", "make my budget", "make my target", "increase my cap", "decrease my cap"];
 const QUERY_CUES = ["how much", "how many", "what did i", "what have i", "what's my", "whats my", "what is my", "show me", "how am i doing", "am i on track", "how's my", "hows my", "when did i", "why did i", "summary of", "give me a report", "how far", "how close", "do i have", "can i afford", "what's left", "whats left", "how's it going"];
 const LOG_OVERRIDE_CUES = ["also i ate", "also had", "also did", "i ate", "i just ate", "just had", "i had", "and i ate", "and had", "today i did", "also spent", "also paid"];
@@ -1264,6 +1283,38 @@ function minutesApart(a?: string, b?: string): number {
   if (!a || !b) return Infinity;
   return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 60000;
 }
+// Tools that WRITE A REAL EVENT into a tracker. A capture that changes the setup
+// may not produce any of these. Mirror of lib/fan-out-expander.mjs.
+const LOG_TOOLS: Set<string> = new Set([
+  "create_food_log_candidate",
+  "create_workout_log_candidate",
+  "create_expense_candidate",
+  "create_income_candidate",
+  "create_transfer_candidate",
+  "create_hydration_candidate",
+  "create_body_metric_candidate",
+]);
+
+// Does this tool call rewrite the user's STANDING setup, as opposed to bending
+// one named day?
+//
+// The distinction is load-bearing and was learned the hard way in both
+// directions. A PERMANENT plan change ("from now on I eat X") is a pure
+// instruction - nothing was consumed, so nothing may be logged. A DATE-SCOPED
+// delta is the opposite: the LOG-THAT-CONTRADICTS-THE-PLAN rule deliberately
+// pairs one with a real log ("planned leg day, I did cardio"), and a bare denial
+// ("...and no gym today") also draws a same-day rest delta out of the model while
+// the same breath logs 500 g of curd. Treating those as commands ate the food.
+//
+// An absent scope counts as permanent because applyTool defaults it that way.
+// Mirror of lib/fan-out-expander.mjs.
+function isStandingChange(tc: any): boolean {
+  if (tc?.name === "set_target_candidate") return true;
+  if (tc?.name !== "update_plan_candidate") return false;
+  const scope = String(tc?.arguments?.scope || "").trim().toLowerCase();
+  return !scope || scope === "permanent";
+}
+
 function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCall[] {
   let out = [...toolCalls];
   // A grocery run is an expense, not a meal - suppress all food synthesis below.
@@ -1274,14 +1325,37 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   // A command OR meta-commentary about the app. Both mean "this is not a log",
   // so every deterministic salvage below stays off; the model's own note /
   // remember_fact / plan calls are untouched. See isAboutTheApp.
-  const command = (isChangeRequest(evidence) || isAboutTheApp(evidence)) && !carriesLoggedEvent(evidence);
-  // DENIAL: the capture names a domain only to say it did NOT happen ("no gym
-  // today", "skipped lunch"). Salvage stays off and any positive row the model
-  // emitted for that domain is dropped - an explicit denial outranks a guess.
+  //
+  // The brain's own routing outranks our lexicon. isChangeRequest is a literal
+  // substring list, so natural phrasings miss it by one morpheme: it has "change
+  // my diet" but not "my diet HAS CHANGED", and nothing for "I now have X every
+  // day". Those fall through as `log`. But when the model emitted a plan or
+  // target tool it has already decided this capture changes the setup, and that
+  // is far stronger evidence than any cue list can be.
+  //
+  // 2026-08-06, "Hey actually my diet has changed I every single day now have
+  // two scoops of whey protein with 500 grams of curd...": the brain got it
+  // exactly right - update_plan_candidate at 0.95 plus remember_fact at 0.85.
+  // Then salvage appended a third call built from the INSTRUCTION TEXT itself
+  // (description = its first 120 chars, confidence 0.60, _auto_expanded), which
+  // applyTool wrote as a 540 kcal / 64.7 g meal. The reconciler then matched
+  // that row back to "Protein milk shake" and ticked the very plan item the user
+  // was asking to replace. The model was never the problem; this layer was.
+  //
+  // A DENIAL outranks the model's routing. "…and no gym today" is a report about
+  // the day, never a setup change - but the model reliably answers it with an
+  // unscoped rest plan, and an unscoped scope reads as permanent. Letting that
+  // count as a command turned the whole capture into an instruction and ate the
+  // 500 g of curd logged in the same breath. The stray plan call is over-emission
+  // and isSameDayGymPlanChange below already strips it.
+  // Mirror of lib/fan-out-expander.mjs.
   const gymDenied = declaresNoWorkout(evidence, looksLikeGym);
+  const foodDenied = isEventDenied(evidence, looksLikeFood);
+  const modelRoutedAsChange = toolCalls.some(isStandingChange) && !gymDenied && !foodDenied;
+  const command = (isChangeRequest(evidence) || isAboutTheApp(evidence) || modelRoutedAsChange)
+    && !carriesLoggedEvent(evidence);
   const foodAlready = isAlreadyRecorded(evidence, looksLikeFood);
   const moneyAlready = isAlreadyRecorded(evidence, mentionsMoney);
-  const foodDenied = isEventDenied(evidence, looksLikeFood);
   const hasExpense = () => out.some((tc) => tc?.name === "create_expense_candidate");
   const hasFood = () => out.some((tc) => tc?.name === "create_food_log_candidate");
 
@@ -1366,6 +1440,21 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
 
   // 3b-iii. Drop the rows the capture itself says are ALREADY logged.
   out = dropAlreadyRecordedRows(out, ev);
+
+  // 3c-ii. A capture that CHANGES the setup may not also write a tracker row.
+  //
+  //     Suppressing synthesis is not enough. Every `!command` guard above stops
+  //     THIS layer from inventing a row, but the model can emit one too, and an
+  //     instruction filed as a meal is the worst outcome the app produces: it
+  //     invents calories that were never eaten, and the reconciler then ticks
+  //     the plan item the user was trying to replace. So drop every log row,
+  //     the model's included, and let the plan/target/note/remember calls stand.
+  //
+  //     `carriesLoggedEvent` is what keeps the honest mixed capture working:
+  //     "from now on 2 scoops daily, also I just had dal rice" still logs the
+  //     dal rice, and the LOG-THAT-CONTRADICTS-THE-PLAN rule still pairs a real
+  //     log with its date-scoped delta. Mirror of lib/fan-out-expander.mjs.
+  if (command) out = out.filter((tc) => !LOG_TOOLS.has(tc?.name));
 
   // 3d. A note must never restate a row we just wrote. Mirror of
   //     dropRestatingNotes() in lib/fan-out-expander.mjs.
@@ -2555,18 +2644,30 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   let raw = "{}";
   let brainPt = 0, brainOt = 0, brainCost = 0;
   let model = DEEPSEEK_REASONER_MODEL;
+  // Non-null only when the DeepSeek brain died and Gemini took over. Stored on
+  // ai_runs.error_message - see the fallback note below.
+  let brainFallbackReason: string | null = null;
   try {
     const r = await runBrain(combinedText, opts.mode, opts.contextBlock || "", nowIso);
     raw = r.raw; brainPt = r.promptTokens; brainOt = r.outputTokens;
     model = r.model || DEEPSEEK_REASONER_MODEL;
     brainCost = costOf(DEEPSEEK_IN_USD, DEEPSEEK_OUT_USD, brainPt, brainOt);
     usedProviders.push(r.provider || "deepseek");
-  } catch (_e) {
+  } catch (err) {
+    // LOUD, deliberately. A silent multi-week model swap is the worst failure an
+    // LLM pipeline has, and this one was silent: the live DB shows 58 DeepSeek
+    // runs since 20 July and exactly 5 Gemini fallbacks, the last on 25 July -
+    // and not one of the 5 surfaced anywhere, because the provider string read
+    // like a normal value ("gemini-fallback") and the reason was thrown away
+    // with the caught error. The SHOUTED provider is greppable in ai_runs and
+    // the reason now rides along on ai_runs.error_message. Behaviour of the
+    // fallback itself is unchanged - only its visibility.
+    brainFallbackReason = `brain_fallback_to_gemini: ${err instanceof Error ? err.message : String(err)}`.slice(0, 500);
     const r = await geminiReason(combinedText, opts.mode, opts.contextBlock || "", nowIso);
     raw = r.raw; brainPt = r.promptTokens; brainOt = r.outputTokens;
     model = GEMINI_MODEL;
     brainCost = costOf(GEMINI_IN_USD, GEMINI_OUT_USD, brainPt, brainOt);
-    usedProviders.push("gemini-fallback");
+    usedProviders.push("gemini-FALLBACK");
   }
 
   const { validCalls, rejected } = parseToolCalls(raw, nowIso);
@@ -2588,6 +2689,7 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
       toolCalls: [{ name: "request_user_review", arguments: { reason: "suspected_prompt_injection", raw_input: inputText.slice(0, 400) }, confidence: 0.5 }],
       rejected, latencyMs, promptTokens: brainPt, outputTokens: brainOt,
       provider, model, estimatedCostUsd, evidenceText, inputText,
+      errorMessage: brainFallbackReason,
     };
   }
 
@@ -2608,7 +2710,9 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
           confidence: 0.9,
         },
       ];
-      answerCost = estimateCostUsd(replied.promptTokens, replied.outputTokens);
+      // The answer pass is a DeepSeek chat call (see answerQuestion) - price it
+      // at DeepSeek's rates. It used to be priced at Gemini's, via estimateCostUsd.
+      answerCost = costOf(DEEPSEEK_IN_USD, DEEPSEEK_OUT_USD, replied.promptTokens, replied.outputTokens);
     }
   }
 
@@ -2629,7 +2733,8 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
           confidence: 0.9,
         },
       ];
-      answerCost += estimateCostUsd(summary.promptTokens, summary.outputTokens);
+      // Same again: summariseJournal is a DeepSeek chat call, not a Gemini one.
+      answerCost += costOf(DEEPSEEK_IN_USD, DEEPSEEK_OUT_USD, summary.promptTokens, summary.outputTokens);
     }
   }
 
@@ -2638,13 +2743,8 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
     provider, model,
     estimatedCostUsd: Number((estimatedCostUsd + answerCost).toFixed(6)),
     evidenceText, inputText,
+    errorMessage: brainFallbackReason,
   };
-}
-
-function estimateCostUsd(promptTokens?: number, outputTokens?: number) {
-  const inUsd = ((promptTokens || 0) / 1_000_000) * 0.075;
-  const outUsd = ((outputTokens || 0) / 1_000_000) * 0.3;
-  return Number((inUsd + outUsd).toFixed(6));
 }
 
 // -------- apply --------
@@ -2678,10 +2778,63 @@ function hasWordOverlap(text: any, evidence: string, minLen = 3): boolean {
   return tokens.some((w) => ev.includes(w));
 }
 
+// A sleep WINDOW is emitted as ISO ("...T23:30:00+05:30") while the user typed
+// "bed at 11:30, up at 6:30", so the raw figure never matches. Match the wall
+// clock instead, in both 24h and 12h form.
+function evidenceHasClockTime(iso: any, evidence: string): boolean {
+  const m = String(iso || "").match(/T(\d{2}):(\d{2})/);
+  if (!m) return false;
+  const ev = String(evidence || "").toLowerCase();
+  if (!ev) return false;
+  const h24 = Number(m[1]);
+  const mins = m[2];
+  const hours = [String(h24), String(h24 % 12 === 0 ? 12 : h24 % 12)];
+  return hours.some((h) =>
+    new RegExp(`(^|\\D)${h}\\s*[:.]\\s*${mins}(\\D|$)`).test(ev) ||
+    new RegExp(`(^|\\D)${h}\\s*(am|pm|o'clock)`).test(ev));
+}
+
+// A bedtime marker carries no figure at all - the app explicitly accepts
+// "going to sleep now" as a sleep row - so the only thing left to ground is that
+// the evidence is about sleep in the first place.
+const SLEEP_EVIDENCE_CUE = /\b(sleep|slept|sleeping|asleep|bed|bedtime|nap|napped|napping|woke|wake|waking|snooze|lights out)\b/i;
+
+// Every human-readable phrase in a plan payload: meal and workout names, the raw
+// exercise lines, and the "match" string a delta op targets. The op CODE is
+// deliberately NOT collected - "add_meal" tokenises to "add"/"meal" and would
+// word-match "add a salad bowl", which would ground literally any plan rewrite.
+const PLAN_PHRASE_KEYS = new Set(["name", "detail", "match", "exercise", "title", "summary", "note"]);
+function planPhrases(node: any, depth = 0, out: string[] = []): string[] {
+  if (node == null || depth > 5) return out;
+  if (Array.isArray(node)) {
+    for (const v of node) {
+      if (typeof v === "string") out.push(v);
+      else planPhrases(v, depth + 1, out);
+    }
+    return out;
+  }
+  if (typeof node !== "object") return out;
+  for (const k of Object.keys(node)) {
+    const v = node[k];
+    if (typeof v === "string") { if (PLAN_PHRASE_KEYS.has(k)) out.push(v); }
+    else planPhrases(v, depth + 1, out);
+  }
+  return out;
+}
+
 function isGrounded(toolName: string, args: any = {}, evidence = ""): boolean {
   const ev = String(evidence || "");
-  // Empty evidence makes the number/word helpers return false → write tools are
-  // forced to review; non-write tools fall through to the default `true`.
+  // EVERY member of WRITE_TOOLS needs its own case here. Seven of them - plan,
+  // target, memory, note, reminder, hydration, sleep - used to fall straight
+  // through to `default: true` while the comment above them claimed only non-write
+  // tools did. So the three highest-leverage row types in the app (the plan, the
+  // targets, and the durable memory that is fed back into every later prompt) were
+  // written with no field check at all, and a screenshot of somebody else's meal
+  // plan could replace the owner's. tests/evidence-grounding.test.mjs now fails the
+  // build the moment a write tool is missing from this switch.
+  //
+  // Empty evidence makes the number/word helpers return false, so write tools
+  // cannot be grounded by nothing; non-write tools fall through to `default`.
   switch (toolName) {
     case "create_expense_candidate":
     case "create_income_candidate":
@@ -2696,6 +2849,57 @@ function isGrounded(toolName: string, args: any = {}, evidence = ""): boolean {
       return hasWordOverlap(args.note, ev);
     case "create_workout_log_candidate":
       return hasWordOverlap(args.description, ev);
+    case "set_target_candidate":
+      // A target the user never said a number for is a hallucination by
+      // definition. This does flag the TARGET CASCADE derivations ("lean bulk to
+      // 90kg" -> daily_calories 2300), and that is the correct reading: 2300 is
+      // the model's invention, not a figure the owner gave.
+      return evidenceHasNumber(args.amount, ev);
+    case "create_hydration_candidate": {
+      const ml = Number(args.ml);
+      // Litres are the other common spelling ("1 litre" -> ml 1000). Only for a
+      // whole number of litres, so a 500 ml row can never ground on a stray "1".
+      if (Number.isFinite(ml) && ml >= 1000 && ml % 1000 === 0 && evidenceHasNumber(ml / 1000, ev)) return true;
+      return evidenceHasNumber(ml, ev);
+    }
+    case "create_sleep_candidate": {
+      // Three shapes and only one of them carries a number. A stated duration IS
+      // the load-bearing field and must appear (floor accepted too, so "about 6
+      // and a half hours" -> 6.5 still matches the 6 the user typed). A window
+      // grounds on its wall clock. A bare marker has no figure to check.
+      const clock = evidenceHasClockTime(args.started_at, ev) || evidenceHasClockTime(args.ended_at, ev);
+      if (args.hours != null && args.hours !== "") {
+        return evidenceHasNumber(args.hours, ev)
+          || evidenceHasNumber(Math.floor(Number(args.hours)), ev)
+          || clock;
+      }
+      return clock || SLEEP_EVIDENCE_CUE.test(ev);
+    }
+    case "update_plan_candidate": {
+      // A plan write replaces the owner's whole diet or gym schedule, or rewrites
+      // a day of it. Ground it on the words: at least one meal / exercise name, or
+      // the summary, has to appear in what the user said or what the OCR read.
+      // minLen 4 because a 3-letter token grounds on nothing - "day" sits inside
+      // "today", which turns up in almost every capture.
+      const phrases = planPhrases(args.payload);
+      if (typeof args.summary === "string") phrases.push(args.summary);
+      if (phrases.some((p) => hasWordOverlap(p, ev, 4))) return true;
+      // A targets-only delta ({ op:"set_targets", targets:{ calories:1800 } })
+      // has no words at all - ground it on the figure, same rule as a target row.
+      const targets = args.payload && typeof args.payload === "object" ? args.payload.targets : null;
+      if (targets && typeof targets === "object") {
+        return Object.keys(targets).some((k) => evidenceHasNumber(targets[k], ev));
+      }
+      return false;
+    }
+    case "remember_fact":
+      // Durable memory is replayed into EVERY later prompt, so a fabricated fact
+      // does not decay with the capture that made it - it compounds.
+      return hasWordOverlap(args.value, ev);
+    case "create_note_candidate":
+      return hasWordOverlap(args.body, ev);
+    case "create_reminder_candidate":
+      return hasWordOverlap(args.title, ev);
     default:
       return true;
   }
@@ -2933,7 +3137,13 @@ async function persistRunAndActions(
   runInfo: { latencyMs: number; promptTokens?: number; outputTokens?: number; toolCalls: ToolCall[]; rejected: { tc: ToolCall; errors: string[] }[] },
 ) {
   const ri = runInfo as any;
-  const cost = typeof ri.estimatedCostUsd === "number" ? ri.estimatedCostUsd : estimateCostUsd(runInfo.promptTokens, runInfo.outputTokens);
+  // No measured cost on the run means pricing blind - do it at the rate card of
+  // the provider that actually served it. The old fallback (estimateCostUsd) used
+  // Gemini's stale rates for every run regardless of provider.
+  const [inRate, outRate] = ratesForProvider(ri.provider);
+  const cost = typeof ri.estimatedCostUsd === "number"
+    ? ri.estimatedCostUsd
+    : Number(costOf(inRate, outRate, runInfo.promptTokens, runInfo.outputTokens).toFixed(6));
   const { data: aiRun, error: runErr } = await supabase
     .from("ai_runs")
     .insert({
@@ -2941,6 +3151,9 @@ async function persistRunAndActions(
       provider: ri.provider || "deepseek", model: ri.model || DEEPSEEK_MODEL, purpose: "capture_to_tool_calls",
       prompt_tokens: runInfo.promptTokens ?? null, output_tokens: runInfo.outputTokens ?? null,
       estimated_cost_usd: cost, latency_ms: runInfo.latencyMs, status: "completed",
+      // A completed run can still carry a message: this is where the silent
+      // DeepSeek -> Gemini brain swap gets written down. Null on a normal run.
+      error_message: typeof ri.errorMessage === "string" && ri.errorMessage ? ri.errorMessage : null,
     })
     .select().single();
   if (runErr) throw runErr;

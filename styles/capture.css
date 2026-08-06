@@ -268,6 +268,54 @@
   transition: width 220ms ease;
 }
 
+/* Idle: no bar at all, rather than an empty trough implying stalled work. */
+.agent-console[data-state="idle"] .agent-progress {
+  display: none;
+}
+
+/* Fewer than 5 past runs of this shape, so there is no distribution to draw a
+   percentage from. An indeterminate sweep says "working" without claiming to
+   know how far along it is - inventing a number here is what produced the
+   "~undefineds" pill the ETA was removed for. */
+.agent-progress[data-mode="indeterminate"] span {
+  width: 35%;
+  animation: agent-progress-sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes agent-progress-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(340%); }
+}
+
+/* Past p90 of this user's own runs. Stop pretending to count down and say so -
+   a bar that creeps while the copy insists it is nearly done is what makes a
+   slow run feel like a broken one. */
+.agent-progress.is-slow span {
+  background: linear-gradient(90deg, var(--sun), var(--danger, #c2410c));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-progress span { transition: none; }
+  .agent-progress[data-mode="indeterminate"] span {
+    width: 100%;
+    animation: none;
+    opacity: 0.45;
+  }
+}
+
+/* The one-line "what is happening right now", promoted out of the collapsed
+   AI-activity panel where nobody ever saw it. */
+.agent-stage {
+  margin: 0.35rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.agent-console[data-state="idle"] .agent-stage {
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .agent-detail {
   margin: 0;
   color: var(--muted);

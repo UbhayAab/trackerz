@@ -113,7 +113,7 @@ function showSignInCard() {
     <div class="auth-brand">
       <span class="auth-logo" aria-hidden="true">◆</span>
       <div class="auth-brand-text">
-        <strong>Trackerz</strong>
+        <strong>Deno</strong>
         <span>Capture money, food &amp; wellness - your AI sorts it.</span>
       </div>
     </div>

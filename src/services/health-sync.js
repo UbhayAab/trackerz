@@ -48,7 +48,7 @@ export function isNativeHealthAvailable() {
 }
 
 const BROWSER_MESSAGE =
-  "Health sync is only available in the Trackerz Android app. A browser cannot read " +
+  "Health sync is only available in the Deno Android app. A browser cannot read " +
   "Health Connect, so there is nothing to connect to here.";
 
 /** Shared shape returned whenever we are not on a device. Never looks like data. */

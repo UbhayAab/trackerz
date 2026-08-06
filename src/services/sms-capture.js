@@ -49,7 +49,7 @@ export function isNativeSmsAvailable() {
 }
 
 const BROWSER_MESSAGE =
-  "SMS auto-capture is only available in the Trackerz Android app. A browser cannot " +
+  "SMS auto-capture is only available in the Deno Android app. A browser cannot " +
   "read SMS, so there is nothing to connect to here.";
 
 function browserFallback(extra = {}) {

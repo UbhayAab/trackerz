@@ -32,7 +32,7 @@ export function bindDataControls() {
         if (status) status.textContent = "Sign in to delete server data (local demo has none).";
         return;
       }
-      const ok = globalThis.confirm?.("Permanently delete ALL your Trackerz data (expenses, food, metrics, imports, media)? This cannot be undone.");
+      const ok = globalThis.confirm?.("Permanently delete ALL your Deno data (expenses, food, metrics, imports, media)? This cannot be undone.");
       if (!ok) return;
       deleteButton.disabled = true;
       if (status) status.textContent = "Deleting…";

@@ -1,4 +1,26 @@
 import { $ } from "../utils/dom.js";
+import { progressAt, etaLabel } from "../../lib/eta.mjs";
+import { samplesFor } from "../services/latency-stats.js";
+
+// While a job is running the bar has to advance on its own - the stage callbacks
+// fire a handful of times across 5-46 s, so redrawing only on those left the bar
+// visibly frozen between them. Cleared the moment the job ends.
+let tick = null;
+let onTick = null;
+
+export function bindAgentStatusTicker(rerender) {
+  onTick = rerender;
+}
+
+function startTicker() {
+  if (tick || !onTick) return;
+  tick = setInterval(() => onTick?.(), 500);
+}
+
+function stopTicker() {
+  if (tick) clearInterval(tick);
+  tick = null;
+}
 
 // The stage sequence is not known up front: the live agent pipeline, the local
 // fallback and live transcription each report a different set of stages. This
@@ -30,23 +52,47 @@ export function renderAgentStatus(state) {
   const job = state.activeJob;
   const stages = trackStages(job);
 
-  // No stage total exists to divide by, so the bar advances one notch per
-  // reported stage and only fills when the runner reports its terminal stage.
-  const progress = !job ? 0 : job.key === "done" ? 100 : Math.min(92, stages.length * 14);
+  // The bar is the empirical CDF of this user's own past runs of this shape: at
+  // 50%, half of them had already finished by now. See lib/eta.mjs.
+  //
+  // It replaces `Math.min(92, stages.length * 14)`, which hit 92% the instant
+  // reasoning started and then froze there for the whole 5-46 s model call. A
+  // bar that stalls near the end reads as "crashed", not "working".
+  const elapsed = job?.startedAt ? Math.max(0, Date.now() - job.startedAt) : 0;
+  const samples = job ? samplesFor(job.bucket || "text") : [];
+  const curve = job && job.key !== "done" ? progressAt(samples, elapsed) : null;
+  const progress = !job ? 0 : job.key === "done" ? 100 : (curve?.pct ?? 0);
 
-  // Most jobs carry no ETA. Show one only when the runner actually supplies a
-  // number - concatenating an absent one produced the "~undefineds" pill.
-  const eta = Number.isFinite(job?.eta) ? `${job.eta}s` : null;
+  // Only ever a real number. Concatenating an absent one is what produced the
+  // "~undefineds" pill, which is why the ETA was removed entirely before.
+  const eta = job && job.key !== "done" ? etaLabel(samples, elapsed) : null;
+
+  if (job && job.key !== "done") startTicker(); else stopTicker();
 
   const consoleEl = document.querySelector(".agent-console");
   if (consoleEl) consoleEl.dataset.state = job ? "running" : "idle";
 
+  const progressEl = $("#agentProgress");
+  if (progressEl) {
+    progressEl.dataset.mode = curve?.mode || "idle";
+    progressEl.classList.toggle("is-slow", Boolean(curve?.slow));
+    progressEl.setAttribute("role", "progressbar");
+    if (curve?.mode === "determinate") {
+      progressEl.setAttribute("aria-valuenow", String(progress));
+      progressEl.setAttribute("aria-valuemin", "0");
+      progressEl.setAttribute("aria-valuemax", "100");
+    } else {
+      progressEl.removeAttribute("aria-valuenow");
+    }
+    progressEl.setAttribute("aria-valuetext", job ? `${job.label}${eta ? `, ${eta}` : ""}` : "idle");
+  }
+
   $("#agentStatus").textContent = job
-    ? eta ? `${job.label}. ETA ${eta}` : job.label
+    ? eta ? `${job.label} - ${eta}` : job.label
     : "Idle. Next capture will show every AI stage here.";
-  $("#jobEta").textContent = job ? eta ? `~${eta}` : job.label : "ready";
+  $("#jobEta").textContent = job ? (eta || job.label) : "ready";
   $("#agentDetail").textContent = job ? job.detail : "No hidden work. When you process a capture, the tables update after validation.";
-  $("#agentProgress").style.setProperty("--progress", `${progress}%`);
+  if (progressEl) progressEl.style.setProperty("--progress", `${progress}%`);
   $("#agentStageList").innerHTML = stages
     .map((stage, index) => {
       if (!stage) return "";

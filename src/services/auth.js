@@ -144,7 +144,7 @@ export async function signInLocal({ email, name } = {}) {
       id: `local:${cleanedEmail}`,
       email: cleanedEmail,
       user_metadata: {
-        name: name?.trim() || cleanedEmail.split("@")[0] || "Trackerz user",
+        name: name?.trim() || cleanedEmail.split("@")[0] || "Deno user",
       },
     },
   };

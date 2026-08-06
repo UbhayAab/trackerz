@@ -1,5 +1,5 @@
 // Settings panel: automatic spend capture. The whole point is that the user NEVER
-// changes how they pay - Trackerz logs spend from the signals every payment already
+// changes how they pay - Deno logs spend from the signals every payment already
 // leaves on the phone: payment/bank NOTIFICATIONS (primary, origin-agnostic) and
 // bank SMS (backstop for card/laptop/ATM).
 //
@@ -71,7 +71,7 @@ export function mountSpendCapturePanel() {
     pill.textContent = "Android app only";
     intro.innerHTML =
       "There is no GPay or UPI API to read your transactions. What every payment DOES " +
-      "leave on your phone is a notification and a bank SMS - and only the Trackerz " +
+      "leave on your phone is a notification and a bank SMS - and only the Deno " +
       "Android app can read those. Install it, open this page there, and turn this on. " +
       "Then you pay exactly as you do today (Zepto, a website, a shop QR, your card) and " +
       "every rupee is logged for you, with no entry to come back and make." +
@@ -83,7 +83,7 @@ export function mountSpendCapturePanel() {
   pill.textContent = "Ready";
   pill.classList.remove("muted");
   intro.textContent =
-    "You never change how you pay. Trackerz reads the payment notification and bank SMS " +
+    "You never change how you pay. Deno reads the payment notification and bank SMS " +
     "each purchase already creates on this phone, and logs it. Notifications catch UPI " +
     "apps (Zepto, shop QRs, GPay); SMS catches card, bank and laptop payments.";
 
@@ -116,7 +116,7 @@ export function mountSpendCapturePanel() {
   smsToggle.addEventListener("change", () => { setSmsEnabled(smsToggle.checked); refresh(); });
 
   notifyGrantBtn.addEventListener("click", async () => {
-    setResult("Opening notification-access settings. Turn on Trackerz, then come back.");
+    setResult("Opening notification-access settings. Turn on Deno, then come back.");
     await openAccessSettings();
     setNotifyEnabled(true); notifyToggle.checked = true;
   });

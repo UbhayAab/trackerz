@@ -98,8 +98,10 @@ if (wantTap && home.chips.length) {
 
 console.log("\n=== VERDICT ===");
 const problems = [];
-if (home.waterAdders.length !== 3) problems.push(`home has ${home.waterAdders.length} water buttons, expected the 3 steppers`);
-if (home.waterAdders.length !== 3) problems.push(`home has ${home.waterAdders.length} water buttons, expected the 3 steppers`);
+// ONE water adder at rest: the circular drop. The 250/500/1000 steppers were
+// replaced by a single 250ml drop whose fill is today's percent of goal; 500,
+// 1L and a custom amount moved into the long-press menu, which is closed here.
+if (home.waterAdders.length !== 1) problems.push(`home has ${home.waterAdders.length} water buttons, expected the 1 drop`);
 if (home.waterCheckboxes) problems.push(`home still renders ${home.waterCheckboxes} water checklist slots`);
 if (home.waterCheckboxes) problems.push(`home still renders ${home.waterCheckboxes} water checklist slots`);
 if (home.horizontalOverflow) problems.push("horizontal overflow on a phone width");

@@ -22,7 +22,7 @@ function pushFailureText(res) {
     case "default":
       return "Permission dismissed - nothing was enabled. Press Enable again and choose Allow.";
     case "unsupported_install_first":
-      return "This browser can't do Web Push here. On iPhone, add Trackerz to the Home Screen and open it from there.";
+      return "This browser can't do Web Push here. On iPhone, add Deno to the Home Screen and open it from there.";
     case "unsupported":
       return "This browser doesn't support Web Push.";
     case "no_service_worker":

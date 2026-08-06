@@ -125,7 +125,7 @@ export async function showLocalTestNotification() {
     // Resolve assets off the registration scope, not the calling page - this is
     // callable from /pages/* and from the root.
     const icon = new URL("icons/icon-192.svg", reg.scope).href;
-    await reg.showNotification("Trackerz", {
+    await reg.showNotification("Deno", {
       body: "Local test - this device can show notifications.",
       icon,
       badge: icon,

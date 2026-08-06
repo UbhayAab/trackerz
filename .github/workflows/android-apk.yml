@@ -37,7 +37,12 @@ permissions:
 
 concurrency:
   group: android-apk-${{ github.ref }}
-  cancel-in-progress: true
+  # NOT cancel-in-progress. The publish step is the last thing this workflow
+  # does, and cancelling a run midway through publishing is how you get a
+  # half-published release - a deleted tag with no asset behind it, which serves
+  # a 404 that Chrome happily saves as "trackerz.apk". A superseded build simply
+  # queues and is overtaken; that costs a few CI minutes and nothing else.
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -77,6 +82,11 @@ jobs:
       # (index.html, pages/, src/, lib/, vendor/, styles/, icons/, sw.js,
       # manifest, share-target) is copied verbatim. Native/build/dev-only
       # trees are excluded so they do not bloat the WebView assets.
+      #
+      # docs/ and *.md are excluded because they were being shipped INSIDE the
+      # APK: 1.8 MB of audit screenshots plus every markdown file, baked into
+      # assets/public where nothing can ever read them. That was a quarter of
+      # the download the owner was waiting on.
       - name: Stage web app into www/
         run: |
           rm -rf www
@@ -92,6 +102,8 @@ jobs:
             --exclude='scripts' \
             --exclude='supabase' \
             --exclude='screenshots' \
+            --exclude='docs' \
+            --exclude='*.md' \
             --exclude='.env' \
             --exclude='.env.*' \
             --exclude='capacitor.config.json' \
@@ -116,6 +128,41 @@ jobs:
       # config/plugin glue (assets/public, capacitor.build.gradle, etc.).
       - name: Capacitor sync
         run: npx cap sync android
+
+      # THE MANIFEST MUST STILL BE OURS AFTER SYNC.
+      #
+      # Three source files carry a comment claiming "the GitHub Actions workflow
+      # copies this file back into place after sync". No such step has ever
+      # existed. It has been harmless only because `cap sync` leaves the manifest
+      # alone - but the `cap add` branch above DOES regenerate it, and if that
+      # ever fires CI would happily build, sign and publish an APK with no SMS,
+      # no Health Connect, no microphone and no registered plugins. It would
+      # install cleanly and quietly do nothing.
+      #
+      # So assert the load-bearing lines instead of trusting a comment. Cheap,
+      # and it fails the build rather than shipping a hollow app.
+      - name: Verify the native manifest survived sync
+        run: |
+          set -euo pipefail
+          M=android/app/src/main/AndroidManifest.xml
+          for needle in \
+            'android.permission.READ_SMS' \
+            'android.permission.RECORD_AUDIO' \
+            'android.permission.MODIFY_AUDIO_SETTINGS' \
+            'android.permission.POST_NOTIFICATIONS' \
+            'android.permission.health.READ_SLEEP' \
+            'android.speech.RecognitionService' \
+            'HealthPrivacyPolicyActivity' \
+            'PaymentNotificationListenerService' ; do
+            grep -q "$needle" "$M" || { echo "::error::AndroidManifest lost '$needle' - cap sync/add regenerated it"; exit 1; }
+          done
+          # cap add would also replace the Kotlin entry point with a Java stub,
+          # dropping every registerPlugin() call.
+          test ! -f android/app/src/main/java/com/ubhayaab/trackerz/MainActivity.java \
+            || { echo "::error::MainActivity.java appeared - the Kotlin entry point with its plugin registrations was replaced"; exit 1; }
+          grep -q 'registerPlugin(SpeechPlugin' android/app/src/main/java/com/ubhayaab/trackerz/MainActivity.kt \
+            || echo "::warning::SpeechPlugin not registered yet"
+          echo "manifest intact"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
@@ -214,13 +261,55 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          VER="1.0.${{ github.run_number }}"
           cp "${{ steps.apk.outputs.path }}" trackerz.apk
-          # Recreate the release each time so the asset URL stays identical and
-          # always serves the freshest APK (gh release upload --clobber alone
-          # can leave a stale tag on a force-push history).
-          gh release delete android-latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create android-latest trackerz.apk \
-            --title "Trackerz Android APK (latest)" \
+          cp "${{ steps.apk.outputs.path }}" "trackerz-${VER}.apk"
+
+          # NEVER DELETE THE RELEASE.
+          #
+          # This used to `gh release delete android-latest --cleanup-tag` and
+          # recreate it on every push to main. That mints a NEW asset id and a
+          # new ETag each time, so any download that was paused - or that a
+          # phone tried to resume - came back to an object that no longer
+          # existed. Android's DownloadManager cannot resume across an If-Range
+          # mismatch, so it parks the row in pause/resume forever. Worse, the
+          # delete and the create are consecutive commands: a run cancelled
+          # between them leaves the URL 404ing, and Chrome saves GitHub's 404
+          # HTML page as trackerz.apk - a few KB that can never install.
+          #
+          # So: create the release once if it is missing, then upload. The
+          # VERSIONED asset is immutable and never re-uploaded, which is what
+          # gives it a stable ETag and makes a paused download resumable. The
+          # floating trackerz.apk is clobbered for muscle memory and old links.
+          if ! gh release view android-latest >/dev/null 2>&1; then
+            gh release create android-latest \
+              --title "Deno Android app" \
+              --notes "Rolling release. Each build adds an immutable trackerz-<version>.apk; trackerz.apk always points at the newest." \
+              --latest
+          fi
+          gh release upload android-latest "trackerz-${VER}.apk" --clobber
+          gh release upload android-latest trackerz.apk --clobber
+
+          # A machine-readable pointer for the in-app update check, served from
+          # the release itself so it can never disagree with the binary.
+          SIZE=$(stat -c%s trackerz.apk)
+          SHA=$(sha256sum trackerz.apk | cut -d' ' -f1)
+          cat > latest.json <<JSON
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "${VER}",
+            "sizeBytes": ${SIZE},
+            "sha256": "${SHA}",
+            "url": "https://github.com/${{ github.repository }}/releases/download/android-latest/trackerz-${VER}.apk",
+            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}"
+          }
+          JSON
+          gh release upload android-latest latest.json --clobber
+
+          gh release edit android-latest \
+            --title "Deno Android app (build ${{ github.run_number }})" \
             --notes "Build ${{ github.run_number }} (versionCode ${{ github.run_number }}) from ${{ github.sha }} on $(date -u +%Y-%m-%d).
 
           Release-signed with the fixed Trackerz sideload key (SHA-256 d4e36fdc...186a1a), so it installs straight over any other build carrying that key.
