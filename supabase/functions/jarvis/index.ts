@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
-// Trackerz Jarvis edge function - the proactive engine.
+// Deno (the app) - the proactive engine, still slugged `jarvis` internally.
+// The "Deno" in Deno.serve below is the edge RUNTIME, unrelated to the app name.
 //
 // pg_cron → jarvis_ping() → pg_net POSTs here three times a day (see
 // 20260706000015_jarvis_engine.sql):
@@ -28,8 +29,11 @@ const GEMINI_MODEL = "gemini-2.5-flash";
 const DEEPSEEK_MODEL = "deepseek-chat";
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 
-// Same pricing table as the agent fn (cost meter only).
-const GEMINI_IN_USD = 0.075, GEMINI_OUT_USD = 0.3;
+// Same pricing table as the agent fn (cost meter only) - and it carried the same
+// stale Gemini card: 0.075/0.3 is roughly a quarter of Gemini 2.5 Flash's real
+// 0.30/2.50, so a Gemini-voiced brief was billed against DAILY_COST_CAP_USD at a
+// quarter of what it costs. Keep these two lines identical to the agent function's.
+const GEMINI_IN_USD = 0.3, GEMINI_OUT_USD = 2.5;
 const DEEPSEEK_IN_USD = 0.55, DEEPSEEK_OUT_USD = 2.2;
 const DAILY_COST_CAP_USD = 2;
 
@@ -1066,12 +1070,12 @@ function etBulletList(items) {
 // The one email shell. `kind` only changes the eyebrow and the accent word.
 function etRenderEmail(o) {
   var opts = o || {};
-  var title = opts.title || "Trackerz";
-  var eyebrow = opts.eyebrow || "Trackerz · Jarvis";
+  var title = opts.title || "Deno";
+  var eyebrow = opts.eyebrow || "Deno";
   var body = opts.body || "";
   var stats = opts.stats || [];
   var bullets = opts.bullets || [];
-  var ctaLabel = opts.ctaLabel || "Open Trackerz";
+  var ctaLabel = opts.ctaLabel || "Open Deno";
   var footerNote = opts.footerNote || "";
 
   var statsBlock = stats.length
@@ -1138,16 +1142,16 @@ function etSubjectFor(kind, facts, dateLabel) {
   if (kind === "evening") return "Evening check-in - still time";
   if (kind === "closeout") return "Day closed" + (dateLabel ? " - " + dateLabel : "");
   if (kind === "weekly") return "Your week in review";
-  return "Trackerz";
+  return "Deno";
 }
 
 var ET_EYEBROWS = {
-  morning: "Trackerz · Morning brief",
-  evening: "Trackerz · Evening check-in",
-  closeout: "Trackerz · Day closed",
-  weekly: "Trackerz · Weekly review",
-  alert: "Trackerz · Alert",
-  test: "Trackerz · Test",
+  morning: "Deno · Morning brief",
+  evening: "Deno · Evening check-in",
+  closeout: "Deno · Day closed",
+  weekly: "Deno · Weekly review",
+  alert: "Deno · Alert",
+  test: "Deno · Test",
 };
 
 // One call site for the whole service: kind + body + facts -> {subject, html, text}.
@@ -1162,7 +1166,7 @@ function etBuildMessage(o) {
     body: opts.body || "",
     stats: stats,
     bullets: opts.bullets || [],
-    ctaLabel: opts.ctaLabel || (kind === "evening" ? "Log the rest of today" : "Open Trackerz"),
+    ctaLabel: opts.ctaLabel || (kind === "evening" ? "Log the rest of today" : "Open Deno"),
     footerNote: opts.footerNote || "",
   };
   return {
@@ -1645,7 +1649,13 @@ Deno.serve(async (req) => {
     const payload = await req.json().catch(() => ({}));
     const action = String(payload?.action || "");
     const force = Boolean(payload?.force);
-    if (!["closeout", "morning", "evening", "status"].includes(action)) {
+    // ACTION ALLOWLIST - must list every action the dispatch loop below can run.
+    // "midday" was missing from it while runMidday sat wired up ~35 lines further
+    // down, so the 14:30 IST pg_cron slot and the GitHub heartbeat had BOTH been
+    // getting a 400 unknown_action since the slot was built: the protein/gym pace
+    // nudge has never once fired. tests/jarvis-actions.test.mjs now compares this
+    // list against the handlers the loop actually dispatches, as sets.
+    if (!["closeout", "morning", "midday", "evening", "status"].includes(action)) {
       return Response.json({ ok: false, error: "unknown_action" }, { status: 400, headers: corsHeaders });
     }
 

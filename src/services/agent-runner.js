@@ -26,6 +26,11 @@ function stage(key, overrides = {}) {
 const RUN_POLL_TRIES = 3;
 const RUN_POLL_MS = 1000;
 
+// Hard ceiling on one agent invoke. Measured from ai_runs.latency_ms over real
+// captures: p50 12.3 s, p90 27.1 s, slowest ever 45.7 s. 90 s is ~2x the worst
+// case, so this can only fire on a genuinely stuck connection.
+const AGENT_TIMEOUT_MS = 90_000;
+
 // options.ingestionId: reuse an existing raw_ingestions row (an explicit user
 // retry - see retryCapture); options.onIngestion: fires as soon as the row exists
 // so a caller (e.g. the offline queue) can remember it and retry against it.
@@ -100,11 +105,20 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
         mode,
         mediaAssetIds: mediaAssets.map((a) => a.id),
       },
+      // A stalled TCP connection used to hang here forever, and the submit button
+      // was disabled for the whole time - the app simply stopped responding with
+      // no way to tell a slow agent from a dead one. 90 s is ~2x the slowest run
+      // ever measured (45.7 s, ai_runs.latency_ms), so a real capture is never
+      // cut off. Timing out is not "nothing was written": the probe below asks
+      // the database what actually landed before we claim anything.
+      signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
     });
     agentResp = result.data;
     fnErr = result.error;
   } catch (err) {
-    fnErr = err;
+    fnErr = err?.name === "TimeoutError" || err?.name === "AbortError"
+      ? new Error(`agent_timeout after ${Math.round(AGENT_TIMEOUT_MS / 1000)}s`)
+      : err;
   }
 
   const failed = Boolean(fnErr) || !agentResp?.toolCalls;

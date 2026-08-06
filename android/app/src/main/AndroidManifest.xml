@@ -46,11 +46,53 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <!--
+      MICROPHONE. Without these, voice capture is not merely degraded in the APK -
+      it is impossible. Capacitor's BridgeWebChromeClient.onPermissionRequest maps
+      the WebView's RESOURCE_AUDIO_CAPTURE onto RECORD_AUDIO + MODIFY_AUDIO_SETTINGS
+      and requests them; Android returns PERMISSION_DENIED instantly, with no
+      dialog, for any permission the manifest does not declare. So getUserMedia
+      rejected immediately and the old bare `catch {}` in capture-panel.js swallowed
+      the reason, which is why voice "just did nothing" on the phone.
+
+      MODIFY_AUDIO_SETTINGS is not optional padding: Capacitor requests the pair,
+      and without it the audio subsystem can still refuse the mic after the user
+      has tapped Allow.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!--
+      CAMERA for the in-app capture chip. Declared not-required so the app still
+      installs on a device without one.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!--
+      POST_NOTIFICATIONS (Android 13+). Every reminder and every proactive brief
+      goes through the system notification manager, so without this the whole
+      proactive engine is silent on the phone and indistinguishable from "nothing
+      was due".
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Scheduled local reminders must survive a reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
       Lets the app see and deep-link the Health Connect provider. On Android 11+
       this <queries> block is required even to check whether the package exists.
+
+      The RecognitionService intent is the same rule applied to speech: on API 30+
+      an app cannot see the on-device recognizer package unless it declares it
+      here, so SpeechRecognizer.isRecognitionAvailable() returns false and native
+      dictation silently reports "unsupported" on a phone that supports it fine.
     -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
         <intent>
             <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
         </intent>

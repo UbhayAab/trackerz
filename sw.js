@@ -1,4 +1,4 @@
-// Trackerz service worker.
+// Deno service worker.
 // 1. App-shell cache for offline static pages.
 // 2. Network-first for HTML so deploys propagate fast.
 // 3. Stale-while-revalidate for CSS/JS/icons.
@@ -13,7 +13,11 @@
 // "cache any response" bug (404/503 HTML frozen in as the offline fallback).
 // v21 adds the vendored SheetJS chunks; without a bump the old cache would serve
 // a precache list that never contained them.
-const VERSION = "trackerz-v21-20260725";
+// BUMP THIS ON EVERY DEPLOY THAT CHANGES THE SHELL. The cache is keyed by it and
+// is only purged on activate when it changes, so a stale VERSION serves the old
+// precached index.html and src/ indefinitely. It sat at v21 from 2026-07-25 while
+// the app changed underneath it for twelve days.
+const VERSION = "deno-v22-20260806";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -88,7 +92,7 @@ self.addEventListener("fetch", (event) => {
 
   // WEB SHARE TARGET. manifest.webmanifest declares share_target with
   // method:"POST", enctype:"multipart/form-data" - so when you share a payment
-  // screenshot or a receipt into Trackerz, Android POSTs it to
+  // screenshot or a receipt into Deno, Android POSTs it to
   // ./share-target.html. This handler did not exist, so the POST fell straight
   // through to GitHub Pages, which is a static host and answers 405. Sharing
   // anything into the app was dead, and src/pages/share-target.js was written
@@ -249,7 +253,7 @@ self.addEventListener("push", (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; }
   catch { data = { body: event.data ? event.data.text() : "" }; }
-  const title = data.title || "Trackerz";
+  const title = data.title || "Deno";
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || "",

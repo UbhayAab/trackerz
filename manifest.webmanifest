@@ -1,6 +1,6 @@
 {
-  "name": "Trackerz",
-  "short_name": "Trackerz",
+  "name": "Deno",
+  "short_name": "Deno",
   "description": "Capture-first life tracker. Money, diet, wellness from voice, text, photos, and bank files.",
   "start_url": "./index.html",
   "scope": "./",

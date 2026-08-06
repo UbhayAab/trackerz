@@ -4,6 +4,7 @@ import { buildRowForTool } from "./action-applier.js";
 import { instantiate } from "../domain/diet/meal-templates.js";
 import { clampSleepSpan } from "../../lib/sleep-window.mjs";
 import { rowForRepeat } from "../../lib/meal-repeats.mjs";
+import { WATER_GOAL_KIND, WATER_GOAL_MAX_ML, clampGoalMl } from "../../lib/water.mjs";
 
 function requireUserId() {
   const session = getCurrentSession();
@@ -161,16 +162,38 @@ export async function persistDetectedSubscriptions(subs = []) {
 
 // ---- one-tap quick logs (bypass Gemini; direct user-client writes) ----
 
-export async function logHydration(ml) {
+// Write N taps as ONE insert.
+//
+// The water button is optimistic: six thumb taps in three seconds are six real
+// glasses, and they arrive here as one batch a beat after the last tap. Sending
+// them as six sequential inserts would put the round-trip cost back into the
+// interaction it was removed from, so this is a single statement.
+//
+// Each row gets its own occurred_at, 1 ms apart, because rows written in the same
+// statement otherwise share a timestamp and "delete the newest row" (undo) then
+// picks an arbitrary one of the six. With mixed sizes in a batch - a 250 and a
+// 1000 - that is undo removing the wrong drink.
+export async function logHydrationBatch(mls) {
   const supabase = await getSupabaseClient();
   const userId = requireUserId();
-  const { data, error } = await supabase
-    .from("hydration_logs")
-    .insert({ user_id: userId, ml: Math.round(Number(ml) || 0), occurred_at: new Date().toISOString() })
-    .select()
-    .single();
+  const amounts = (Array.isArray(mls) ? mls : [mls])
+    .map((ml) => Math.round(Number(ml) || 0))
+    .filter((ml) => ml > 0);
+  if (!amounts.length) return [];
+  const base = Date.now();
+  const rows = amounts.map((ml, i) => ({
+    user_id: userId,
+    ml,
+    occurred_at: new Date(base + i).toISOString(),
+  }));
+  const { data, error } = await supabase.from("hydration_logs").insert(rows).select();
   if (error) throw error;
-  return data;
+  return data || [];
+}
+
+export async function logHydration(ml) {
+  const rows = await logHydrationBatch([ml]);
+  return rows[0] || null;
 }
 
 export async function logQuickWellness({ mood_score = null, energy_score = null, stress_score = null, note = "" } = {}) {
@@ -201,21 +224,63 @@ export async function fetchHydrationTotal(date = new Date()) {
     .select("id, ml, occurred_at")
     .gte("occurred_at", start.toISOString())
     .lt("occurred_at", end.toISOString())
-    .order("occurred_at", { ascending: false });
+    // id descending is the tiebreak for rows written by one batched insert. Two
+    // rows with the same occurred_at would otherwise come back in whatever order
+    // Postgres felt like, and rows[0] is what undo deletes.
+    .order("occurred_at", { ascending: false })
+    .order("id", { ascending: false });
   if (error) throw error;
   const rows = data || [];
   return { ml: rows.reduce((sum, r) => sum + (Number(r.ml) || 0), 0), rows };
 }
 
 // Undo the most recent water tap (mis-taps are the whole risk of a one-tap UI).
+//
+// SCOPED TO TODAY, deliberately. It reads through fetchHydrationTotal, whose
+// window is [local midnight, next local midnight) - so on a day with zero logs
+// there is no row to take and this returns null. It must never fall through to
+// yesterday's last glass, which is what a bare "newest row overall" query would
+// delete on the first tap of a new morning.
 export async function undoLastHydration() {
   const supabase = await getSupabaseClient();
+  const userId = requireUserId();
   const { rows } = await fetchHydrationTotal(new Date());
   const last = rows[0];
   if (!last) return null;
-  const { error } = await supabase.from("hydration_logs").delete().eq("id", last.id);
+  const { error } = await supabase
+    .from("hydration_logs").delete().eq("id", last.id).eq("user_id", userId);
   if (error) throw error;
   return last;
+}
+
+// ---- the daily water goal ----
+//
+// It used to be derived-only (the diet scaffold's schedule summed to 3450), so
+// "set my water goal to 4L" had nowhere to write and silently did nothing. It is
+// now a normal kind-keyed `budgets` row like every other target, read and written
+// through the same upsertBudget path so there is ONE canonical row per user.
+// Returns null when the user has never set one - the caller falls back to the
+// scaffold sum via resolveGoalMl rather than to a second hardcoded number.
+export async function fetchWaterGoalMl() {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from("budgets")
+    .select("amount")
+    .eq("kind", WATER_GOAL_KIND)
+    .limit(1);
+  if (error) throw error;
+  const amount = (data || [])[0]?.amount;
+  return amount == null ? null : clampGoalMl(amount);
+}
+
+// Clamped BEFORE it is stored: a goal of 0 made the meter Math.round(x/0*100),
+// i.e. width:Infinity%, and rejecting it here means a bad value cannot be
+// persisted for the next session to trip over.
+export async function setWaterGoalMl(ml) {
+  const clamped = clampGoalMl(ml);
+  if (clamped === null) throw new Error(`Water goal must be between 1 and ${WATER_GOAL_MAX_ML} ml.`);
+  await upsertBudget({ kind: WATER_GOAL_KIND, period: "daily", amount: clamped });
+  return clamped;
 }
 
 // ---- sleep ----

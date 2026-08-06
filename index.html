@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Trackerz - Capture</title>
+    <title>Deno - Capture</title>
     <script>(function(){try{var p=localStorage.getItem('trackerz.theme')||'system';var d=p==='dark'||(p==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light'}catch(e){}})();</script>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="manifest" href="./manifest.webmanifest" />
@@ -12,13 +12,13 @@
     <meta name="theme-color" content="#138a5b" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Trackerz" />
+    <meta name="apple-mobile-web-app-title" content="Deno" />
   </head>
   <body>
     <div class="app-shell page-shell">
       <header class="topbar topbar-tight">
         <div>
-          <p class="eyebrow">Trackerz</p>
+          <p class="eyebrow">Deno</p>
           <h1 class="topbar-title">Capture</h1>
         </div>
         <span id="jobEta" class="status-pill muted">ready</span>
@@ -65,24 +65,26 @@
           </div>
 
           <canvas id="voiceWaveform" class="voice-waveform" width="600" height="56" aria-hidden="true" hidden></canvas>
+
+          <!-- LIVE PROGRESS, out in the open.
+               All of this used to sit inside the collapsed "AI activity"
+               <details> below, so a capture that takes 5-46 s showed nothing but
+               a greyed-out button. The machinery was already here and working -
+               it was simply invisible. Only the raw parse log stays folded away. -->
+          <div class="agent-console" aria-live="polite" data-state="idle">
+            <div id="agentProgress" class="agent-progress" aria-label="AI progress"><span></span></div>
+            <p id="agentStatus" class="agent-stage">Idle</p>
+            <p id="agentDetail" class="agent-detail">Drop anything above. Stages show here while it works.</p>
+            <div id="agentStageList" class="stage-list"></div>
+          </div>
+
           <div id="optimisticQueue" class="optimistic-queue" aria-live="polite"></div>
           <section id="spendSuggestion" class="spend-suggestion" aria-live="polite" hidden></section>
           <div id="routePreview" class="route-preview route-preview-thin">Auto route: waiting for input</div>
 
           <details class="capture-meta">
             <summary>AI activity</summary>
-            <div class="agent-console" aria-live="polite" data-state="idle">
-              <div class="panel-title-row">
-                <div>
-                  <p class="eyebrow">AI parser</p>
-                  <h2 id="agentStatus">Idle</h2>
-                </div>
-              </div>
-              <p id="agentDetail" class="agent-detail">Drop anything above. Stages and tables update here when running.</p>
-              <div id="agentProgress" class="agent-progress" aria-label="AI progress"><span></span></div>
-              <div id="agentStageList" class="stage-list"></div>
-              <ul id="parseLog" class="parse-log"></ul>
-            </div>
+            <ul id="parseLog" class="parse-log"></ul>
           </details>
         </section>
 

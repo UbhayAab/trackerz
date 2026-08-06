@@ -6,8 +6,9 @@ import { hydrateStateFromSupabase } from "../state/sync.js";
 import { renderSpendSuggestion, clearSpendSuggestion } from "./spend-suggestion.js";
 import { renderAnswer, clearAnswer, answerFrom, bindAnswerCard } from "./answer-card.js";
 import { classifyRequestKind } from "../../lib/request-router.mjs";
-import { startLiveTranscription, stopLiveTranscription, isLiveTranscriptionSupported } from "../services/speech.js";
+import { startDictation, isLiveTranscriptionSupported, collapseStutter } from "../services/speech.js";
 import { enqueueCapture } from "../services/offline-queue.js";
+import { recordLatency, bucketFor } from "../services/latency-stats.js";
 import { showToast } from "./toast.js";
 
 let recorder = null;
@@ -17,6 +18,16 @@ let liveTranscript = "";
 let recognitionHandle = null;
 let waveformHandle = null;
 let optimisticCounter = 0;
+// The textarea contents at the moment dictation started. Live text is rendered
+// as `voiceBaseText + transcript` so speaking never eats something already typed.
+let voiceBaseText = "";
+// Resolves when an in-flight recording has produced its Blob. Submitting while
+// recording awaits this instead of losing the audio - see finalizeVoice.
+let recorderStopped = null;
+
+// How long Process waits for MediaRecorder to flush its final chunk. The box has
+// already cleared and the pending row is already on screen, so this is invisible.
+const RECORDER_FLUSH_MS = 800;
 
 export function renderRoutePreview() {
   const captureTextEl = $("#captureText");
@@ -92,31 +103,61 @@ function handlePaste(event) {
 }
 
 async function handleSubmit() {
+  const submitBtn = $("#submitCapture");
+  // PROCESS IMPLIES STOP. Pressing Voice and then Process is the natural
+  // gesture - the user has said their piece and wants it sent. It used to lose
+  // the recording entirely: the audio File is only built inside the recorder's
+  // `stop` listener, which fired AFTER resetForm() had wiped pendingMediaFiles,
+  // so the blob landed in the NEXT capture's array. Finalise first, then read.
+  if (recorder && recorder.state === "recording") {
+    submitBtn.disabled = true;
+    await finalizeVoice();
+    submitBtn.disabled = false;
+  }
+
   const text = $("#captureText").value.trim();
   const allFiles = getCaptureFiles();
-  if (!text && allFiles.length === 0 && !liveTranscript) return;
+  if (!text && allFiles.length === 0 && !liveTranscript) {
+    // Silence used to be the entire response to an empty submit.
+    showToast("Type, speak, or attach something first.");
+    return;
+  }
 
   const captureType = activeMode();
-  const submitBtn = $("#submitCapture");
-  submitBtn.disabled = true;
   const optimisticId = pushOptimistic({ text, transcript: liveTranscript, fileCount: allFiles.length, captureType });
+
+  // CLEAR THE BOX NOW, not in `finally`. resetForm() used to run after the whole
+  // round trip, so the text sat there for the entire 6-46 s the agent takes
+  // (p50 12.3 s, p90 27.1 s, max 45.7 s measured from ai_runs.latency_ms) with
+  // the button greyed out and nothing else to look at. The pending row below is
+  // what carries the truth from here on.
+  // NOTE: transcript is deliberately empty. Live dictation now writes straight
+  // into the textarea, so it is already part of `text`; runCapture joins text
+  // and transcript with a newline, and passing both would send every dictated
+  // sentence to the model twice. When live transcription is unavailable (an
+  // Android WebView has no Web Speech API at all) there is no transcript to
+  // send anyway - the audio file is transcribed server-side instead.
+  const submitted = { text, files: allFiles, transcript: "", captureType };
+  resetForm();
+
+  // Timing for the learned ETA. The bar is drawn from this user's own past runs
+  // of this SHAPE - a 30 s audio upload and a 2 s text capture have genuinely
+  // different distributions and must not share one curve.
+  const startedAt = Date.now();
+  const bucket = bucketFor({ fileCount: allFiles.length, kinds: allFiles.map(inferKind) });
 
   updateState((state) => {
     state.parseLog.unshift(`Capture: ${text || `${allFiles.length} file(s)`}${liveTranscript ? ` + voice` : ""}`);
-    // No ETA: nothing here measures how long the agent takes, and an invented
-    // one rendered as "~undefineds" in the header pill.
-    state.activeJob = { key: "queued", label: "Queued", detail: "Capture received.", stageIndex: 0 };
+    state.activeJob = { key: "queued", label: "Queued", detail: "Capture received.", stageIndex: 0, startedAt, bucket };
   });
 
   if (!navigator.onLine) {
-    await enqueueCapture({ text: [text, liveTranscript].filter(Boolean).join("\n"), files: allFiles, captureType });
-    updateOptimistic(optimisticId, { status: "queued", detail: "Offline - saved locally, will sync when online." });
+    await enqueueCapture({ text: [text, submitted.transcript].filter(Boolean).join("\n"), files: allFiles, captureType });
+    updateOptimistic(optimisticId, { status: "queued", detail: "Offline - saved on this phone, will send when you're back online." });
     updateState((state) => {
       state.activeJob = null;
       state.parseLog.unshift("Offline: capture stored in IndexedDB queue.");
     });
-    resetForm();
-    submitBtn.disabled = false;
     return;
   }
 
@@ -124,11 +165,11 @@ async function handleSubmit() {
   clearAnswer();
   try {
     const result = await runCapture(
-      { text, files: allFiles, captureType, transcript: liveTranscript },
+      { text, files: allFiles, captureType, transcript: submitted.transcript },
       {
         onStage(s, idx) {
           updateState((state) => {
-            state.activeJob = { ...s, stageIndex: idx };
+            state.activeJob = { ...s, stageIndex: idx, startedAt, bucket };
             state.parseLog.unshift(`${s.label}: ${s.detail}`);
           });
           updateOptimistic(optimisticId, { status: s.key, detail: s.detail });
@@ -165,6 +206,9 @@ async function handleSubmit() {
       status: "done",
       detail: answered ? "Answered - nothing was logged." : "Saved. Review the action queue.",
     });
+    // Only a run that actually completed teaches the curve. Failures and
+    // timeouts are not observations of how long success takes.
+    recordLatency(bucket, Date.now() - startedAt);
     const had = allFiles.length > 0;
     if (answered) showToast("Answered");
     else showToast(had ? `Processed ${allFiles.length} file(s) - check the feed` : "Capture saved");
@@ -174,15 +218,41 @@ async function handleSubmit() {
     });
   } catch (err) {
     const msg = err?.message || String(err);
-    updateOptimistic(optimisticId, { status: "error", detail: msg });
-    showToast(`Capture failed - ${msg}`, { kind: "error", duration: 6000 });
+    // The box was cleared on submit, so a failure here would otherwise DESTROY
+    // the capture: the old code ran resetForm() in `finally` and the text was
+    // simply gone. Queue it, so the only way to lose a capture is to discard it
+    // deliberately. (Phase 3 moves every capture through the outbox by default;
+    // this is the same guarantee, reached the short way.)
+    let queued = false;
+    try {
+      await enqueueCapture({
+        text: [submitted.text, submitted.transcript].filter(Boolean).join("\n"),
+        files: submitted.files,
+        captureType: submitted.captureType,
+      });
+      queued = true;
+    } catch (queueErr) {
+      // Both paths failed. Put the words back in the box rather than swallow
+      // them - but never clobber something the user has typed since.
+      const box = $("#captureText");
+      if (box && !box.value.trim()) {
+        box.value = [submitted.text, submitted.transcript].filter(Boolean).join("\n");
+        renderRoutePreview();
+      }
+      console.error("[capture-panel] capture failed AND could not be queued:", queueErr);
+    }
+    updateOptimistic(optimisticId, {
+      status: queued ? "queued" : "error",
+      detail: queued ? `Couldn't send (${msg}) - saved on this phone, will retry.` : msg,
+    });
+    showToast(
+      queued ? "Couldn't send - saved on this phone, will retry." : `Capture failed - ${msg}`,
+      { kind: "error", duration: 6000 },
+    );
     updateState((state) => {
       state.activeJob = null;
-      state.parseLog.unshift(`Capture failed: ${msg}`);
+      state.parseLog.unshift(`Capture failed: ${msg}${queued ? " (queued for retry)" : ""}`);
     });
-  } finally {
-    resetForm();
-    submitBtn.disabled = false;
   }
 }
 
@@ -191,6 +261,7 @@ function resetForm() {
   if ($("#fileInput")) $("#fileInput").value = "";
   pendingMediaFiles = [];
   liveTranscript = "";
+  voiceBaseText = "";
   renderRoutePreview();
 }
 
@@ -258,21 +329,36 @@ function inferKind(f) {
   return "file";
 }
 
+/**
+ * Stop an in-flight recording and wait for its audio File to exist.
+ *
+ * MediaRecorder delivers its last chunk asynchronously, so `stop()` returning is
+ * not the same as the Blob being ready. Bounded, because a provider that never
+ * fires `stop` must not hang the submit - if the race expires we send the
+ * transcript alone rather than nothing.
+ */
+async function finalizeVoice() {
+  const button = $("#voiceButton");
+  try { recognitionHandle?.stop(); } catch { /* already stopped */ }
+  recognitionHandle = null;
+  if (recorder && recorder.state === "recording") {
+    const settled = recorderStopped;
+    try { recorder.stop(); } catch { /* already stopped */ }
+    await Promise.race([settled, new Promise((r) => setTimeout(r, RECORDER_FLUSH_MS))]);
+  }
+  stopWaveform();
+  if (button) setVoiceLabel(button, "Voice");
+}
+
 async function handleVoiceClick() {
   const button = $("#voiceButton");
   if (recorder && recorder.state === "recording") {
-    recorder.stop();
-    stopLiveTranscription(recognitionHandle);
-    recognitionHandle = null;
-    stopWaveform();
-    setVoiceLabel(button, "Voice");
+    await finalizeVoice();
     return;
   }
 
   if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) {
-    updateState((state) => {
-      state.parseLog.unshift("Browser recording unavailable. Upload an audio file with Add files instead.");
-    });
+    showToast("Recording isn't available in this browser. Attach an audio file instead.", { kind: "error" });
     return;
   }
 
@@ -280,56 +366,88 @@ async function handleVoiceClick() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     chunks = [];
     liveTranscript = "";
+    // Anything already typed stays; dictation appends to it.
+    voiceBaseText = $("#captureText")?.value || "";
     recorder = new MediaRecorder(stream);
     startWaveform(stream);
 
     if (isLiveTranscriptionSupported()) {
-      recognitionHandle = startLiveTranscription({
-        onPartial(text) {
+      recognitionHandle = startDictation({
+        onUpdate({ text }) {
+          // STRAIGHT INTO THE BOX. This is the whole difference between the Gym
+          // page's voice (which felt instant) and this one (which felt broken):
+          // Gym wrote the transcript into its textarea, Home wrote it into
+          // state.activeJob.detail, which renders inside a COLLAPSED <details>
+          // and is therefore invisible. The user reported having to "click back
+          // on voice" to make the text appear.
+          //
+          // Direct DOM write, deliberately not updateState: that serialises the
+          // entire app state to localStorage and re-renders seven panels, and it
+          // ran once per spoken word.
           liveTranscript = text;
-          updateState((state) => {
-            state.activeJob = { key: "transcribing", label: "Transcribing", detail: text || "Listening...", stageIndex: 0 };
-          });
+          const box = $("#captureText");
+          if (!box) return;
+          box.value = voiceBaseText ? `${voiceBaseText} ${text}`.trim() : text;
         },
-        onError(err) {
-          updateState((state) => {
-            state.parseLog.unshift(`Speech recognition error: ${err}`);
-          });
+        onError(code, info) {
+          if (info?.fatal) {
+            showToast(info.message || code, { kind: "error", duration: 6000 });
+            finalizeVoice();
+          } else if (info?.message) {
+            // Non-fatal: the MediaRecorder is still capturing and Gemini can
+            // transcribe on submit, so say that rather than implying failure.
+            updateState((state) => state.parseLog.unshift(info.message));
+          }
         },
       });
     }
+
+    // Resolves once the Blob exists, so Process can await it - see finalizeVoice.
+    recorderStopped = new Promise((resolve) => {
+      recorder.addEventListener("stop", () => {
+        stream.getTracks().forEach((track) => track.stop());
+        stopWaveform();
+        // The recorder's ACTUAL container, never a hardcoded guess. The old code
+        // labelled every blob "audio/webm" regardless of what was produced, and
+        // the Gemini API does not accept audio/webm at all - it takes wav, mp3,
+        // aiff, aac, ogg and flac. So a voice note with no live transcription
+        // silently produced no evidence, while the UI still said "Capture saved".
+        const mime = (recorder?.mimeType || "audio/webm").split(";")[0];
+        const ext = mime.split("/")[1] || "webm";
+        const blob = new Blob(chunks, { type: mime });
+        const fileName = `voice-note-${new Date().toISOString().replace(/[:.]/g, "-")}.${ext}`;
+        if (blob.size > 0) pendingMediaFiles.push(new File([blob], fileName, { type: mime }));
+        updateState((state) => {
+          state.activeJob = null;
+          state.parseLog.unshift(liveTranscript
+            ? `Voice transcript captured: "${liveTranscript.slice(0, 80)}"`
+            : blob.size > 0
+              ? "Voice recording attached. Will be transcribed on submit."
+              : "Nothing was recorded.");
+        });
+        renderRoutePreview();
+        resolve();
+      }, { once: true });
+    });
 
     recorder.addEventListener("dataavailable", (event) => {
       if (event.data.size > 0) chunks.push(event.data);
     });
 
-    recorder.addEventListener("stop", () => {
-      stream.getTracks().forEach((track) => track.stop());
-      stopWaveform();
-      const blob = new Blob(chunks, { type: "audio/webm" });
-      const fileName = `voice-note-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
-      const file = new File([blob], fileName, { type: "audio/webm" });
-      pendingMediaFiles.push(file);
-      updateState((state) => {
-        state.activeJob = null;
-        state.parseLog.unshift(liveTranscript
-          ? `Voice transcript captured: "${liveTranscript.slice(0, 80)}"`
-          : "Voice recording attached. Will be transcribed by Gemini on submit.");
-      });
-      renderRoutePreview();
-    });
-
     recorder.start();
     setVoiceLabel(button, "Stop");
-    updateState((state) => {
-      state.parseLog.unshift(isLiveTranscriptionSupported()
-        ? "Recording with live transcription. Tap Stop voice when done."
-        : "Recording voice. Tap Stop voice when done.");
-    });
-  } catch {
-    updateState((state) => {
-      state.parseLog.unshift("Microphone permission was blocked. Use Add files with an audio recording instead.");
-    });
+  } catch (err) {
+    // The bare `catch {}` here threw away the DOMException name, so a blocked
+    // mic, a missing mic and an unsupported browser all produced one identical
+    // line buried in a collapsed panel. Say which it was, out loud.
+    const name = err?.name || "";
+    const msg = name === "NotAllowedError"
+      ? "Microphone is blocked. Enable it for this site, then tap Voice again."
+      : name === "NotFoundError"
+        ? "No microphone found. Attach an audio file instead."
+        : `Couldn't start recording (${name || err?.message || "unknown error"}).`;
+    showToast(msg, { kind: "error", duration: 6000 });
+    updateState((state) => state.parseLog.unshift(msg));
   }
 }
 

@@ -78,6 +78,124 @@
   font-size: 1.05rem;
 }
 
+/* ---- the water drop ---- */
+/* ONE button. It used to be three pills (+250 / +500 / +1L) and the answer to
+   "how much have I drunk" lived in text off to the side; now the button IS the
+   answer - it fills with the day's percentage of goal and prints the running
+   total in the middle. Tap it once per glass, hold it for the rare amounts.
+
+   Water gets the wellness hue rather than the app accent: the green accent means
+   money everywhere else, and a green water meter next to a green spend meter is
+   two different facts wearing the same colour. */
+.quick-row-water {
+  --water-hue: var(--wellness, #3a5fb0);
+}
+
+.water-drop {
+  position: relative;
+  flex: 0 0 auto;
+  /* Comfortably past the 44px minimum: this is the most-tapped control in the
+     app and it is tapped repeatedly, often one-handed and in a hurry. */
+  width: 62px;
+  height: 70px;
+  padding: 0;
+  border: 1.5px solid color-mix(in srgb, var(--water-hue) 42%, transparent);
+  /* A drop, not a circle: narrower and pointier at the top, round at the base. */
+  border-radius: 46% 46% 50% 50% / 62% 62% 40% 40%;
+  background: var(--surface, #fff);
+  color: var(--ink, #17191e);
+  overflow: hidden;
+  cursor: pointer;
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* A fast double tap must log twice, not zoom the page. Without this, iOS and
+     Chrome swallow the second tap of any pair inside 300ms as a zoom gesture -
+     which on a button whose entire point is repeat tapping loses every other
+     glass. `user-select`/`touch-callout` stop a long press turning into a text
+     selection or the OS context menu instead of opening our menu. */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 120ms ease, border-color 160ms ease;
+}
+
+.water-drop:hover { border-color: var(--water-hue); }
+.water-drop:active { transform: scale(0.94); }
+.water-drop:focus-visible {
+  outline: 2px solid var(--water-hue);
+  outline-offset: 3px;
+}
+
+/* The level. Height is the percent of goal, capped at 100% by pctOf - the bar
+   cannot be more than full even when the TEXT reads 4.2L / 3.5L. */
+.water-drop-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--water-fill, 0%);
+  background: color-mix(in srgb, var(--water-hue) 26%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--water-hue) 78%, transparent);
+  transition: height 380ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  pointer-events: none;
+}
+
+.water-drop-value {
+  position: relative;
+  z-index: 1;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+}
+
+.quick-water-more {
+  min-width: 44px;
+  padding: 0 12px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.quick-row-water .quick-meter > span { background: var(--water-hue); }
+
+/* The long-press menu: 500 / 1L / a custom amount / the daily goal. Everything
+   that does not deserve a permanent button, including the goal itself - which
+   was previously derived from the diet scaffold and therefore not editable at
+   all, so "set my water goal to 4L" had nowhere to write. */
+.water-more {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.32));
+  background: color-mix(in srgb, var(--wellness, #3a5fb0) 6%, transparent);
+}
+.water-more-lead { margin: 0 0 8px; font-size: 0.86rem; color: var(--ink, #17211c); }
+.water-more-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.water-more-row + .water-more-row { margin-top: 8px; }
+.water-more-label { font-size: 0.8rem; color: var(--muted, #7c8a82); }
+.water-more-input {
+  flex: 0 1 92px;
+  min-width: 72px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line, rgba(125, 140, 132, 0.32));
+  background: var(--surface, #fff);
+  color: var(--ink, #17211c);
+  font: inherit;
+}
+.water-more .quick-btn { min-height: 44px; }
+.water-more-close { margin-left: auto; }
+
 .quick-note {
   flex: 0 0 auto;
   display: inline-flex;
@@ -105,8 +223,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .quick-btn, .quick-meter > span { transition: none; }
-  .quick-btn:active:not([disabled]) { transform: none; }
+  .quick-btn, .quick-meter > span, .water-drop, .water-drop-fill { transition: none; }
+  .quick-btn:active:not([disabled]), .water-drop:active { transform: none; }
 }
 
 /* ---- auth feedback ---- */

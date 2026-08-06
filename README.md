@@ -1,4 +1,4 @@
-# Trackerz
+# Deno
 
 A capture-first life tracker: voice notes, screenshots, bank statements → unified spend/diet/wellness ledger with smart dedupe and Nifty 50 opportunity-cost insights.
 

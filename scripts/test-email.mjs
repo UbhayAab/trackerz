@@ -30,7 +30,7 @@ const res = await fetch("https://api.resend.com/emails", {
   body: JSON.stringify({
     from,
     to,
-    subject: "Trackerz - Jarvis delivery test",
+    subject: "Deno - Jarvis delivery test",
     text: "If you are reading this, Jarvis email delivery works. Reply is not monitored.",
   }),
 });

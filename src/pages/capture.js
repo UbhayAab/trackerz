@@ -2,7 +2,7 @@ import { bindCapturePanel, renderRoutePreview } from "../ui/capture-panel.js";
 import { bindInsights, renderInsights } from "../ui/insights-panel.js";
 import { renderAdditionsFeed, bindAdditionsFeed } from "../ui/additions-feed.js";
 import { renderDietPlan, bindDietPlan } from "../ui/diet-plan-panel.js";
-import { renderAgentStatus } from "../ui/agent-status.js";
+import { renderAgentStatus, bindAgentStatusTicker } from "../ui/agent-status.js";
 import { renderMetrics } from "../ui/metrics.js";
 import { renderNav } from "../ui/navigation.js";
 import { subscribe, getState } from "../state/app-state.js";
@@ -37,6 +37,10 @@ bootWithAuth(async () => {
   // A capture can CREATE a reminder ("my birthday is 14 August"), so the strip is
   // reloaded after every capture, not just on first paint.
   loadReminders();
+  // The stage callbacks fire only a handful of times across a 5-46 s run, so the
+  // bar has to advance under its own steam between them or it looks frozen.
+  // Redraws the status panel only, not the whole subscribe() fan-out.
+  bindAgentStatusTicker(() => renderAgentStatus(getState()));
   bindCapturePanel();
   bindQuickActions();
   // One tap re-logs a meal from your own history with its median macros - no model

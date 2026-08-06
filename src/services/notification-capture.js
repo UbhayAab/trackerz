@@ -33,7 +33,7 @@ export function isNativeNotifyAvailable() {
 }
 
 const BROWSER_MESSAGE =
-  "Reading payment notifications is only possible in the Trackerz Android app. A " +
+  "Reading payment notifications is only possible in the Deno Android app. A " +
   "browser cannot see your notifications.";
 
 function browserFallback(extra = {}) {
@@ -72,7 +72,7 @@ export async function isAccessEnabled() {
   catch (err) { return { supported: true, enabled: false, message: err?.message || String(err), error: true }; }
 }
 
-/** Open the system notification-access settings so the user can toggle Trackerz on. */
+/** Open the system notification-access settings so the user can toggle Deno on. */
 export async function openAccessSettings() {
   const p = plugin();
   if (!p) return browserFallback();

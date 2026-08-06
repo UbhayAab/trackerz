@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { expandToolCalls, looksLikeFood, looksLikePurchase, mealSlotFromTime, extractAmount, resolveOccurredAt, istHourOf, slotNamedIn, resolveMealSlot, isAboutTheApp } from "../lib/fan-out-expander.mjs";
 import { FOOD_TABLE } from "../lib/food-nutrition.mjs";
+import { isChangeRequest } from "../lib/request-router.mjs";
 
 const NOW = "2026-06-26T10:00:00+05:30"; // a fixed "today" for deterministic dates
 const has = (calls, name) => calls.filter((t) => t.name === name);
@@ -686,3 +687,95 @@ console.log("meal-slot IST regressions passed");
 }
 
 console.log("meta-commentary guard tests passed");
+
+// ---------------------------------------------------------------------------
+// 2026-08-06: AN INSTRUCTION IS NOT A MEAL.
+//
+// "Hey actually my diet has changed I every single day now have two scoops of
+// whey protein with 500 grams of curd and in the afternoon I have 6 whole eggs
+// boiled eggs" - the brain routed this perfectly: update_plan_candidate at 0.95
+// (scope permanent, both new meals in the payload) plus remember_fact at 0.85.
+// Then THIS layer appended a create_food_log_candidate whose description was the
+// first 120 characters of the instruction, at confidence 0.60, _auto_expanded.
+// applyTool wrote it as a 540 kcal / 64.7 g protein meal, and the diet-plan
+// reconciler then matched it back to "Protein milk shake" and rendered that item
+// TICKED - the exact meal the user was asking to replace.
+//
+// classifyRequestKind never had a chance: PLAN_CHANGE_CUES carries "change my
+// diet" but not "my diet has changed", so isChangeRequest returned false and
+// every `!command` guard opened. The fix is to let the model's own routing count
+// as evidence, because emitting a permanent plan rewrite IS the decision.
+// ---------------------------------------------------------------------------
+{
+  const REAL = "Hey actually my diet has changed I every single day now have two scoops of whey protein with 500 grams of curd and in the afternoon I have 6 whole eggs boiled eggs";
+  const planPermanent = {
+    name: "update_plan_candidate",
+    arguments: {
+      kind: "diet",
+      scope: "permanent",
+      summary: "2 scoops whey + 500g curd; 6 boiled eggs",
+      payload: { meals: [{ name: "Whey protein with curd", slot: "breakfast" }, { name: "Boiled eggs", slot: "lunch" }] },
+    },
+    confidence: 0.95,
+  };
+  const remember = { name: "remember_fact", arguments: { key: "daily_foods", value: "2 scoops whey + 500g curd; 6 boiled eggs" }, confidence: 0.85 };
+
+  const r = expandToolCalls([planPermanent, remember], { evidence: REAL, now: NOW });
+  assert.equal(has(r, "create_food_log_candidate").length, 0,
+    "an instruction must never become a meal, however much food it names");
+  assert.equal(has(r, "update_plan_candidate").length, 1, "the plan change survives");
+  assert.equal(has(r, "remember_fact").length, 1, "the remembered fact survives");
+
+  // Defence in depth. The model's routing is one guard; the cue list is the
+  // other, and it has to work when the brain is unavailable or wrong - salvage
+  // runs even when the model returns nothing at all. Both must hold.
+  assert.ok(isChangeRequest(REAL),
+    "the cue list now catches the declarative phrasing too, not just the imperative");
+  assert.equal(
+    has(expandToolCalls([], { evidence: REAL, now: NOW }), "create_food_log_candidate").length,
+    0, "with NO model output at all, salvage alone must still refuse to invent the meal");
+
+  // Same shape, no plan call from the model: salvage is allowed to do its job,
+  // otherwise this guard would silently swallow ordinary food captures.
+  assert.equal(
+    has(expandToolCalls([], { evidence: "two scoops of whey protein with 500 grams of curd", now: NOW }), "create_food_log_candidate").length,
+    1, "a bare food capture still salvages");
+
+  // A model-emitted meal is dropped too, not just a synthesized one - the model
+  // sometimes emits both, and the phantom row is what ticks the plan item.
+  const withModelMeal = expandToolCalls(
+    [planPermanent, { name: "create_food_log_candidate", arguments: { description: REAL.slice(0, 120), occurred_at: NOW }, confidence: 0.6 }],
+    { evidence: REAL, now: NOW },
+  );
+  assert.equal(has(withModelMeal, "create_food_log_candidate").length, 0,
+    "the model's own phantom meal is dropped on a permanent plan change");
+
+  // A TARGET change is the same class of thing.
+  const target = expandToolCalls(
+    [{ name: "set_target_candidate", arguments: { kind: "daily_protein", amount: 180 }, confidence: 0.9 }],
+    { evidence: "my protein needs to be 180 a day now, I eat eggs and curd for it", now: NOW },
+  );
+  assert.equal(has(target, "create_food_log_candidate").length, 0, "a target change is not a meal");
+  assert.equal(has(target, "set_target_candidate").length, 1, "the target change survives");
+
+  // THE OTHER DIRECTION, and the reason this is scoped to STANDING changes only.
+  // A DATE-scoped delta is what the LOG-THAT-CONTRADICTS-THE-PLAN rule emits
+  // ALONGSIDE a real log. Treating those as commands ate a genuine meal.
+  const day = NOW.slice(0, 10);
+  const datedSwap = expandToolCalls(
+    [{ name: "update_plan_candidate", arguments: { kind: "gym", scope: day, payload: { op: "replace_workout" } }, confidence: 0.8 }],
+    { evidence: "planned leg day but I did cardio, and had 6 boiled eggs after", now: NOW },
+  );
+  assert.equal(has(datedSwap, "create_food_log_candidate").length, 1,
+    "a DATE-scoped plan delta must not suppress the meal logged in the same breath");
+
+  // And a mixed permanent change that explicitly logs something still logs it.
+  const mixed = expandToolCalls(
+    [planPermanent],
+    { evidence: "from now on 2 scoops whey daily. also I just had dal rice", now: NOW },
+  );
+  assert.equal(has(mixed, "create_food_log_candidate").length, 1,
+    "carriesLoggedEvent keeps the honest mixed capture working");
+}
+
+console.log("instruction-is-not-a-meal regressions passed");

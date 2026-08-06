@@ -128,9 +128,9 @@ export function mountHealthPanel() {
     // which was not a thing that existed anywhere in the app.
     hintEl.innerHTML =
       "Reading sleep, steps and heart rate needs Android Health Connect, which no browser " +
-      "can access. Install the Trackerz Android app and open this page there to connect " +
+      "can access. Install the Deno Android app and open this page there to connect " +
       "your OnePlus phone and watch." +
-      apkCalloutHtml("Your watch already records sleep and steps. This is what lets Trackerz read them instead of you typing them.");
+      apkCalloutHtml("Your watch already records sleep and steps. This is what lets Deno read them instead of you typing them.");
     connectBtn.disabled = true;
     syncBtn.disabled = true;
     connectBtn.title = "Only available in the Android app";
