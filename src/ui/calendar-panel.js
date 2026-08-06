@@ -33,6 +33,10 @@ const MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
 export const KIND_ICON = {
   birthday: "🎂", anniversary: "💍", bill: "💸", filing: "🧾",
   appointment: "📅", task: "🔔", other: "🔔",
+  // A check the APP runs on itself, not a bell it rings at you. Distinct glyph
+  // rather than a colour, because a colour-only difference is invisible to a
+  // colourblind reader and to a grayscale screenshot.
+  agent: "🤖",
 };
 
 export function escapeHtml(s) {

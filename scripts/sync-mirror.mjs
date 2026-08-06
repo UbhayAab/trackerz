@@ -17,6 +17,7 @@ const BLOCKS = [
   // means the server commits something the client would have put behind a confirm
   // - the worst possible place for the two to disagree.
   { lib: "lib/mutation-risk.mjs", edge: AGENT, start: "MUTATION-RISK MIRROR START", end: "MUTATION-RISK MIRROR END" },
+  { lib: "lib/schedule-args.mjs", edge: AGENT, start: "SCHEDULE-ARGS MIRROR START", end: "SCHEDULE-ARGS MIRROR END" },
 ];
 
 function block(src, file, START, END) {

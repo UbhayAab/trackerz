@@ -3,7 +3,7 @@
 // still #nightlySummaryToggle for the ui-contract), email + push channel toggles,
 // browser push permission/subscription, and "Brief me now".
 
-import { fetchJarvisProfile, updateJarvisPrefs, runJarvisNow } from "../services/jarvis.js";
+import { fetchJarvisProfile, updateJarvisPrefs, runJarvisNow, setAutonomyEnabled } from "../services/jarvis.js";
 import { enablePush, disablePush, getPushState, pushSupported, showLocalTestNotification } from "../services/push.js";
 import { showToast } from "./toast.js";
 
@@ -101,6 +101,12 @@ export async function bindJarvisCard() {
 
   master.checked = profile.briefing_enabled !== false;
   if (emailToggle) emailToggle.checked = profile.email_brief !== false;
+  // Autonomy defaults OFF in the schema and is read server-side first, failing
+  // closed. `=== true` and not `!== false`: an unreadable or absent flag must
+  // never render as permission, and the checkbox is the user's only picture of
+  // what the server believes.
+  const autonomyToggle = document.getElementById("autonomyToggle");
+  if (autonomyToggle) autonomyToggle.checked = profile.autonomy_enabled === true;
   setStatus(status, master.checked ? "scheduled" : "paused");
 
   // Push state reflects BOTH the profile flag and this browser's subscription.
@@ -124,6 +130,20 @@ export async function bindJarvisCard() {
   emailToggle?.addEventListener("change", async () => {
     try { await updateJarvisPrefs({ email_brief: emailToggle.checked }); }
     catch { setStatus(status, "save failed", false); }
+  });
+
+  autonomyToggle?.addEventListener("change", async () => {
+    const want = autonomyToggle.checked;
+    try {
+      await setAutonomyEnabled(want);
+      showToast(want ? "Scheduled checks are on" : "Scheduled checks are off - nothing will run on its own");
+    } catch (err) {
+      // Snap the box back. A switch that reads ON while the server has it OFF is
+      // worse than no switch: it is a promise the app cannot keep, and the user
+      // would sit waiting for checks that will never run.
+      autonomyToggle.checked = !want;
+      showToast(`Couldn't change that: ${err?.message || err}`);
+    }
   });
 
   // The real entry point. A checkbox can't be trusted to trigger the permission

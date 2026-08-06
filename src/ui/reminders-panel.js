@@ -14,7 +14,8 @@
 // errored has just told the user they have no deadlines.
 
 import { deleteReminder, setReminderActive } from "../services/supabase-data.js";
-import { fetchCalendarReminders } from "../services/jarvis.js";
+import { fetchCalendarReminders, fetchAgentTasks, deleteAgentTask, setAgentTaskStatus } from "../services/jarvis.js";
+import { taskAsCalendarRow } from "../../lib/agent-tasks.mjs";
 import { upcoming, describeRule, whenLabel, ruleProblem, minutesOfDay, formatTime } from "../../lib/reminders.mjs";
 import {
   renderCalendar, bindCalendar, initialCalendarState, countUpcoming, escapeHtml, KIND_ICON,
@@ -24,7 +25,19 @@ import { showToast } from "./toast.js";
 const HOME_ID = "remindersStrip";
 const MANAGE_ID = "remindersManage";
 
-let state = { rows: [], loaded: false, error: null, busy: false, cal: null };
+let state = { rows: [], tasks: [], loaded: false, error: null, taskError: null, busy: false, cal: null };
+
+// Reminders and the app's own scheduled tasks, as ONE list of rules. The
+// calendar renders rules; a task shaped like a rule needs no second renderer and
+// therefore cannot drift into showing a different date from the reminder beside
+// it. A task the runner will never fire again returns null and is dropped.
+function calendarRows() {
+  const today = todayKey();
+  const taskRows = (state.tasks || [])
+    .map((t) => taskAsCalendarRow(t, today))
+    .filter(Boolean);
+  return [...(state.rows || []), ...taskRows];
+}
 
 // Today in IST as a YYYY-MM-DD key. The whole engine works on calendar keys, so
 // the ONE place a clock is read is here, and it is read in the user's zone.
@@ -47,6 +60,17 @@ export async function loadReminders() {
     state.error = err?.message || String(err);
     state.loaded = false;
   }
+  // Tasks are fetched separately and fail separately. A calendar that hides
+  // every reminder because the task table errored would be a worse outage than
+  // the one it is reporting - and a task list that silently renders empty on a
+  // failed read is this codebase's oldest bug, so the error is kept and shown.
+  try {
+    state.tasks = await fetchAgentTasks({ limit: 100 });
+    state.taskError = null;
+  } catch (err) {
+    state.tasks = [];
+    state.taskError = err?.message || String(err);
+  }
   if (!state.cal) state.cal = initialCalendarState(todayKey());
   renderRemindersStrip();
   renderRemindersManage();
@@ -65,12 +89,14 @@ export function renderRemindersStrip() {
   // Nothing scheduled AT ALL (not "nothing this month") is the only case that
   // hides the card, so paging to a quiet month does not make the calendar vanish
   // under the user's finger.
-  const anything = state.loaded && upcoming(state.rows, todayKey(), { limit: 1, withinDays: 4000 }).length > 0;
+  const rows = calendarRows();
+  const anything = state.loaded && upcoming(rows, todayKey(), { limit: 1, withinDays: 4000 }).length > 0;
   if (!anything) { el.hidden = true; el.innerHTML = ""; return; }
 
   if (!state.cal) state.cal = initialCalendarState(todayKey());
   el.hidden = false;
-  el.innerHTML = renderCalendar(state.cal, state.rows, todayKey(), { error: null, loaded: state.loaded });
+  el.innerHTML = renderCalendar(state.cal, rows, todayKey(), { error: null, loaded: state.loaded })
+    + (state.taskError ? `<p class="chips-error">Scheduled checks couldn't be loaded: ${escapeHtml(state.taskError)}</p>` : "");
   bindCalendar(el, () => state.cal, (next) => {
     state.cal = next;
     renderRemindersStrip();
@@ -87,8 +113,8 @@ export function renderRemindersManage() {
     return;
   }
   if (!state.loaded) { el.innerHTML = `<p class="muted">Loading…</p>`; return; }
-  if (!state.rows.length) {
-    el.innerHTML = `<p class="muted">No reminders yet. Say something like "my birthday is 14 August", "remind me to file GST on the 10th of every 3rd month", or "every other Wednesday at 18:30 call mum" in a capture and it lands here.</p>`;
+  if (!state.rows.length && !(state.tasks || []).length) {
+    el.innerHTML = `<p class="muted">No reminders yet. Say something like "my birthday is 14 August", "remind me to file GST on the 10th of every 3rd month", or "every other Wednesday at 18:30 call mum" in a capture and it lands here. To have the app CHECK something for you instead of just telling you, say "every Sunday evening review my spending".</p>`;
     return;
   }
 
@@ -128,6 +154,54 @@ export function renderRemindersManage() {
           </span>
         </li>`;
       }).join("")}
+    </ul>
+    ${renderTaskList()}`;
+}
+
+// ---- Settings: the app's own scheduled checks --------------------------------
+//
+// Separate list, not mixed into the reminder rows, because the two answer
+// different questions: a reminder is something the user wrote, a task is
+// something the app will go and DO. Mixing them would hide the only list where
+// "what is this thing allowed to do while I am not looking" is answerable.
+function renderTaskList() {
+  if (state.taskError) {
+    return `<p class="chips-error">Scheduled checks couldn't be loaded: ${escapeHtml(state.taskError)}</p>`;
+  }
+  const tasks = state.tasks || [];
+  if (!tasks.length) return "";
+  const today = todayKey();
+  return `
+    <h3 class="reminder-subhead">Checks the app runs itself</h3>
+    <ul class="reminder-list">
+      ${tasks.map((t) => {
+        const row = taskAsCalendarRow(t, today);
+        const when = t.status !== "scheduled"
+          ? t.status
+          : row ? `next ${(row.on_date || row.dtstart || "").slice(0, 10) || describeRule(row)}` : "no future date";
+        const at = row ? minutesOfDay(row.at_time) : null;
+        // A tripped breaker is the whole reason this list exists. Three failures
+        // in a row disables a task, and a disabled task that looks identical to a
+        // quiet one is indistinguishable from "nothing was due".
+        const broken = t.status === "disabled" || Number(t.consecutive_failures) >= 3;
+        return `
+        <li class="reminder-row${t.status !== "scheduled" ? " is-paused" : ""}" data-task-id="${escapeHtml(t.id)}">
+          <span class="reminder-icon" aria-hidden="true">🤖</span>
+          <span class="reminder-main">
+            <strong>${escapeHtml(row ? row.title : String(t.prompt || "").slice(0, 60))}</strong>
+            <small><span class="reminder-next">${escapeHtml(t.intent || "check")}</span> · ${escapeHtml(when)}${
+              at != null ? ` · at ${escapeHtml(formatTime(at))}` : ""
+            }${Number(t.runs) > 0 ? ` · ran ${t.runs}x` : " · never run"}${
+              t.created_by === "agent" ? " · scheduled from a capture" : ""
+            }</small>
+            ${broken ? `<small class="reminder-warn">Stopped after repeated failures${t.disabled_reason ? `: ${escapeHtml(t.disabled_reason)}` : ""}</small>` : ""}
+          </span>
+          <span class="reminder-actions">
+            <button type="button" class="linklike" data-task-act="toggle">${t.status === "scheduled" ? "Pause" : "Resume"}</button>
+            <button type="button" class="linklike danger" data-task-act="delete">Delete</button>
+          </span>
+        </li>`;
+      }).join("")}
     </ul>`;
 }
 
@@ -136,6 +210,8 @@ export function bindRemindersPanel() {
   if (!el || el.dataset.bound === "1") return;
   el.dataset.bound = "1";
   el.addEventListener("click", async (ev) => {
+    const taskBtn = ev.target.closest("button[data-task-act]");
+    if (taskBtn) { await handleTaskAction(taskBtn); return; }
     const btn = ev.target.closest("button[data-act]");
     if (!btn || state.busy) return;
     const row = btn.closest(".reminder-row");
@@ -164,4 +240,33 @@ export function bindRemindersPanel() {
       state.busy = false;
     }
   });
+}
+
+async function handleTaskAction(btn) {
+  if (state.busy) return;
+  const id = btn.closest("[data-task-id]")?.dataset.taskId;
+  const task = (state.tasks || []).find((t) => t.id === id);
+  if (!task) return;
+  state.busy = true;
+  try {
+    if (btn.dataset.taskAct === "delete") {
+      await deleteAgentTask(id);
+      state.tasks = state.tasks.filter((t) => t.id !== id);
+      showToast("Deleted that scheduled check");
+    } else {
+      const next = task.status === "scheduled" ? "disabled" : "scheduled";
+      await setAgentTaskStatus(id, next);
+      task.status = next;
+      // Resuming clears the breaker server-side; mirror that here so the row
+      // does not keep showing "stopped after repeated failures" until a reload.
+      if (next === "scheduled") { task.consecutive_failures = 0; task.disabled_reason = null; }
+      showToast(next === "scheduled" ? "Resumed" : "Paused");
+    }
+    renderRemindersManage();
+    renderRemindersStrip();
+  } catch (err) {
+    showToast(`Couldn't update: ${err?.message || err}`);
+  } finally {
+    state.busy = false;
+  }
 }

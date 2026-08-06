@@ -589,3 +589,114 @@ bias is that the first trial is a guaranteed success; it is bounded by the
 support floor, the 3-distinct-week floor, and specificity computed on the
 untouched total. A lapsed habit is still not protected: 3 pizzas then 3 empty
 Saturdays is 3/6 and stays silent.
+
+---
+
+## Phase 6 - calendar, reminders and self-triggering tasks
+
+### The last mile: the agent could not write what the engine could read
+
+The recurrence engine understood intervals, nth-weekdays, weekday lists, UNTIL,
+COUNT and times of day. The AGENT could write none of them. So *"every other
+Wednesday at 18:30"* was stored as a plain weekly rule with no hour: it fired on
+the wrong week, at the wrong time, and said nothing about having dropped half
+the sentence. A value computed correctly one layer away from where it is needed
+is this codebase's signature failure, and this was the largest remaining
+instance of it.
+
+`lib/schedule-args.mjs` is the connecting piece, and it is used by **three**
+call sites rather than copied into them: the edge function's `applyTool`, the
+client's `buildRowForTool`, and its own test. The client copy had already
+diverged - it silently dropped every modifier - which meant approving a proposed
+reminder by hand produced a *weaker rule* than letting it auto-apply, the exact
+thing that file's header comment promises cannot happen.
+
+**`nth_weekday` accepts both forms.** `reminders.nth_weekday` is an `int` column
+and the engine reads the weekday from the separate `weekday` field, but a model
+naturally writes the RFC form `-1FR`. Sending that through would have failed the
+insert on a type error. `parseNthWeekday` splits it into the two integers, and an
+explicit `weekday` still outranks the one implied by the ordinal.
+
+**Bad modifiers become null, never a bound.** `interval: 999` is not 52 and
+`at_time: "quarter past six"` is not 06:00. A reminder that fires at a made-up
+hour is worse than one with no hour, because the no-hour case rides the 07:00
+brief and is therefore seen.
+
+### schedule_task_candidate - the app scheduling itself
+
+The distinction from a reminder is *who does the work*: a reminder replays a
+sentence on a date, a task reads the day's rows at fire time and may decide to
+stay silent. "remind me to drink water at 3pm" is a reminder; "at 3pm tell me
+if I am behind on water" is a task.
+
+**Grounding is on the ACT, not the content.** The task's prompt is written by the
+model, so it can never be required to echo the user's words. `SCHEDULE_CUE`
+checks that scheduling was actually asked for. Without it a hallucinated task is
+a push notification at 9am about something nobody asked for.
+
+**Classified `consequential`, not a new `external` tier.** A fourth tier that
+behaves identically to an existing one is a name, not a control. Both live
+captures below landed as `proposed` and wrote zero rows, as designed.
+
+**A passed hour rolls to tomorrow, unless a day was named.** "check at 3pm" said
+at 4pm means tomorrow. But an explicit `on_date` is never rolled forward even if
+its hour has passed - the user named the day, and moving it would be the app
+overruling a direct instruction.
+
+**Depth 1 on agent-written tasks.** A capture is a human act, but the row is
+written by the model, and the loop the depth cap exists to stop is
+model-scheduling-model.
+
+### Verified live, on the deployed pipeline (agent v107)
+
+```
+"remind me to call the accountant every other Wednesday at 6:30 pm"
+  -> create_reminder_candidate conf 0.98
+     {weekday:3, interval:2, at_time:"18:30", dtstart:"2026-08-12"}
+  -> status 'proposed', zero rows written
+  -> confirm path builds: "Wednesday, every 2nd week at 18:30"
+     firing 2026-08-12, 08-26, 09-09
+
+"every Sunday evening at 9pm look at my spending and tell me if I am over budget"
+  -> schedule_task_candidate conf 1.00
+     {intent:"review", freq:"weekly", weekday:0, at_time:"21:00"}
+  -> status 'proposed', zero rows written
+  -> confirm path builds fire_at 2026-08-09T15:30Z = 21:00 IST Sunday
+
+pg_cron self-triggering, unattended, twice:
+  one-shot   inserted 04:17:33Z -> fired 04:18:00Z, status 'done'
+  recurring  inserted -> fired within 40s, run status 'silent'
+             ("silent: nothing worth saying", $0.000222 in agent_task_runs)
+             re-armed itself to 2026-08-09T15:30Z, the next Sunday 21:00 IST
+```
+
+The silent run is the one worth reading twice: a check that finds nothing worth
+saying writes a row saying so. Silence with a trace is a feature; silence
+without one is the bug this whole audit started from.
+
+### Tasks are on the calendar, and autonomy has a switch
+
+`taskAsCalendarRow()` shapes an `agent_tasks` row as a reminder rule, so the
+calendar renders both from one code path and cannot show a task on a different
+date from the reminder beside it. It returns null for anything that will never
+fire again - a calendar showing impossible dates is worse than one that omits
+them. Tasks carry their own glyph, not a colour, so the distinction survives
+a grayscale screenshot and a colourblind reader.
+
+Reminders and tasks are fetched separately and **fail separately**: a task-table
+error must not hide every reminder, and it is shown rather than rendered as an
+empty list.
+
+Settings gains the autonomy master switch. It reads `=== true`, not
+`!== false` - an unreadable or absent flag must never render as permission. A
+failed write snaps the box back, because a switch that reads ON while the server
+has it OFF is a promise the app cannot keep.
+
+### Open, deliberately
+
+Google Calendar sync (plan 6.8) is not built. It is the one part of Phase 6 with
+a real external conflict surface, and the loop guards, token storage and 410-GONE
+handling it needs are a phase of their own rather than a tail-end addition to
+this one. The provider-adapter seam it needs is what the local calendar being
+source of truth already provides.
+

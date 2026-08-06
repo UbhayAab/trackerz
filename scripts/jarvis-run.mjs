@@ -1,7 +1,17 @@
 // Fires the jarvis edge function the same way pg_cron does, for checking the
 // engine without waiting for a scheduled slot.
 //
-// Usage: node scripts/jarvis-run.mjs status|morning|midday|evening|closeout [--force]
+// Usage: node scripts/jarvis-run.mjs status|morning|midday|evening|closeout|task [--force]
+//
+// `task` is the per-minute tick (20260806000030): timed reminders plus the
+// agent_tasks agenda. It is SILENT when nothing is due, which is the expected
+// result almost every time you run it by hand.
+//
+// --force skips the job_runs slot claim, so a slot already taken by pg_cron or
+// the GitHub heartbeat still runs. WITHOUT it a second run of the same slot on
+// the same day returns `skipped: "slot_claimed_elsewhere"` - that is the claim
+// working, not a failure. On `task`, --force additionally deletes the
+// occurrence's agent_task_runs row so the same occurrence can be replayed.
 import { config as loadEnv } from "dotenv";
 import pg from "pg";
 

@@ -8,6 +8,8 @@
 // MIRRORED in supabase/functions/agent/index.ts (isGrounded + helpers). Keep
 // the two copies in sync; tests/evidence-grounding.test.mjs locks this one.
 
+import { SCHEDULE_CUE } from "../../lib/schedule-args.mjs";
+
 // True if the numeric value appears in the evidence as a standalone number
 // (commas ignored, digit-boundary aware so 240 does not match inside 1240).
 export function evidenceHasNumber(value, evidence) {
@@ -154,6 +156,12 @@ export function isGrounded(toolName, args = {}, evidence = "") {
       return hasWordOverlap(args.body, ev);
     case "create_reminder_candidate":
       return hasWordOverlap(args.title, ev);
+    case "schedule_task_candidate":
+      // A task the app runs on its own later, so a hallucinated one is a
+      // notification about something the user never asked for. The prompt is
+      // written BY the model, so it cannot be required to echo the evidence -
+      // what must be grounded is that scheduling was actually asked for.
+      return SCHEDULE_CUE.test(String(ev || ""));
     default:
       return true;
   }
