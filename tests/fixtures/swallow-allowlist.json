@@ -4,7 +4,7 @@
     {
       "file": "lib/additions.mjs",
       "pattern": "absent-as-zero",
-      "line": 86,
+      "line": 107,
       "text": "delta: `${sign}Rs ${INR.format(Number(r.amount || 0))}`,",
       "reason": "ledger_entries.amount is NOT NULL in supabase/schema.sql, so this is a defensive cast on a required column, not a default for absent data. Whether a period was measured at all is decided by row presence one layer up, in period-aggregator/dailySeries."
     },
@@ -226,34 +226,6 @@
       "reason": "Duplicate scoring compares two rows that already exist in ledger_entries, where amount is NOT NULL. A zero here can only come from a genuinely zero-amount row, which just fails the amount-tolerance match instead of producing a fabricated number."
     },
     {
-      "file": "src/pages/bootstrap.js",
-      "pattern": "catch-empty-obj",
-      "line": 25,
-      "text": "if (document.visibilityState === \"visible\" && m.isAutoCaptureEnabled()) m.drainAndCapture().catch(() => {});",
-      "reason": "REAL GAP, DEFERRED: these swallow a failed dynamic import of the notification-capture, sms-capture and health-sync services, so auto-capture can silently never start and the Settings toggles still read as if it did. Fix is an Err() plus a named source in the degraded banner; src/pages/bootstrap.js is owned by another workstream in this phase."
-    },
-    {
-      "file": "src/pages/bootstrap.js",
-      "pattern": "catch-empty-obj",
-      "line": 28,
-      "text": ".catch(() => {});",
-      "reason": "REAL GAP, DEFERRED: these swallow a failed dynamic import of the notification-capture, sms-capture and health-sync services, so auto-capture can silently never start and the Settings toggles still read as if it did. Fix is an Err() plus a named source in the degraded banner; src/pages/bootstrap.js is owned by another workstream in this phase."
-    },
-    {
-      "file": "src/pages/bootstrap.js",
-      "pattern": "catch-empty-obj",
-      "line": 31,
-      "text": ".catch(() => {});",
-      "reason": "REAL GAP, DEFERRED: these swallow a failed dynamic import of the notification-capture, sms-capture and health-sync services, so auto-capture can silently never start and the Settings toggles still read as if it did. Fix is an Err() plus a named source in the degraded banner; src/pages/bootstrap.js is owned by another workstream in this phase."
-    },
-    {
-      "file": "src/pages/bootstrap.js",
-      "pattern": "catch-empty-obj",
-      "line": 34,
-      "text": ".catch(() => {});",
-      "reason": "REAL GAP, DEFERRED: these swallow a failed dynamic import of the notification-capture, sms-capture and health-sync services, so auto-capture can silently never start and the Settings toggles still read as if it did. Fix is an Err() plus a named source in the degraded banner; src/pages/bootstrap.js is owned by another workstream in this phase."
-    },
-    {
       "file": "src/pages/capture.js",
       "pattern": "empty-catch",
       "line": 77,
@@ -263,16 +235,23 @@
     {
       "file": "src/pages/quick-log.js",
       "pattern": "catch-empty-obj",
-      "line": 219,
+      "line": 223,
       "text": "if (flushing) await flushing.catch(() => {});",
       "reason": "Correct: this awaits an in-flight water flush purely to serialise the next batch behind it. The flush reports its own outcome at its own call site, so re-reporting the same rejection here would double-count one failure."
     },
     {
       "file": "src/pages/quick-log.js",
       "pattern": "empty-catch",
-      "line": 477,
+      "line": 481,
       "text": "} catch { /* non-browser or opaque origin */ }",
       "reason": "Correct: rewriting the URL after a one-tap water log is idempotency housekeeping so a reload cannot pour a second glass. history.replaceState is unavailable on an opaque origin and in non-browser contexts; the tap itself has already been counted server-side."
+    },
+    {
+      "file": "src/services/audio-convert.js",
+      "pattern": "empty-catch",
+      "line": 141,
+      "text": "try { await ctx?.close(); } catch { /* already closed */ }",
+      "reason": "Closing an AudioContext that is already closed throws, and there is nothing a user could do about it. This runs in a finally whose whole job is to release the decoder after the real error has ALREADY been reported by the catch above it - rethrowing here would replace a useful message ('could not convert to wav') with a meaningless one."
     },
     {
       "file": "src/services/auth.js",
@@ -389,30 +368,30 @@
     {
       "file": "src/services/speech.js",
       "pattern": "empty-catch",
-      "line": 157,
+      "line": 253,
       "text": "watchdog = setTimeout(() => { try { rec?.abort(); } catch { /* already dead */ } }, WATCHDOG_MS);",
-      "reason": "Correct: every one of these is stop()/abort() on a SpeechRecognition that may already have ended, which the API throws for. There is no failure to report - the recogniser is already in exactly the state the caller asked for."
+      "reason": "Stopping a recogniser that has already stopped throws, and there is nothing the user could do about it. This is the back-compat shim's stop(): the transcript is already committed by the time it runs, so rethrowing would replace a completed dictation with an error about cleanup."
     },
     {
       "file": "src/services/speech.js",
       "pattern": "empty-catch",
-      "line": 243,
+      "line": 339,
       "text": "stop() { userStopped = true; clearTimeout(watchdog); try { rec?.stop(); } catch { /* already stopped */ } },",
-      "reason": "Correct: every one of these is stop()/abort() on a SpeechRecognition that may already have ended, which the API throws for. There is no failure to report - the recogniser is already in exactly the state the caller asked for."
+      "reason": "Stopping a recogniser that has already stopped throws, and there is nothing the user could do about it. This is the back-compat shim's stop(): the transcript is already committed by the time it runs, so rethrowing would replace a completed dictation with an error about cleanup."
     },
     {
       "file": "src/services/speech.js",
       "pattern": "empty-catch",
-      "line": 245,
+      "line": 341,
       "text": "abort() { userStopped = true; clearTimeout(watchdog); try { rec?.abort(); } catch { /* already stopped */ } },",
-      "reason": "Correct: every one of these is stop()/abort() on a SpeechRecognition that may already have ended, which the API throws for. There is no failure to report - the recogniser is already in exactly the state the caller asked for."
+      "reason": "Stopping a recogniser that has already stopped throws, and there is nothing the user could do about it. This is the back-compat shim's stop(): the transcript is already committed by the time it runs, so rethrowing would replace a completed dictation with an error about cleanup."
     },
     {
       "file": "src/services/speech.js",
       "pattern": "empty-catch",
-      "line": 266,
+      "line": 365,
       "text": "try { rec?.stop?.(); } catch { /* already stopped */ }",
-      "reason": "Correct: every one of these is stop()/abort() on a SpeechRecognition that may already have ended, which the API throws for. There is no failure to report - the recogniser is already in exactly the state the caller asked for."
+      "reason": "Stopping a recogniser that has already stopped throws, and there is nothing the user could do about it. This is the back-compat shim's stop(): the transcript is already committed by the time it runs, so rethrowing would replace a completed dictation with an error about cleanup."
     },
     {
       "file": "src/services/statement-import.js",
@@ -424,21 +403,21 @@
     {
       "file": "src/services/supabase-data.js",
       "pattern": "absent-as-zero",
-      "line": 724,
+      "line": 725,
       "text": ".update({ use_count: (template.use_count || 0) + 1, last_used_at: new Date().toISOString() })",
       "reason": "use_count is a NOT NULL counter with a default of 0; the fallback only covers meal-template rows written before the column existed. It is incremented, never displayed as a measurement."
     },
     {
       "file": "src/services/supabase-data.js",
       "pattern": "empty-catch",
-      "line": 1375,
+      "line": 1470,
       "text": "} catch {",
       "reason": "Correct and deliberate: storage-object cleanup is best-effort during delete-all-my-data. Row deletion is the source of truth and its failures are collected into the returned `errors` array; an orphaned media file is not user-visible data."
     },
     {
       "file": "src/services/undo-service.js",
       "pattern": "empty-catch",
-      "line": 144,
+      "line": 207,
       "text": "try { await markReverted(supabase, step.actionId, step.payload); } catch { /* status is cosmetic here */ }",
       "reason": "Correct: this is the alreadyUndone branch, where the row is already gone and marking the ai_action reverted is bookkeeping on a fact that is no longer in doubt. The caller still gets the step back in `alreadyUndone`. Note the branch directly above deliberately does NOT swallow the same call - there, a failed mark leaves an action claiming a row that no longer exists, and it is reported as undone_but_unmarked."
     },
@@ -494,63 +473,49 @@
     {
       "file": "src/ui/capture-panel.js",
       "pattern": "catch-null",
-      "line": 193,
+      "line": 265,
       "text": "if (outboxId) await markSending(outboxId).catch(() => null);",
       "reason": "MIXED, DEFERRED: audioCtx.close() is genuinely correct (closing an already-closed AudioContext has nothing to report), but markSending/markSent/markFailed swallowing leaves an outbox row stuck in the wrong state with no signal, which is how a capture can look sent and never be. src/ui/capture-panel.js is explicitly out of scope for this phase."
     },
     {
       "file": "src/ui/capture-panel.js",
       "pattern": "catch-null",
-      "line": 242,
+      "line": 324,
       "text": "if (outboxId) await markSent(outboxId, result?.ingestion?.id || null).catch(() => null);",
       "reason": "MIXED, DEFERRED: audioCtx.close() is genuinely correct (closing an already-closed AudioContext has nothing to report), but markSending/markSent/markFailed swallowing leaves an outbox row stuck in the wrong state with no signal, which is how a capture can look sent and never be. src/ui/capture-panel.js is explicitly out of scope for this phase."
     },
     {
       "file": "src/ui/capture-panel.js",
       "pattern": "catch-null",
-      "line": 264,
+      "line": 346,
       "text": "if (outboxId) outcome = await markFailed(outboxId, err).catch(() => null);",
       "reason": "MIXED, DEFERRED: audioCtx.close() is genuinely correct (closing an already-closed AudioContext has nothing to report), but markSending/markSent/markFailed swallowing leaves an outbox row stuck in the wrong state with no signal, which is how a capture can look sent and never be. src/ui/capture-panel.js is explicitly out of scope for this phase."
     },
     {
       "file": "src/ui/capture-panel.js",
-      "pattern": "empty-catch",
-      "line": 367,
-      "text": "try { recognitionHandle?.stop(); } catch { /* already stopped */ }",
-      "reason": "Correct: stop() on a MediaRecorder or SpeechRecognition that has already stopped throws and means nothing - the recorder is already in the state the caller asked for."
-    },
-    {
-      "file": "src/ui/capture-panel.js",
-      "pattern": "empty-catch",
-      "line": 371,
-      "text": "try { recorder.stop(); } catch { /* already stopped */ }",
-      "reason": "Correct: stop() on a MediaRecorder or SpeechRecognition that has already stopped throws and means nothing - the recorder is already in the state the caller asked for."
-    },
-    {
-      "file": "src/ui/capture-panel.js",
       "pattern": "catch-null",
-      "line": 516,
+      "line": 731,
       "text": "audioCtx.close().catch(() => null);",
       "reason": "MIXED, DEFERRED: audioCtx.close() is genuinely correct (closing an already-closed AudioContext has nothing to report), but markSending/markSent/markFailed swallowing leaves an outbox row stuck in the wrong state with no signal, which is how a capture can look sent and never be. src/ui/capture-panel.js is explicitly out of scope for this phase."
     },
     {
       "file": "src/ui/capture-panel.js",
       "pattern": "empty-catch",
-      "line": 524,
+      "line": 739,
       "text": "try { waveformHandle?.stop(); } catch {}",
       "reason": "Correct: stop() on a MediaRecorder or SpeechRecognition that has already stopped throws and means nothing - the recorder is already in the state the caller asked for."
     },
     {
       "file": "src/ui/charts.js",
       "pattern": "absent-as-zero",
-      "line": 42,
+      "line": 57,
       "text": "const expenseOf = (r) => (r.direction === \"expense\" ? Math.abs(Number(r.amount || 0)) : 0);",
       "reason": "ledger_entries.amount is NOT NULL and the `: 0` beside it is the deliberate 'income rows contribute no spend' branch. The real follow-up in this file is different: dailySeries() now returns { value: null, measured: false } for a day with no rows, and buildTrendData still coerces that gap to a 0-height bar. src/ui/charts.js is owned by another workstream in this phase."
     },
     {
       "file": "src/ui/diet-plan-panel.js",
       "pattern": "empty-catch",
-      "line": 74,
+      "line": 80,
       "text": "try { globalThis.localStorage?.setItem(STATE_PREFIX + key, JSON.stringify(state)); } catch { /* private mode */ }",
       "reason": "Correct: per-day plan tick state is mirrored to localStorage as an offline convenience and is reconciled against food_logs on every render. A blocked write in private mode costs the local mirror, not the record."
     },
@@ -571,7 +536,7 @@
     {
       "file": "src/ui/navigation.js",
       "pattern": "empty-catch",
-      "line": 108,
+      "line": 187,
       "text": "} catch { /* best effort */ }",
       "reason": "Correct: this is the hard-refresh escape hatch clearing caches and unregistering service workers. It must reach the cache-busted reload on the next line whatever fails, and the reload is the user-visible outcome the button promises."
     },
@@ -606,44 +571,30 @@
     {
       "file": "src/ui/workout-panel.js",
       "pattern": "empty-catch",
-      "line": 33,
+      "line": 34,
       "text": "function saveDay(key, s) { try { globalThis.localStorage?.setItem(STATE_PREFIX + key, JSON.stringify(s)); } catch { /* private mode */ } }",
       "reason": "REAL GAP, DEFERRED: same site as the catch-empty-obj entries above - a failed logWorkoutSession/deleteRow leaves the local tick and the server disagreeing silently. src/ui/workout-panel.js is owned by another workstream in this phase."
     },
     {
       "file": "src/ui/workout-panel.js",
       "pattern": "empty-catch",
-      "line": 228,
+      "line": 229,
       "text": "} catch { /* keep the local check */ }",
       "reason": "REAL GAP, DEFERRED: same site as the catch-empty-obj entries above - a failed logWorkoutSession/deleteRow leaves the local tick and the server disagreeing silently. src/ui/workout-panel.js is owned by another workstream in this phase."
     },
     {
       "file": "src/ui/workout-panel.js",
       "pattern": "empty-catch",
-      "line": 243,
-      "text": "try { await deleteRow(\"workout_logs\", prev.recordId); await hydrateStateFromSupabase().catch(() => {}); } catch { /* best effort */ }",
+      "line": 244,
+      "text": "try { await deleteRow(\"workout_logs\", prev.recordId); await refreshAfterWrite(\"the set\"); } catch { /* best effort */ }",
       "reason": "REAL GAP, DEFERRED: same site as the catch-empty-obj entries above - a failed logWorkoutSession/deleteRow leaves the local tick and the server disagreeing silently. src/ui/workout-panel.js is owned by another workstream in this phase."
     },
     {
       "file": "src/ui/workout-panel.js",
       "pattern": "empty-catch",
-      "line": 283,
+      "line": 284,
       "text": "} catch { /* best effort */ }",
       "reason": "REAL GAP, DEFERRED: same site as the catch-empty-obj entries above - a failed logWorkoutSession/deleteRow leaves the local tick and the server disagreeing silently. src/ui/workout-panel.js is owned by another workstream in this phase."
-    },
-    {
-      "file": "src/services/audio-convert.js",
-      "pattern": "empty-catch",
-      "line": 141,
-      "text": "try { await ctx?.close(); } catch { /* already closed */ }",
-      "reason": "Closing an AudioContext that is already closed throws, and there is nothing a user could do about it. This runs in a finally whose whole job is to release the decoder after the real error has ALREADY been reported by the catch above it - rethrowing here would replace a useful message ('could not convert to wav') with a meaningless one."
-    },
-    {
-      "file": "src/services/speech.js",
-      "pattern": "empty-catch",
-      "line": 323,
-      "text": "try { rec?.stop?.(); } catch { /* already stopped */ }",
-      "reason": "Stopping a recogniser that has already stopped throws, and there is nothing the user could do about it. This is the back-compat shim's stop(): the transcript is already committed by the time it runs, so rethrowing would replace a completed dictation with an error about cleanup."
     }
   ],
   "renderersWithoutErrorBranch": [

@@ -2441,7 +2441,155 @@ async function actionDisconnect(admin: any, cfg: GoogleConfig, userId: string, p
 
 // -------- handler --------
 
-const USER_ACTIONS = ["auth_url", "status", "pull", "push", "sync", "disconnect"];
+// -------- fetch_ics: mirror any calendar, with no OAuth client at all --------
+//
+// WHY THIS ACTION EXISTS. lib/ics.mjs and src/ui/calendar-import.js have always
+// built a request for `{ action: "fetch_ics", url }` and this function has never
+// answered it, so "refresh from a subscribable .ics URL" threw with the contract
+// in the error message. A browser cannot fetch a foreign .ics itself: almost no
+// calendar host sends Access-Control-Allow-Origin, so it fails at the network
+// layer with nothing readable. The fetch has to happen server-side.
+//
+// It is worth having SEPARATELY from the OAuth path because it needs no Google
+// Cloud project, no client ID, no consent screen and no verification: Google,
+// Apple, Outlook and Fastmail all publish a private .ics URL, and pasting one is
+// a ten-second setup with the same result for reading.
+//
+// THIS IS AN OUTBOUND FETCH ON THE SERVER'S BEHALF, so it is an SSRF surface and
+// is treated as one: https only, no loopback/private/link-local host, redirects
+// followed MANUALLY so every hop is re-checked (an allowed URL that 302s to
+// 169.254.169.254 is the classic bypass), a byte cap, and a timeout. The body is
+// returned verbatim to the browser and parsed there - nothing here interprets a
+// calendar, and none of it ever reaches the model (lib/gcal-sync.mjs's capability
+// rule and the tripwire in tests/gcal-sync.test.mjs).
+const ICS_MAX_BYTES = 6 * 1024 * 1024;
+const ICS_TIMEOUT_MS = 20000;
+const ICS_MAX_REDIRECTS = 4;
+
+function icsHostAllowed(u: URL): string {
+  if (u.protocol !== "https:") return `${u.protocol}// is not allowed - a calendar URL must be https (webcal:// counts, it is upgraded)`;
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) {
+    return `${host} is not a public calendar host`;
+  }
+  // IPv4 literal: reject every private, loopback, link-local and CGNAT range.
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    const blocked = a === 0 || a === 10 || a === 127
+      || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)
+      || a >= 224;
+    if (blocked) return `${host} is not a public address`;
+    return "";
+  }
+  // IPv6 literal: loopback, unique-local (fc00::/7) and link-local (fe80::/10).
+  if (host.includes(":")) {
+    if (host === "::1" || /^f[cd]/.test(host) || /^fe[89ab]/.test(host)) return `${host} is not a public address`;
+  }
+  return "";
+}
+
+async function actionFetchIcs(payload: any) {
+  const raw = String(payload?.url || "").trim();
+  if (!raw) return { ok: false, error: "no_url", message: "Give me the calendar's .ics URL." };
+  // webcal:// is what Apple and Google hand out; it is plain https underneath.
+  const upgraded = /^webcals?:\/\//i.test(raw) ? `https://${raw.replace(/^webcals?:\/\//i, "")}` : raw;
+  let target: URL;
+  try {
+    target = new URL(upgraded);
+  } catch {
+    return { ok: false, error: "bad_url", message: `"${raw.slice(0, 60)}" is not a URL.` };
+  }
+
+  const headers: Record<string, string> = { accept: "text/calendar, text/plain;q=0.8, */*;q=0.5" };
+  if (payload?.etag) headers["if-none-match"] = String(payload.etag);
+  if (payload?.last_modified) headers["if-modified-since"] = String(payload.last_modified);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ICS_TIMEOUT_MS);
+  try {
+    let res: Response | null = null;
+    for (let hop = 0; hop <= ICS_MAX_REDIRECTS; hop++) {
+      const why = icsHostAllowed(target);
+      if (why) return { ok: false, error: "blocked_host", message: why };
+      res = await fetch(target.toString(), { headers, redirect: "manual", signal: controller.signal });
+      if (res.status < 300 || res.status > 399) break;
+      const location = res.headers.get("location");
+      // Drain the redirect body so the connection is not left hanging.
+      await res.body?.cancel().catch(() => {});
+      if (!location) return { ok: false, error: "bad_redirect", message: `${target.host} redirected with no destination.` };
+      try {
+        target = new URL(location, target);
+      } catch {
+        return { ok: false, error: "bad_redirect", message: `${target.host} redirected somewhere unreadable.` };
+      }
+      res = null;
+    }
+    if (!res) return { ok: false, error: "too_many_redirects", message: `${target.host} redirected more than ${ICS_MAX_REDIRECTS} times.` };
+
+    // 304 is a SUCCESS with no body: the subscription is up to date. Reporting
+    // it as a failure would make an unchanged calendar look broken.
+    if (res.status === 304) {
+      await res.body?.cancel().catch(() => {});
+      return { ok: true, status: 304, unchanged: true, text: "", etag: payload?.etag || null, lastModified: payload?.last_modified || null };
+    }
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
+      return {
+        ok: false,
+        error: "fetch_failed",
+        status: res.status,
+        // The host's own status is the only honest reason. A 401/403 on an .ics
+        // almost always means the SECRET url was copied without its token.
+        message: `${target.host} answered ${res.status}${res.status === 401 || res.status === 403
+          ? " - that usually means the private address was copied without its token"
+          : ""}.`,
+      };
+    }
+    const declared = Number(res.headers.get("content-length") || 0);
+    if (declared && declared > ICS_MAX_BYTES) {
+      await res.body?.cancel().catch(() => {});
+      return { ok: false, error: "too_large", message: `That calendar is ${Math.round(declared / 1048576)} MB - the limit is ${ICS_MAX_BYTES / 1048576} MB.` };
+    }
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength > ICS_MAX_BYTES) {
+      return { ok: false, error: "too_large", message: `That calendar is over the ${ICS_MAX_BYTES / 1048576} MB limit.` };
+    }
+    const text = new TextDecoder("utf-8").decode(buf);
+    // A login page is 200 OK with HTML in it, and handing that to the parser
+    // produces "0 events" - which reads as an empty calendar rather than a wrong
+    // URL. Name it here instead.
+    if (!/BEGIN:\s*VCALENDAR/i.test(text)) {
+      return {
+        ok: false,
+        error: "not_a_calendar",
+        status: res.status,
+        message: `${target.host} answered, but what came back is not an iCalendar file${/<html/i.test(text) ? " - it looks like a web page, so the link is probably the calendar's HTML view rather than its .ics address" : ""}.`,
+      };
+    }
+    return {
+      ok: true,
+      status: res.status,
+      url: target.toString(),
+      text,
+      etag: res.headers.get("etag"),
+      lastModified: res.headers.get("last-modified"),
+      bytes: buf.byteLength,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      error: "fetch_failed",
+      message: /abort/i.test(message) ? `${target.host} did not answer within ${ICS_TIMEOUT_MS / 1000}s.` : message,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const USER_ACTIONS = ["auth_url", "status", "pull", "push", "sync", "disconnect", "fetch_ics"];
 const CRON_ACTIONS = ["drain", "renew", "sync"];
 
 Deno.serve(async (req) => {
@@ -2507,6 +2655,9 @@ Deno.serve(async (req) => {
     if (action === "status") return Response.json(await actionStatus(admin, cfg, userId), { headers: corsHeaders });
     if (action === "auth_url") return Response.json(await actionAuthUrl(admin, cfg, userId, payload), { headers: corsHeaders });
     if (action === "disconnect") return Response.json(await actionDisconnect(admin, cfg, userId, payload), { headers: corsHeaders });
+    // Needs NO Google OAuth client, which is the whole point of it: a secret
+    // .ics URL mirrors any calendar on earth with nothing to configure.
+    if (action === "fetch_ics") return Response.json(await actionFetchIcs(payload), { headers: corsHeaders });
 
     if (!cfg.configured) return Response.json(notConfigured(cfg), { headers: corsHeaders });
 

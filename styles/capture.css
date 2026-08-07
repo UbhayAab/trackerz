@@ -442,6 +442,98 @@
   background: linear-gradient(180deg, #0d1015, #1b2230);
 }
 
+/* ---------------------------------------------------------------------------
+   #voiceStatus and #captureAttachments - the two live regions that make
+   pressing Stop, and attaching a photo, produce something you can SEE.
+   Both sit directly under the action row, above the fold on a phone, because
+   the previous home for this information was a collapsed <details> nobody ever
+   opened. `tone` is set by src/ui/capture-panel.js.
+   --------------------------------------------------------------------------- */
+
+.voice-status {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--panel-warm);
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.voice-status[data-tone="busy"] {
+  border-color: var(--wellness, #138a5b);
+  color: var(--ink);
+}
+
+.voice-status[data-tone="ok"] {
+  border-color: var(--money, #138a5b);
+  background: var(--money-soft, rgba(19, 138, 91, 0.08));
+  color: var(--ink);
+}
+
+.voice-status[data-tone="warning"] {
+  border-color: var(--sun, #b45309);
+}
+
+.voice-status[data-tone="error"] {
+  border-color: var(--danger, #c2410c);
+  color: var(--danger, #c2410c);
+}
+
+/* The mic button says it is live, not only the status text. */
+.voice-button.is-listening {
+  border-color: var(--danger, #c2410c);
+  color: var(--danger, #c2410c);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .voice-button.is-listening {
+    animation: voice-listening-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes voice-listening-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(194, 65, 12, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(194, 65, 12, 0); }
+}
+
+.capture-attachments {
+  display: grid;
+  gap: 6px;
+}
+
+.attachment-chip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  background: var(--panel-warm);
+}
+
+.attachment-name {
+  font-size: 0.84rem;
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.attachment-state {
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.attachment-chip.is-pending { border-left-color: var(--line-strong); }
+.attachment-chip.is-busy { border-left-color: var(--sun, #b45309); }
+.attachment-chip.is-ok { border-left-color: var(--money, #138a5b); }
+.attachment-chip.is-error { border-left-color: var(--danger, #c2410c); }
+.attachment-chip.is-error .attachment-state { color: var(--danger, #c2410c); }
+
 .optimistic-queue {
   display: grid;
   gap: 8px;

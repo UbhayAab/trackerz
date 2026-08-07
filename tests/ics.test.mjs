@@ -836,6 +836,58 @@ for (const name of ["google-export", "apple-export", "outlook-export", "all-day"
   assert.ok(built.ics.includes("BEGIN:VCALENDAR"));
   assert.ok(built.ics.includes("X-WR-CALNAME:Trackerz reminders"));
 
+  // ---------------------------------------------------------------------
+  // THE ENDPOINT HAS TO EXIST. `icsProxyRequest` has always built a request
+  // for `{ action: "fetch_ics" }` and the gcal function never answered it, so
+  // "refresh from a subscribable .ics URL" threw with its own contract in the
+  // error message. Verified live on 2026-08-08 after this landed: 202,175 bytes
+  // and 524 VEVENTs pulled from a public Google calendar.
+  // ---------------------------------------------------------------------
+  {
+    const gcal = readFileSync("supabase/functions/gcal/index.ts", "utf8");
+    const contract = ui.icsProxyRequest("webcal://example.com/a.ics");
+    assert.equal(contract.endpoint, "gcal");
+    assert.ok(gcal.includes(`"${contract.body.action}"`),
+      `the gcal function does not handle "${contract.body.action}" - the browser cannot fetch a foreign .ics itself`);
+    assert.ok(/USER_ACTIONS\s*=\s*\[[^\]]*"fetch_ics"/.test(gcal), "fetch_ics is not on the user action allowlist");
+    assert.ok(/action === "fetch_ics"/.test(gcal), "fetch_ics is allowlisted but never dispatched");
+    // Every key the client sends must be read by the server, or a conditional
+    // refresh silently re-downloads the whole calendar every time.
+    for (const key of Object.keys(contract.body)) {
+      if (key === "action") continue;
+      assert.ok(gcal.includes(`payload?.${key}`), `fetch_ics ignores the "${key}" the client sends`);
+    }
+    // It is an outbound fetch on the server's behalf, so it is an SSRF surface.
+    assert.ok(/redirect:\s*"manual"/.test(gcal), "redirects must be followed manually so every hop is re-checked");
+    for (const guard of ["169.254", "127", "localhost", "https:"]) {
+      assert.ok(gcal.includes(guard), `the fetch_ics host guard does not mention ${guard}`);
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // NO DEAD CONTROLS. The URL row was added to the shell in one edit and wired
+  // in another; between them it was a button that did nothing, which is worse
+  // than no button. Every id the shell declares must be looked up by the mount.
+  // ---------------------------------------------------------------------
+  {
+    const src = readFileSync("src/ui/calendar-import.js", "utf8");
+    const shell = /const SHELL = `([\s\S]*?)`;/.exec(src);
+    assert.ok(shell, "the panel shell could not be found");
+    const ids = [...shell[1].matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(ids.length >= 6, `expected the panel's controls, found ${ids.length}`);
+    for (const id of ids) {
+      assert.ok(src.includes(`querySelector("#${id}")`), `#${id} is in the markup but the mount never looks it up`);
+    }
+    // Every button must reach an addEventListener through the variable the
+    // mount bound it to, so a control added to the markup without a handler
+    // fails here rather than shipping as a button that does nothing.
+    for (const id of ["calIcsFetch", "calIcsAdd", "calIcsClear", "calIcsExport"]) {
+      const bind = new RegExp(`const\\s+(\\w+)\\s*=\\s*host\\.querySelector\\("#${id}"\\)`).exec(src);
+      assert.ok(bind, `#${id} is never bound to a variable`);
+      assert.ok(src.includes(`${bind[1]}.addEventListener`), `#${id} is a button nothing listens to`);
+    }
+  }
+
   // A subscription URL cannot be fetched from the browser, so the fetcher is
   // injected. The refresh must produce a PLAN, not writes.
   const plan = await ui.refreshFromIcsUrl("webcal://example.com/cal.ics", {

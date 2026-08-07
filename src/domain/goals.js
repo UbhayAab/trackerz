@@ -53,6 +53,33 @@ export function resolveDietTargets(budgets, scaffoldTargets = {}) {
   return t;
 }
 
+/**
+ * WHERE DID THIS TARGET COME FROM?
+ *
+ * `resolveDietTargets` folds a saved budget and a scaffold default into one
+ * number and then forgets which it was. That is fine for arithmetic and wrong
+ * for anything that SPEAKS to the user: the `budgets` table has been empty for
+ * the life of this app, so every "Targets: 162g protein" the morning brief has
+ * ever printed, and every "151g protein to go" in the evening, was measured
+ * against a number the owner never chose. Stating a default back to someone as
+ * their own goal is the same disease as rendering absent data as a measured
+ * zero, one layer up.
+ *
+ * @returns {{calories: "user"|"default", protein_g: "user"|"default"}}
+ */
+export function dietTargetSources(budgets) {
+  return {
+    calories: goalValue(budgets, "daily_calories") != null ? "user" : "default",
+    protein_g: goalValue(budgets, "daily_protein") != null ? "user" : "default",
+  };
+}
+
+/** True when NEITHER diet target was set by the user. */
+export function dietTargetsAreDefaults(budgets) {
+  const src = dietTargetSources(budgets);
+  return src.calories === "default" && src.protein_g === "default";
+}
+
 export function activeProteinTarget(budgets, scaffoldTarget) {
   return goalValue(budgets, "daily_protein") ?? scaffoldTarget ?? MACRO_TARGETS.protein_g;
 }
@@ -60,4 +87,4 @@ export function activeCalorieTarget(budgets, scaffoldTarget) {
   return goalValue(budgets, "daily_calories") ?? scaffoldTarget ?? MACRO_TARGETS.calories;
 }
 
-export default { GOALS, goalDef, goalValue, goalDisplayValue, resolveDietTargets, activeProteinTarget, activeCalorieTarget };
+export default { GOALS, goalDef, goalValue, goalDisplayValue, resolveDietTargets, dietTargetSources, dietTargetsAreDefaults, activeProteinTarget, activeCalorieTarget };

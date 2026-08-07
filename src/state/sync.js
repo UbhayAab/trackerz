@@ -6,7 +6,7 @@ import {
 } from "../services/supabase-data.js";
 import { setDietPlanOverride, setGymPlanOverride, setDatedPlanOverrides, parsePlanScope, planForDate, isoWeekday } from "../domain/diet/plan.js";
 import { isPlanDelta } from "../../lib/plan-merge.mjs";
-import { resolveDietTargets, goalDef } from "../domain/goals.js";
+import { resolveDietTargets, dietTargetSources, goalDef } from "../domain/goals.js";
 import { getBudgetPace } from "../analytics/budget-trajectory.js";
 import { estimateNutrition } from "../../lib/food-nutrition.mjs";
 import { rowCountsAsSpending } from "../../lib/txn-semantics.mjs";
@@ -219,6 +219,9 @@ export async function hydrateStateFromSupabase() {
       state.metrics.todaySpend = todaySpend;
       state.metrics.protein = protein;
       state.metrics.proteinTarget = dietTargets.protein_g;
+      // Carry WHERE each target came from, so no surface can state a scaffold
+      // default back to him as a goal he set. `budgets` is empty in the live DB.
+      state.metrics.targetSources = dietTargetSources(budgets);
       state.metrics.caloriesToday = caloriesToday;
       state.metrics.caloriesTarget = dietTargets.calories;
       state.metrics.caloriesLeft = Math.max(0, Math.round(dietTargets.calories - caloriesToday));

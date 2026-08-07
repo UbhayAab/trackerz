@@ -248,4 +248,61 @@ const prompt = jbVoiceUserPrompt(facts);
 assert.ok(prompt.startsWith("FACTS JSON:\n{"));
 assert.ok(prompt.includes('"for_date":"2026-07-06"'));
 
+// ---------------------------------------------------------------------------
+// "Rs 0 spent" ON A DAY WITH NO LEDGER ROWS IS NOT A MEASUREMENT.
+//
+// Both closeouts of 2026-08-07 opened with "Day closed: Rs 0 spent" against a
+// day that had zero money rows. Nothing was measured; the sum of an empty set
+// was printed as a fact, in the one sentence the owner actually reads. This file
+// already refuses to do that for sleep - `sleepH` stays null so the voice model
+// cannot narrate "you got zero sleep" - and money now gets the same treatment.
+//
+// The discriminator is the ROW COUNT, not the sum: a day of pure income or
+// transfers has money rows and a genuine Rs 0 of spending, and must still read
+// as a measurement.
+{
+  // No ledger rows at all -> say so, and drop the cap verdict with it: there is
+  // nothing to be under or over.
+  const noMoney = jbCloseDay({ foods: [{ protein_g: 40 }], budgets: [{ kind: "daily_spend", amount: 1500 }], plannedKind: "rest" });
+  assert.equal(noMoney.moneyRows, 0, "the day object must carry how many money rows there were");
+  const noMoneyBody = jbCloseoutBody(noMoney, {});
+  assert.match(noMoneyBody, /no spending logged/, noMoneyBody);
+  assert.doesNotMatch(noMoneyBody, /Rs 0 spent/, "an empty ledger must never be narrated as a measured Rs 0");
+  assert.doesNotMatch(noMoneyBody, /under cap|over cap/, "no rows means no verdict against the cap");
+
+  // Rows exist and they genuinely total zero spending (an income-only day):
+  // that IS a measurement and must still print.
+  const incomeOnly = jbCloseDay({
+    ledger: [{ amount: 5000, direction: "income", counts_as_income: true }],
+    budgets: [], plannedKind: "rest",
+  });
+  assert.equal(incomeOnly.moneyRows, 1);
+  assert.match(jbCloseoutBody(incomeOnly, {}), /Rs 0 spent/, "a tracked day that really spent nothing still reports Rs 0");
+
+  // Real spending is unchanged.
+  const spent = jbCloseDay({
+    ledger: [{ amount: 240, direction: "expense", counts_as_spending: true }],
+    budgets: [], plannedKind: "rest",
+  });
+  assert.match(jbCloseoutBody(spent, {}), /Rs 240 spent/);
+
+  // The morning brief's "Yesterday:" line reads the STORED day object. Rows
+  // written before `moneyRows` existed are genuinely unknown, so they keep the
+  // old wording rather than being relabelled "no spending logged" - inventing an
+  // absence is the same error as inventing a zero.
+  const legacy = jbMorningFallback({
+    weekday: "Friday", diet_label: "Soybean day", workout: {}, targets: {},
+    yesterday: { spend: 0, protein: 0, logged_anything: true, workout_done: false, money_rows: null },
+    streaks: {},
+  });
+  assert.match(legacy, /Rs 0 spent/, "a pre-field habit_days row must not be given an absence it never recorded");
+
+  const knownEmpty = jbMorningFallback({
+    weekday: "Friday", diet_label: "Soybean day", workout: {}, targets: {},
+    yesterday: { spend: 0, protein: 0, logged_anything: true, workout_done: false, money_rows: 0 },
+    streaks: {},
+  });
+  assert.match(knownEmpty, /no spending logged/);
+}
+
 console.log("jarvis-brief tests passed");

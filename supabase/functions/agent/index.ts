@@ -611,7 +611,8 @@ Rules:
   * weekdays is a LIST for a rule that fires on several days: "Mon, Wed and Fri" is freq:"weekly", weekdays:[1,3,5]. Use weekday (singular) for exactly one day.
   * nth_weekday is an ordinal weekday inside the month, written as a number-and-day string: "3TU" is the third Tuesday, "-1FR" is the LAST Friday. "team review on the last Friday of every month" is freq:"monthly", nth_weekday:"-1FR". Days are SU MO TU WE TH FR SA.
   * until ends the rule on a date; count ends it after N fires. "every Monday until 30 September" sets until:"2026-09-30". "the next 6 Mondays" sets count:6. Set at most one of them.
-  * A DATE THAT BELONGS TO A PERSON OR A YEARLY EVENT REPEATS EVERY YEAR. "my birthday is 14 August" / "her birth date is 14th Aug" / "anniversary on 2 March" is freq:"yearly", month_of_year, day_of_month - NEVER freq:"once". Stating a birth date is not scheduling a single event; it is a fact that recurs for every year that follows.
+  * A DATE THAT BELONGS TO A PERSON OR A YEARLY EVENT REPEATS EVERY YEAR. "my birthday is 14 August" / "her birth date is 14th Aug" / "anniversary on 2 March" is freq:"yearly", month_of_year, day_of_month - NEVER freq:"once". Stating a birth date is not scheduling a single event; it is a fact that recurs for every year that follows. If a YEAR is stated ("19 October 2002"), also set dtstart to that full date - it is the only place the birth year can live, and it is what lets the calendar say "turns 24".
+  * A KNOWN FACT IS NOT A CALENDAR ENTRY, and the ALREADY-LOGGED rule does NOT apply to dates. If the memory context already carries the user's birthday or anniversary and they state it again, STILL emit create_reminder_candidate: knowing a date is not the same as having it on the calendar, the server de-duplicates, and saying nothing reads to the user as the capture having been lost. A DATE THAT BELONGS TO A FACT IS ALSO NEVER THE DATE OF AN EVENT: in "my birthday is 19 Oct 2002, also I had 50g aloo bhujia", the meal happened NOW - never date it 19 October.
   * "the 10th of every 3rd month" / "quarterly, deadline 10 Jan, Apr, Jul, Oct" is freq:"quarterly" with month_of_year set to the FIRST month of the cycle (1 for Jan/Apr/Jul/Oct) and day_of_month 10.
   * "rent on the 5th" is freq:"monthly", day_of_month:5. "every Monday" is freq:"weekly", weekday:1. "dentist on 12 Sep" with no repetition is freq:"once", on_date.
   * lead_days is how much WARNING it needs, and you may omit it: a filing or bill defaults to 7 days, a birthday or anniversary to 2, everything else to same-day. Set it explicitly only when the user says so ("tell me a week before").
@@ -1681,16 +1682,22 @@ function hourFromWords(t: string): number | null {
   if (/\b(morning|breakfast|dawn)\b/.test(t)) return 8;
   return null;
 }
+// A date that belongs to a FACT is not the date of the event. 2026-08-06, live:
+// "My bday is 19 oct 2002 ... Also, I had 50g aloo bhujia" salvaged a food_log
+// dated 2026-10-19, seventy-four days in the future - the real lunch left that
+// day's totals and a phantom one landed in October. Mirror of lib/fan-out-expander.mjs.
+const FACT_DATE_RX = /\b(?:birthdays?|bday|birth\s*dates?|birth\s*days?|anniversary)\b[^.;\n]{0,44}/gi;
 function resolveOccurredAt(text = "", now = ""): string {
   const base = now ? new Date(now) : new Date();
   if (Number.isNaN(base.getTime())) return new Date().toISOString();
-  const t = String(text).toLowerCase();
+  const t = String(text).toLowerCase().replace(FACT_DATE_RX, " ");
   const { y, m, d } = istParts(base);
   let year = y, month = m, day = d, offset = 0, dated = false;
+  let hadYear = false;
   let mm = t.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
   if (mm) {
     day = Number(mm[1]); month = Number(mm[2]) - 1;
-    if (mm[3]) year = Number(mm[3].length === 2 ? `20${mm[3]}` : mm[3]);
+    if (mm[3]) { year = Number(mm[3].length === 2 ? `20${mm[3]}` : mm[3]); hadYear = true; }
     dated = true;
   }
   if (!dated) {
@@ -1706,10 +1713,150 @@ function resolveOccurredAt(text = "", now = ""): string {
   const sameDay = !dated && offset === 0;
   const istHour = new Date(base.getTime() + 5.5 * 3_600_000).getUTCHours();
   const hour = hourFromWords(t) ?? (sameDay ? istHour : 12);
-  const at = new Date(Date.UTC(year, month, day + offset, hour, 0, 0));
+  let at = new Date(Date.UTC(year, month, day + offset, hour, 0, 0));
+  // A salvaged log is a record of something that already happened, so a resolved
+  // date in the future is by construction a misread. A bare month-day rolls back
+  // a year (the rule lib/amend-target.mjs already uses); a stated future year
+  // falls back to the capture moment. Mirror of lib/fan-out-expander.mjs.
+  const isFuture = (dt: Date) => dt.getTime() - 5.5 * 3_600_000 > base.getTime() + 60_000;
+  if (isFuture(at)) {
+    const rolled = dated && !hadYear
+      ? new Date(Date.UTC(year - 1, month, day + offset, hour, 0, 0))
+      : null;
+    at = rolled && !isFuture(rolled) ? rolled : new Date(Date.UTC(y, m, d, hourFromWords(t) ?? istHour, 0, 0));
+  }
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${at.getUTCFullYear()}-${pad(at.getUTCMonth() + 1)}-${pad(at.getUTCDate())}T${pad(at.getUTCHours())}:00:00+05:30`;
 }
+// -------- a stated birth date always reaches the calendar --------------------
+//
+// Mirror of datedFactReminders() in lib/reminders.mjs; tests/reminders.test.mjs
+// owns the cases. Measured against THIS deployed function on 2026-08-08:
+//   "my mother's birthday is 12 March"  -> a correct yearly reminder
+//   "my birthday is 19 October 2002"    -> ZERO tool calls, ZERO rows
+// The only difference was the memory context. `memory_facts.birthday` already
+// held "19 October 2002", so the brain applied the prompt's ALREADY-LOGGED rule
+// and said nothing at all - and to the owner that reads exactly like the capture
+// being lost. Knowing a date is not the same as having it on the calendar, so
+// this path must not depend on what else is in the context window.
+//
+// The connector is deliberately narrow (is / was / falls / comes / : / -). With a
+// bare "on" allowed, "birthday party on 3 May" - a one-off - became a yearly rule,
+// and a wrong yearly rule fires every year.
+const SA_MONTH_WORDS: Record<string, number> = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+  may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11,
+  dec: 12, december: 12,
+};
+const SA_MONTH_NAMES = Object.keys(SA_MONTH_WORDS).sort((a, b) => b.length - a.length).join("|");
+const SA_FACT_RE = new RegExp(
+  `((?:[a-z][a-z'-]*\\s+){0,3}?)\\b(birthdays?|bday|birth\\s*dates?|birth\\s*days?|anniversary)\\b\\s*(?:(?:is|was|falls|comes|will\\s+be)\\s*(?:on\\s+)?|[:\\-]\\s*)`,
+  "gi",
+);
+function saSpokenDate(s: string): { d: number; m: number; y: number | null } | null {
+  const t = String(s || "").toLowerCase();
+  let m = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${SA_MONTH_NAMES})\\b\\.?(?:[,\\s]+(\\d{4}))?`).exec(t);
+  if (m) return { d: Number(m[1]), m: SA_MONTH_WORDS[m[2]], y: m[3] ? Number(m[3]) : null };
+  m = new RegExp(`\\b(${SA_MONTH_NAMES})\\b\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:[,\\s]+(\\d{4}))?`).exec(t);
+  if (m) return { d: Number(m[2]), m: SA_MONTH_WORDS[m[1]], y: m[3] ? Number(m[3]) : null };
+  return null;
+}
+function saOwnerTitle(before: string, noun: string): string {
+  const t = String(before || "").toLowerCase().trim().replace(/\s+/g, " ");
+  const own = /(?:^|\s)([a-z][a-z'-]*(?:'s|s'))(?:\s+([a-z]+))?\s*$/.exec(t);
+  if (own) {
+    const who = own[1].replace(/(?:'s|s')$/, "");
+    return `${who.charAt(0).toUpperCase()}${who.slice(1)}'s ${own[2] ? `${own[2]} ` : ""}${noun}`;
+  }
+  const mine = /(?:^|\s)(my|our|his|her|their)(?:\s+([a-z]+))?\s*$/.exec(t);
+  if (mine) {
+    const who = mine[1] === "his" || mine[1] === "her" ? "Their" : mine[1].charAt(0).toUpperCase() + mine[1].slice(1);
+    return `${who} ${mine[2] ? `${mine[2]} ` : ""}${noun}`;
+  }
+  const bare = /(?:^|\s)([a-z]+)\s*$/.exec(t);
+  const s = `${bare ? `${bare[1]} ` : ""}${noun}`;
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function saDatedFactReminders(text: string, todayKey: string): Record<string, unknown>[] {
+  const src = String(text || "");
+  if (!src) return [];
+  const thisYear = /^(\d{4})-/.exec(todayKey || "") ? Number(todayKey.slice(0, 4)) : null;
+  const out: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  SA_FACT_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = SA_FACT_RE.exec(src)) != null) {
+    const noun = /anniversary/i.test(m[2]) ? "anniversary" : "birthday";
+    const when = saSpokenDate(src.slice(m.index + m[0].length, m.index + m[0].length + 40));
+    if (!when || !when.m || when.d < 1 || when.d > saDaysInMonth(2004, when.m)) continue;
+    const title = saOwnerTitle(m[1], noun);
+    const key = `${title}|${when.m}|${when.d}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const row: Record<string, unknown> = {
+      title, kind: noun === "anniversary" ? "anniversary" : "birthday",
+      freq: "yearly", month_of_year: when.m, day_of_month: when.d, lead_days: 2,
+      // The YEAR is kept, in dtstart - the only column that can hold it, and what
+      // lets the calendar say "turns 24" instead of dropping what the user said.
+      // A FUTURE year is not a birth year and is left off rather than guessed at.
+      _dated_fact: true,
+    };
+    if (when.y && when.y >= 1900 && (thisYear == null || when.y <= thisYear)) {
+      const d = Math.min(when.d, saDaysInMonth(when.y, when.m));
+      row.dtstart = `${when.y}-${String(when.m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+    out.push(row);
+  }
+  return out;
+}
+function saDaysInMonth(y: number, mo: number): number {
+  if (mo === 2) return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 29 : 28;
+  return [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+}
+/**
+ * Make a stated birth date reach the calendar, once, under a title that is a
+ * function of what the user SAID rather than of how the model phrased it.
+ *
+ * Mirror of normalizeDatedFactCalls() in lib/reminders.mjs. Two live failures,
+ * one fix. (1) With `memory_facts.birthday` already holding the date, the brain
+ * emitted nothing at all and the capture read as lost. (2) Once it did emit, it
+ * renamed "my birthday" to "Ubhay's birthday" - a different title for the same
+ * fact, so the row could never be matched to the one already stored and every
+ * mention wrote another 19 October. A NAMED owner stays distinct, because that
+ * title is derived from the text too, so two people who share a date never merge.
+ */
+function salvageDatedFact(calls: ToolCall[], evidence: string, todayKey: string): ToolCall[] {
+  const facts = saDatedFactReminders(evidence, todayKey);
+  if (!facts.length) return calls;
+  const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
+  const list = calls.map((tc) => {
+    if (!tc || tc.name !== "create_reminder_candidate") return tc;
+    const a = (tc.arguments || {}) as any;
+    const kind = String(a.kind || "").toLowerCase();
+    if (kind !== "birthday" && kind !== "anniversary") return tc;
+    const hit = facts.find((f) => f.day_of_month === num(a.day_of_month) && f.month_of_year === num(a.month_of_year));
+    if (!hit) return tc;
+    return {
+      ...tc,
+      arguments: {
+        ...a,
+        title: hit.title,
+        // The model carries no birth YEAR - there is no argument for one - so the
+        // sentence's own year is the only source there is.
+        ...(hit.dtstart && !a.dtstart ? { dtstart: hit.dtstart } : {}),
+        _dated_fact: true,
+      },
+    } as ToolCall;
+  });
+  if (list.some((tc) => tc?.name === "create_reminder_candidate")) return list;
+  return [...list, ...facts.map((args) => ({
+    name: "create_reminder_candidate",
+    arguments: args as any,
+    confidence: 0.95,
+  } as ToolCall))];
+}
+
 function isSafetyReview(tc: ToolCall): boolean {
   const reason = String((tc?.arguments as any)?.reason || "").toLowerCase();
   return reason.includes("injection") || reason.includes("malicious");
@@ -4924,12 +5071,16 @@ async function runPipeline(opts: { text: string; inlineMedia: { mimeType: string
   }
 
   const { validCalls, rejected } = parseToolCalls(raw, nowIso);
-  const shapedCalls = recomputeMealSlots(
-    recomputeFoodMacros(
-      expandToolCalls(validCalls, combinedText, nowIso), // fan-out + pure-food fallback
-    ), // then deterministic food-macro override (table beats the model for everyday foods)
+  const shapedCalls = salvageDatedFact( // a stated birth date always reaches the calendar
+    recomputeMealSlots(
+      recomputeFoodMacros(
+        expandToolCalls(validCalls, combinedText, nowIso), // fan-out + pure-food fallback
+      ), // then deterministic food-macro override (table beats the model for everyday foods)
+      combinedText,
+    ), // ...and the same treatment for meal_slot: the capture's own words, else the clock
     combinedText,
-  ); // ...and the same treatment for meal_slot: the capture's own words, else the clock
+    saDayKey(nowIso, SA_DEFAULT_TZ),
+  );
 
   // LAST GATE. Rules the SYSTEM_PROMPT already states, now actually enforced.
   //
@@ -5535,9 +5686,42 @@ async function applyTool(supabase: ReturnType<typeof adminClient>, userId: strin
       // A RECURRING calendar fact, not an event that happened. Stored as rule
       // PARTS so lib/reminders.mjs can compute the next occurrence with integer
       // arithmetic and never parse a date or touch a timezone.
+      const cols = reminderColumns(args, { today: saDayKey(occurredAt, SA_DEFAULT_TZ), tz: SA_DEFAULT_TZ }) as any;
+      // A DATED FACT SAID TWICE IS ONE CALENDAR ENTRY. The salvage below fires on
+      // every mention of a birth date, so without this, saying "my birthday is
+      // 19 October" a second time would write a second 19 October. Returning the
+      // row that is already there answers the user's real question - "is it
+      // saved?" - with the row itself, rather than with silence or a duplicate.
+      if ((args as any)?._dated_fact) {
+        const { data: existing } = await supabase.from("reminders")
+          .select("*").eq("user_id", userId).is("deleted_at", null)
+          .eq("freq", cols.freq).eq("day_of_month", cols.day_of_month)
+          .eq("month_of_year", cols.month_of_year).limit(20);
+        const match = (existing || []).find((r: any) =>
+          String(r.title || "").trim().toLowerCase() === String(cols.title || "").trim().toLowerCase());
+        if (match) {
+          // FILL, never overwrite. Saying the birthday again with the year in it
+          // ("19 October 2002" after a bare "19 October") is new information, and
+          // dropping it would make the repeat a no-op that taught the user their
+          // capture did nothing. Only columns that are currently EMPTY are set,
+          // so a repeat can never quietly rewrite something they already had.
+          const fill: Record<string, unknown> = {};
+          for (const k of ["dtstart", "note", "at_time"]) {
+            if (match[k] == null && (cols as any)[k] != null) fill[k] = (cols as any)[k];
+          }
+          // The row EXISTED before this capture, so the undo record must not be
+          // an insert: undoing an insert deletes, and that would take the user's
+          // birthday away for a capture that only added a year to it. Handing the
+          // before-image back turns it into a reversible upsert.
+          (args as any)._matched_before = match;
+          if (!Object.keys(fill).length) return { data: match, error: null } as any;
+          const { data: filled, error: fillErr } = await supabase.from("reminders")
+            .update(fill).eq("id", match.id).select().single();
+          return { data: filled || match, error: fillErr || null } as any;
+        }
+      }
       return supabase.from("reminders").insert({
-        user_id: userId, ingestion_id: ingestionId,
-        ...reminderColumns(args, { today: saDayKey(occurredAt, SA_DEFAULT_TZ), tz: SA_DEFAULT_TZ }),
+        user_id: userId, ingestion_id: ingestionId, ...cols,
       }).select().single();
     }
     case "schedule_task_candidate": {
@@ -5702,7 +5886,12 @@ function buildUndoPayload(
     if (note) payload.note = note;
     return payload;
   }
-  const isUpsert = Boolean(UPSERT_TOOLS[toolName]);
+  // A BEFORE-IMAGE IS PROOF THE ROW ALREADY EXISTED. An insert has none by
+  // definition, so anything that arrives here carrying one is an edit however it
+  // was spelled, and recording it as an insert would make its undo a DELETE of a
+  // row the capture did not create. Today that is the upsert tools plus a dated
+  // fact that matched a reminder already on the calendar.
+  const isUpsert = Boolean(UPSERT_TOOLS[toolName]) || Boolean(before);
   const payload: Record<string, unknown> = {
     v: 2,
     op: isUpsert ? "upsert" : "insert",
@@ -5867,7 +6056,17 @@ async function persistRunAndActions(
         if (row && row.id) {
           appliedTable = tableForTool(tc.name, tc.arguments);
           appliedId = row.id;
-          appliedColumns = undoColumnsFor(tc.name, appliedBefore, row);
+          // A write that MATCHED a row already there is an edit, not an insert.
+          // Only applyTool knows that it matched, so it hands the before-image
+          // back on the arguments; without this the undo would delete a row the
+          // capture never created.
+          const matched = (tc.arguments as any)?._matched_before;
+          if (matched) {
+            appliedBefore = matched;
+            appliedColumns = Object.keys(matched).filter((k) => matched[k] == null && row[k] != null);
+          } else {
+            appliedColumns = undoColumnsFor(tc.name, appliedBefore, row);
+          }
         } else {
           // A write tool that produced no row is a contract failure, not a
           // success. Do NOT record auto_applied with a null id - demote to
@@ -5954,6 +6153,21 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
 
+  // WHO AND WHAT FAILED, held outside the try so the catch can still write it
+  // down. Until now the catch below returned a 500 and recorded NOTHING: every
+  // ai_runs row in this database comes from the success path, where `status` is
+  // the literal "completed". So `ai_runs.status` had two values across 181 rows
+  // ('completed', 'succeeded') and never 'errored', `error_message` was null on
+  // every single one, and the "6 boiled eggs" capture of 2026-07-24 that died on
+  // an unreachable function left an ai_action carrying the reason in its
+  // arguments and NO run row at all. A failure table that only ever receives
+  // successes reads as a 0% failure rate, which is why the owner keeps finding
+  // breakage before the app mentions it. src/ui/audit-log.js has been checking
+  // `runs.some(r => r.status === "errored")` for a status nothing could write.
+  let failedUserId: string | null = null;
+  let failedIngestionId: string | null = null;
+  const startedAt = Date.now();
+
   try {
     // 1. JWT - required, never trust userId from body.
     const auth = req.headers.get("authorization") || "";
@@ -5966,12 +6180,14 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: "invalid_auth" }, { status: 401, headers: corsHeaders });
     }
     const userId = userResp.user.id;
+    failedUserId = userId;
 
     // 2. Payload.
     const payload = (await req.json()) as AgentRequest;
     if (!payload?.ingestionId) {
       return Response.json({ ok: false, error: "ingestionId required" }, { status: 400, headers: corsHeaders });
     }
+    failedIngestionId = payload.ingestionId;
 
     // 3. Verify the ingestion belongs to this user. The ingestion already has
     //    user_id from the client (RLS would reject otherwise), but recheck.
@@ -6103,6 +6319,33 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
+    // WRITE THE FAILURE DOWN before answering. The response already told the
+    // client; nothing told the database, so a failed capture was invisible to
+    // the audit log, to the briefing engine and to the owner.
+    //
+    // status 'errored' is the value src/ui/audit-log.js already looks for.
+    // estimated_cost_usd is 0 rather than null: a run that threw is not billed
+    // by this function, and 0 keeps it out of the daily cost cap. It DOES count
+    // toward the 5-minute rate limit, which is the safe direction - a client
+    // retrying into a broken pipeline should be slowed, not given free attempts.
+    //
+    // Wrapped in its own try: a logging failure must never replace the real
+    // error with a different one. If it cannot be recorded, the 500 still goes
+    // out unchanged.
+    if (failedUserId && failedIngestionId) {
+      try {
+        await adminClient().from("ai_runs").insert({
+          user_id: failedUserId,
+          ingestion_id: failedIngestionId,
+          provider: "agent", model: "none", purpose: "capture_to_tool_calls",
+          prompt_tokens: null, output_tokens: null,
+          estimated_cost_usd: 0,
+          latency_ms: Date.now() - startedAt,
+          status: "errored",
+          error_message: message.slice(0, 500),
+        });
+      } catch { /* the 500 below is the report of record */ }
+    }
     return Response.json({ ok: false, error: message }, { status: 500, headers: corsHeaders });
   }
 });

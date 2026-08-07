@@ -13,8 +13,7 @@
     "allowNavigation": [
       "yyoewdcijplkhxleejtm.supabase.co",
       "*.supabase.co",
-      "*.supabase.in",
-      "accounts.google.com"
+      "*.supabase.in"
     ]
   }
 }

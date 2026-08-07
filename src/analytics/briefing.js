@@ -13,6 +13,27 @@ function pickStats(s) {
   };
 }
 
+/**
+ * "Targets" when he chose them, "Defaults" when the app did.
+ *
+ * `targetSources` is `{calories, protein_g}` with values "user" or "default".
+ * When it is ABSENT the source is genuinely unknown, and an unknown source must
+ * not be reported as either one - so the neutral "Targets" is used and no claim
+ * of authorship is made. Only an explicit all-default answer earns the label
+ * that says so.
+ */
+export function targetsLabel(s = {}) {
+  const src = s.targetSources;
+  if (!src) return "Targets";
+  const used = [];
+  if (s.proteinTarget) used.push(src.protein_g);
+  if (s.caloriesTarget) used.push(src.calories);
+  if (!used.length) return "Targets";
+  if (used.every((v) => v === "default")) return "Targets (app defaults, not set by you)";
+  if (used.every((v) => v === "user")) return "Targets";
+  return "Targets (partly app defaults)";
+}
+
 // kind: "morning" | "evening". snapshot: see src/services/briefing.js.
 // Returns { kind, forDate, body, payload: { headline, nudges, stats } }.
 export function buildBriefing(kind, snapshot = {}) {
@@ -27,20 +48,28 @@ export function buildBriefing(kind, snapshot = {}) {
     const targets = [];
     if (s.proteinTarget) targets.push(`${r(s.proteinTarget)}g protein`);
     if (s.caloriesTarget) targets.push(`${r(s.caloriesTarget)} kcal`);
-    if (targets.length) lines.push(`Targets: ${targets.join(", ")}.`);
+    // A default is not a goal. `budgets` has been empty for the life of this
+    // app, so every "Targets: 162g protein" ever printed was the scaffold value
+    // read back to him as his own decision. Say which it is.
+    if (targets.length) lines.push(`${targetsLabel(s)}: ${targets.join(", ")}.`);
     if (s.dailySpendCap != null) lines.push(`Spend budget today: ~Rs ${r(s.dailySpendCap)}.`);
     return { kind, forDate, body: lines.join(" "), payload: { headline: head, nudges: lines.slice(1), stats: pickStats(s) } };
   }
 
   // evening - only ACTIONABLE nudges (a neutral "on track" if there are none).
   const nudges = [];
+  // A shortfall measured against a number he never chose has to say so, or the
+  // app spends every evening telling him he failed at someone else's goal. He
+  // has been told "protein missed" for 43 consecutive days with `budgets` empty.
+  const proteinIsDefault = s.targetSources?.protein_g === "default";
+  const caloriesIsDefault = s.targetSources?.calories === "default";
   if (s.proteinTarget) {
     const gap = r(s.proteinTarget) - r(s.proteinToday);
-    if (gap > 10) nudges.push(`${gap}g protein to go`);
+    if (gap > 10) nudges.push(`${gap}g protein to go${proteinIsDefault ? " (app default target)" : ""}`);
   }
   if (s.caloriesTarget) {
     const over = r(s.caloriesToday) - r(s.caloriesTarget);
-    if (over > 50) nudges.push(`${over} kcal over target`);
+    if (over > 50) nudges.push(`${over} kcal over target${caloriesIsDefault ? " (app default)" : ""}`);
   }
   if (s.workoutKind && s.workoutKind !== "rest" && !s.workoutLoggedToday) {
     nudges.push(`gym not logged yet (${s.workoutName || "workout"})`);

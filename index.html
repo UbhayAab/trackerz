@@ -64,7 +64,16 @@
             <button id="submitCapture" class="primary-button submit-button" type="button">Process</button>
           </div>
 
+          <!-- WHAT VOICE AND THE CAMERA ARE DOING, ON SCREEN.
+               Pressing Stop used to be a visible no-op: the only report was one
+               line pushed into the #parseLog inside the collapsed "AI activity"
+               <details> below, which nobody opens. Same for a photo - it was
+               attached, silently, with no upload state anywhere. These two live
+               regions are where that now goes, and src/ui/capture-panel.js
+               guarantees at least one of them says something on every stop. -->
+          <p id="voiceStatus" class="voice-status" role="status" aria-live="polite" hidden></p>
           <canvas id="voiceWaveform" class="voice-waveform" width="600" height="56" aria-hidden="true" hidden></canvas>
+          <div id="captureAttachments" class="capture-attachments" aria-live="polite" hidden></div>
 
           <!-- LIVE PROGRESS, out in the open.
                All of this used to sit inside the collapsed "AI activity"

@@ -252,3 +252,26 @@ subscription that expires). The decision logic in `lib/gcal-sync.mjs` is
 provider-agnostic - it is a function from (local rows, remote events, what we
 recorded last time) to a plan, with no HTTP in it. A second provider is a new
 transport in the edge function plus a scope list, not a new sync design.
+
+## Why `accounts.google.com` is NOT in capacitor.config.json allowNavigation
+
+Google refuses OAuth inside embedded WebViews and answers with
+`disallowed_useragent`. The Capacitor APK is a WebView, so listing
+`accounts.google.com` under `server.allowNavigation` was actively harmful: it
+told the WebView "you may navigate here", the WebView did, and Google refused
+the sign-in with an error the user cannot act on.
+
+Removed 2026-08-08. With it gone the consent URL is treated as external and
+leaves for the system browser, which is the only place Google will complete the
+flow. `src/ui/gcal-panel.js` also hands the URL to the system browser explicitly
+on native and always renders a tappable link as a fallback, so the flow does not
+depend on this config alone.
+
+Nothing else needs the entry: the browser never talks to Google directly. Google
+calls the edge function back at
+`https://yyoewdcijplkhxleejtm.supabase.co/functions/v1/gcal/callback`, and the
+function redirects to whichever app origin started the flow (allowlisted server
+side in `ALLOWED_REDIRECT_PREFIXES`).
+
+This is untested on real hardware. If sign-in still fails on the phone, that is
+the first thing to check.

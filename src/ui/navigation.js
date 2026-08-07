@@ -78,6 +78,12 @@ export function renderNav(activeId) {
 // Stamp the live build version on every page (top-right). Tap it to force a
 // fresh load: unregister the service worker, clear all caches, then reload - so a
 // stale browser cache can never trap you on an old version.
+//
+// APP_VERSION is a hand-typed string and it read "v17" while CI was publishing
+// build 45, so on the phone this badge was a constant, not a version. A constant
+// cannot tell you whether an update landed: tapping "force refresh" and seeing
+// "v17" again looks exactly like a failed update. Inside the APK the badge now
+// shows the real bundled build number, which changes by construction.
 export function stampVersion() {
   if (typeof document === "undefined" || !document.body) return;
   let el = document.querySelector("#versionStamp");
@@ -91,6 +97,79 @@ export function stampVersion() {
     document.body.appendChild(el);
   }
   el.textContent = APP_VERSION;
+}
+
+// THE UPDATE THE PHONE NEVER HEARD ABOUT.
+//
+// The APK bundles the web app, so a fix on main is not a fix on the phone until
+// a new APK is installed. Between builds 34 and 45 that never happened and
+// nothing anywhere said so, which is how eleven builds of fixes were reported as
+// still broken. This banner is the missing sentence.
+//
+// Everything here is best-effort and additive: no network failure, no missing
+// module and no storage error may take the nav down with it.
+const UPDATE_BANNER_ID = "updateBanner";
+
+// Readable from the diagnostics page; the last thing that stopped the banner.
+let updateBannerFailure = null;
+export function updateBannerLastFailure() { return updateBannerFailure; }
+
+export async function announceUpdate() {
+  if (typeof document === "undefined" || !document.body) return;
+  try {
+    const [{ checkForUpdate }, { versionLabel, FLOATING_APK_URL }] = await Promise.all([
+      import("../services/build-info.js"),
+      import("../../lib/update-check.mjs"),
+    ]);
+    const { buildInfo, decision, latest, latestRes } = await checkForUpdate();
+
+    // Honest badge first - it is useful even when the update check itself fails.
+    const stamp = document.querySelector("#versionStamp");
+    if (stamp && buildInfo) stamp.textContent = versionLabel({ buildInfo, fallback: APP_VERSION });
+
+    // "current" and "not-applicable" are the quiet states. "unknown-*" is NOT
+    // reassurance and must still be shown: an APK we cannot identify is exactly
+    // the case that stranded him for six weeks.
+    if (decision.state === "current" || decision.state === "not-applicable") {
+      removeUpdateBanner();
+      return;
+    }
+    // Name the failing source when the check itself failed, so "could not ask"
+    // never reads like "asked, and you are fine".
+    const why = latestRes && latestRes.ok === false ? ` (${latestRes.kind})` : "";
+    renderUpdateBanner({
+      message: `${decision.message}${why}`,
+      href: latest?.url || FLOATING_APK_URL,
+      versionName: latest?.versionName || "",
+    });
+  } catch (e) {
+    // A broken update check must never be worse than no update check - but it
+    // must not be invisible either, or this module joins the disease it fixes.
+    updateBannerFailure = e;
+    console.warn("update check failed", e);
+  }
+}
+
+function removeUpdateBanner() {
+  document.querySelector(`#${UPDATE_BANNER_ID}`)?.remove();
+}
+
+function renderUpdateBanner({ message, href, versionName }) {
+  let el = document.querySelector(`#${UPDATE_BANNER_ID}`);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = UPDATE_BANNER_ID;
+    el.className = "update-banner";
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    document.body.appendChild(el);
+  }
+  const label = versionName ? `Install ${versionName}` : "Install the newest build";
+  el.innerHTML = `
+    <span class="update-banner-text">${message}</span>
+    <a class="update-banner-cta" href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>
+    <button class="update-banner-dismiss" type="button" aria-label="Dismiss">&times;</button>`;
+  el.querySelector(".update-banner-dismiss")?.addEventListener("click", removeUpdateBanner);
 }
 
 async function forceFreshReload(event) {
@@ -110,4 +189,30 @@ async function forceFreshReload(event) {
   const url = new URL(globalThis.location.href);
   url.searchParams.set("_v", Date.now().toString());
   globalThis.location.replace(url.toString());
+}
+
+// THE BADGE AND THE UPDATE BANNER MUST NOT WAIT FOR AUTH.
+//
+// Every page calls renderNav() from inside bootWithAuth's callback, so anything
+// renderNav does is gated on a session resolving. That was already the documented
+// reason the nav TABS are static HTML rather than injected - "Chrome you navigate
+// with must not depend on data code succeeding" - and the same argument applies
+// twice over here: an app old enough to fail at signing in is precisely the app
+// that most needs to be told it is eleven builds behind. Verified in a headless
+// browser: gated behind bootWithAuth, the banner never appeared at all.
+//
+// So this runs on module load, which is immediate - the page's entry module
+// imports this file before it does anything else. Guarded for Node, where
+// tests/navigation.test.mjs imports this module with no DOM.
+if (typeof document !== "undefined") {
+  const paintChrome = () => {
+    stampVersion();
+    // Fire and forget: nothing on screen may wait on the network.
+    void announceUpdate();
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", paintChrome, { once: true });
+  } else {
+    paintChrome();
+  }
 }

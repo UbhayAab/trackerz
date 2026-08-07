@@ -21,7 +21,7 @@ import { planForDate } from "../domain/diet/plan.js";
 import { weeklyWorkoutCount } from "../domain/diet/plan.js";
 import { goalDisplayValue } from "../domain/goals.js";
 import { showToast } from "./toast.js";
-import { startLiveTranscription, stopLiveTranscription, isLiveTranscriptionSupported } from "../services/speech.js";
+import { createDictationController, isLiveTranscriptionSupported } from "../services/speech.js";
 
 const HOST = "#gymToday";
 
@@ -38,6 +38,18 @@ export function renderGymToday(appState) {
   if (appState) _state = { workoutLogs: appState.workoutLogs || [], budgets: appState.budgets || [] };
   const host = document.querySelector(HOST);
   if (!host) return;
+
+  // WHATEVER IS IN THE BOX SURVIVES THIS RENDER.
+  //
+  // This function rewrites the panel's innerHTML, which recreates #gymFreeText
+  // with an empty value - and gym.js re-renders it on EVERY app-state change.
+  // So a hydrate landing mid-dictation, or simply tapping Voice a second time,
+  // silently deleted the sentence the user had just spoken. Capturing it here
+  // rather than at each call site means no future caller can forget.
+  const typed = document.querySelector("#gymFreeText")?.value || "";
+  // Same argument for the status line: it is the only place voice reports what
+  // it heard, and a re-render one tick later used to blank it.
+  const said = document.querySelector("#gymTodayStatus")?.textContent || "";
 
   const plan = planForDate(new Date());
   const status = _today?.status || null;
@@ -75,12 +87,19 @@ export function renderGymToday(appState) {
     </div>
     <p id="gymTodayStatus" class="agent-detail" aria-live="polite"></p>
   `;
+
+  if (typed) {
+    const box = document.querySelector("#gymFreeText");
+    if (box) box.value = typed;
+  }
+  if (said) setStatus(said);
 }
 
 function setStatus(msg) {
   const el = document.querySelector("#gymTodayStatus");
   if (el) el.textContent = msg || "";
 }
+
 
 async function refresh() {
   if (!canSync()) return;
@@ -139,24 +158,34 @@ async function logFreeText() {
 // interim result would blow away the textarea the user is watching, so the live
 // transcript is written straight into the box and only the button state
 // re-renders when listening starts or stops.
-function dictate() {
+//
+// This is now the SAME controller the Home capture box uses
+// (services/speech.js -> createDictationController). It used to be a second,
+// slightly different implementation over the same engine, and that divergence
+// is exactly why one of the two surfaces felt instant and the other felt dead.
+// The controller also guarantees a sentence on every stop, so "I spoke and
+// nothing happened" cannot be the outcome here either.
+async function dictate() {
   if (_listening) {
-    stopLiveTranscription(_rec);
-    _rec = null; _listening = false; renderGymToday();
+    _listening = false;
+    renderGymToday();
+    setStatus("Finishing up...");
+    await _rec?.stop();
+    _rec = null;
     return;
   }
-  const before = (document.querySelector("#gymFreeText")?.value || "").trim();
-  _rec = startLiveTranscription({
-    onPartial: (text) => {
+  _rec = createDictationController({
+    getBaseText: () => document.querySelector("#gymFreeText")?.value || "",
+    onText: (text) => {
       const b = document.querySelector("#gymFreeText");
-      if (b) b.value = [before, text].filter(Boolean).join(" ").trim();
+      if (b) b.value = text;
     },
-    onError: (err) => {
-      _rec = null; _listening = false; renderGymToday();
-      setStatus(`Voice failed: ${err || "unknown"}. Type it instead.`);
+    onNotice: (message, info) => {
+      setStatus(message);
+      if (info?.fatal) { _listening = false; _rec = null; renderGymToday(); }
     },
   });
-  if (!_rec) { setStatus("Voice input is not available in this browser. Type it instead."); return; }
+  if (!_rec.start()) { _rec = null; return; } // the controller already said why
   _listening = true; renderGymToday();
 }
 

@@ -76,6 +76,18 @@ class SpeechPlugin : Plugin() {
     // web layer expects one growing transcript, not a series of fragments.
     private var committed = ""
 
+    // The newest partial hypothesis, which is ALWAYS ahead of `committed` while a
+    // sentence is still being spoken. stop() used to resolve with `committed`
+    // alone, so tapping Stop mid-sentence returned the transcript as it was at
+    // the last pause and the words since were simply gone. Keeping the partial
+    // means the stop result is never behind what the user watched appear.
+    private var lastPartial = ""
+
+    // The language this dictation was started with. restart() used to omit it,
+    // so the second and every later segment of a long sentence was recognised
+    // with the device default rather than en-IN.
+    private var currentLang = "en-IN"
+
     /** Is there a usable recogniser on this device at all? */
     @PluginMethod
     fun available(call: PluginCall) {
@@ -124,6 +136,8 @@ class SpeechPlugin : Plugin() {
         }
         val lang = call.getString("lang") ?: "en-IN"
         committed = ""
+        lastPartial = ""
+        currentLang = lang
 
         activity.runOnUiThread {
             try {
@@ -161,7 +175,10 @@ class SpeechPlugin : Plugin() {
             listening = false
             emitState("stopped")
             val ret = JSObject()
-            ret.put("text", committed)
+            // The partial is ahead of `committed` whenever the user stops
+            // mid-sentence, which is the normal case. Returning `committed`
+            // alone dropped every word spoken since the last pause.
+            ret.put("text", if (lastPartial.length > committed.length) lastPartial else committed)
             call.resolve(ret)
         }
     }
@@ -176,6 +193,7 @@ class SpeechPlugin : Plugin() {
             }
             listening = false
             committed = ""
+            lastPartial = ""
             emitState("stopped")
             call.resolve()
         }
@@ -193,12 +211,14 @@ class SpeechPlugin : Plugin() {
             // ALWAYS the whole transcript, never a fragment. The web wrapper
             // treats every update as a REPLACE - appending is precisely the bug
             // that turned one spoken sentence into "I I went I went to the gym".
-            emitText(EV_PARTIAL, join(committed, text))
+            lastPartial = join(committed, text)
+            emitText(EV_PARTIAL, lastPartial)
         }
 
         override fun onResults(results: Bundle?) {
             val text = firstResult(results)
             if (!text.isNullOrBlank()) committed = join(committed, text)
+            lastPartial = ""
             emitText(EV_FINAL, committed)
             // Android ends the session at a pause. If the user has not stopped,
             // restart so a sentence with a breath in it is still one transcript.
@@ -234,7 +254,9 @@ class SpeechPlugin : Plugin() {
             try {
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, currentLang)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 }
                 recognizer?.startListening(intent)
                 emitState("listening")

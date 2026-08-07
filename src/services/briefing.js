@@ -42,6 +42,9 @@ export function snapshotFromState(state = {}, now = new Date()) {
     proteinTarget: m.proteinTarget,
     caloriesToday: m.caloriesToday,
     caloriesTarget: m.caloriesTarget,
+    // "user" or "default" per target. Absent means unknown, which the composer
+    // treats as unknown rather than quietly assuming he set them.
+    targetSources: m.targetSources,
     todaySpend: m.todaySpend,
     dailySpendCap,
     workoutLoggedToday,

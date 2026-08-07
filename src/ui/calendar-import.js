@@ -263,15 +263,25 @@ function renderResult(report) {
 // Mounting
 // ---------------------------------------------------------------------------
 
+// The URL row is not decoration. Every OAuth-free way to mirror Google, Apple,
+// Outlook or Fastmail goes through a private .ics address, and until 2026-08-08
+// `refreshFromIcsUrl` existed, was tested, and had NO control anywhere in the app
+// that could call it - so the only way to import a calendar was to export a file
+// by hand every time. The edge function's `fetch_ics` action is the other half.
 const SHELL = `
   <div class="cal-import" data-state="idle">
     <div class="cal-import-head">
       <h3>Mirror another calendar</h3>
-      <p class="import-foot-note">Google, Apple, Outlook, Fastmail - anything that exports an .ics file.</p>
+      <p class="import-foot-note">Google, Apple, Outlook, Fastmail - paste the calendar's private .ics address, or drop a file.</p>
+    </div>
+    <div class="cal-import-url">
+      <label class="visually-hidden" for="calIcsUrl">Calendar .ics address</label>
+      <input type="url" id="calIcsUrl" placeholder="https://calendar.google.com/calendar/ical/…/private-…/basic.ics" autocomplete="off" spellcheck="false">
+      <button type="button" class="btn-ghost" id="calIcsFetch">Read it</button>
     </div>
     <label class="dropzone" id="calIcsDrop">
       <input type="file" id="calIcsInput" accept=".ics,text/calendar" hidden>
-      <span>Drop an .ics file here, or choose one</span>
+      <span>…or drop an .ics file here, or choose one</span>
       <span class="dropzone-file" id="calIcsFile" hidden></span>
     </label>
     <div class="cal-import-preview" id="calIcsPreview" hidden></div>
@@ -300,6 +310,8 @@ export function mountCalendarImport(host, { parser = null, create = createRemind
   const addBtn = host.querySelector("#calIcsAdd");
   const clearBtn = host.querySelector("#calIcsClear");
   const exportBtn = host.querySelector("#calIcsExport");
+  const urlInput = host.querySelector("#calIcsUrl");
+  const fetchBtn = host.querySelector("#calIcsFetch");
 
   // THE cached preview. The Add handler writes this object and nothing else.
   let pending = null;
@@ -308,6 +320,7 @@ export function mountCalendarImport(host, { parser = null, create = createRemind
   function reset() {
     pending = null;
     input.value = "";
+    if (urlInput) urlInput.value = "";
     label.hidden = true;
     label.textContent = "";
     preview.hidden = true;
@@ -341,6 +354,44 @@ export function mountCalendarImport(host, { parser = null, create = createRemind
       preview.innerHTML = renderError(err && err.message ? err.message : String(err));
     }
   }
+
+  // Read a subscribable .ics address. Goes through the `fetch_ics` action on the
+  // gcal edge function, because a browser cannot fetch a foreign calendar itself
+  // (almost no host sends Access-Control-Allow-Origin). Produces the SAME preview
+  // object a dropped file does, so Add writes the same rows either way.
+  async function handleUrl(raw) {
+    const url = String(raw || "").trim();
+    if (!url) return;
+    setState("parsing");
+    preview.hidden = false;
+    preview.innerHTML = `<p class="import-foot-note">Reading ${escapeHtml(url)}…</p>`;
+    addBtn.disabled = true;
+    fetchBtn.disabled = true;
+    try {
+      const { preview: got } = await refreshFromIcsUrl(url, { parser: parser || await loadCalendarParser() });
+      pending = got;
+      preview.innerHTML = renderPreview(pending);
+      setState(pending.reminders.length ? "parsed" : "empty");
+      addBtn.disabled = pending.reminders.length === 0;
+      addBtn.textContent = pending.reminders.length
+        ? `Add ${pending.reminders.length} reminder${pending.reminders.length === 1 ? "" : "s"}`
+        : "Nothing to add";
+    } catch (err) {
+      pending = null;
+      setState("error");
+      // The server's own sentence, never a rewritten one: "that host answered
+      // 403" and "the link is the HTML view, not the .ics address" are different
+      // problems with different fixes, and only the server knows which happened.
+      preview.innerHTML = renderError(err && err.message ? err.message : String(err));
+    } finally {
+      fetchBtn.disabled = false;
+    }
+  }
+
+  fetchBtn.addEventListener("click", () => handleUrl(urlInput.value));
+  urlInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); handleUrl(urlInput.value); }
+  });
 
   input.addEventListener("change", () => handleFile(input.files && input.files[0]));
 

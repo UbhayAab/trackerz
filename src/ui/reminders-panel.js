@@ -21,7 +21,9 @@ import {
   fetchCalendarReminders, fetchAgentTasks, fetchAgentTaskRuns,
   deleteAgentTask, setAgentTaskStatus,
 } from "../services/jarvis.js";
+import { fetchMirroredEvents } from "../services/gcal.js";
 import { taskAsCalendarRow } from "../../lib/agent-tasks.mjs";
+import { mirroredEventRows } from "../../lib/gcal-sync.mjs";
 import { upcoming, describeRule, whenLabel, ruleProblem, minutesOfDay, formatTime } from "../../lib/reminders.mjs";
 import {
   renderCalendar, calendarStatus, bindCalendar, initialCalendarState, dayItems,
@@ -33,23 +35,31 @@ const HOME_ID = "remindersStrip";
 const MANAGE_ID = "remindersManage";
 
 let state = {
-  rows: [], tasks: [], loaded: false, error: null, taskError: null, busy: false,
+  rows: [], tasks: [], events: [], loaded: false, error: null, taskError: null,
+  eventError: null, busy: false,
   cal: null,
   // { [task_id]: { loading } | { rows } | { problem } } - the run log behind a
   // scheduled check, fetched only for the day the user actually opened.
   runs: {},
 };
 
-// Reminders and the app's own scheduled tasks, as ONE list of rules. The
-// calendar renders rules; a task shaped like a rule needs no second renderer and
-// therefore cannot drift into showing a different date from the reminder beside
-// it. A task the runner will never fire again returns null and is dropped.
+// How far either side of today the mirrored events are read. A calendar that
+// only ever fetched "from now" would lose this morning's meeting the moment it
+// started, and a year forward is the same horizon the agenda can widen to.
+const EVENT_BACK_DAYS = 45;
+const EVENT_FORWARD_DAYS = 400;
+
+// Reminders, the app's own scheduled tasks, and the events mirrored in from a
+// connected calendar, as ONE list. The calendar renders rules; a task and a
+// third-party event shaped like rules need no second renderer and therefore
+// cannot drift into showing a different date from the reminder beside them. A
+// task the runner will never fire again returns null and is dropped.
 function calendarRows() {
   const today = todayKey();
   const taskRows = (state.tasks || [])
     .map((t) => taskAsCalendarRow(t, today))
     .filter(Boolean);
-  return [...(state.rows || []), ...taskRows];
+  return [...(state.rows || []), ...taskRows, ...(state.events || [])];
 }
 
 // Today in IST as a YYYY-MM-DD key. The whole engine works on calendar keys, so
@@ -84,6 +94,30 @@ export async function loadReminders() {
     state.tasks = [];
     state.taskError = err?.message || String(err);
   }
+  // Third read, third independent failure: the meetings mirrored in from a
+  // connected Google/ICS calendar. Until 2026-08-08 this table had a fetcher
+  // (src/services/gcal.js) and no renderer at all, so connecting Google would
+  // have synced a year of events into a calendar that went on showing only the
+  // user's own reminder rules. Returns a Result rather than throwing, so a
+  // broken mirror is a named sentence and never an empty calendar.
+  try {
+    const now = Date.now();
+    const res = await fetchMirroredEvents({
+      fromIso: new Date(now - EVENT_BACK_DAYS * 86400000).toISOString(),
+      toIso: new Date(now + EVENT_FORWARD_DAYS * 86400000).toISOString(),
+      limit: 500,
+    });
+    if (res.ok) {
+      state.events = mirroredEventRows(res.value);
+      state.eventError = null;
+    } else {
+      state.events = [];
+      state.eventError = res.message || res.kind || "the calendar mirror could not be read";
+    }
+  } catch (err) {
+    state.events = [];
+    state.eventError = err?.message || String(err);
+  }
   if (!state.cal) state.cal = initialCalendarState(todayKey());
   renderRemindersStrip();
   renderRemindersManage();
@@ -113,14 +147,17 @@ export function renderRemindersStrip() {
   // "Nothing scheduled" is a fact worth staying quiet about; "the read broke" is
   // not, and hiding the card on a failure is how a missed deadline gets to be
   // invisible twice.
-  const quiet = state.loaded && !state.error && !state.taskError
+  const quiet = state.loaded && !state.error && !state.taskError && !state.eventError
     && upcoming(rows, todayKey(), { limit: 1, withinDays: 4000 }).length === 0;
   if (quiet) { el.hidden = true; el.innerHTML = ""; return; }
 
   if (!state.cal) state.cal = initialCalendarState(todayKey());
   el.hidden = false;
   const { shell, live } = calendarShell(el);
-  const opts = { error: state.error, taskError: state.taskError, loaded: state.loaded, runs: state.runs };
+  const opts = {
+    error: state.error, taskError: state.taskError, eventError: state.eventError,
+    loaded: state.loaded, runs: state.runs,
+  };
   shell.innerHTML = renderCalendar(state.cal, rows, todayKey(), opts);
   if (live) live.textContent = calendarStatus(state.cal, rows, todayKey(), opts);
 
@@ -145,6 +182,7 @@ function retryRead(taskId) {
   state.loaded = false;
   state.error = null;
   state.taskError = null;
+  state.eventError = null;
   renderRemindersStrip();
   loadReminders();
 }

@@ -16,6 +16,11 @@ supabase/.temp/
 # Capacitor staged web assets (generated in CI from the repo's own web files)
 www/
 
+# The bundled build manifest. CI writes it into www/ so it ships inside the APK
+# and identifies the running build; it must never be committed, because its
+# absence is exactly how the browser knows it is NOT running from a bundle.
+build-info.json
+
 # Android signing material. The repo is PUBLIC - the keystore lives in the
 # ANDROID_KEYSTORE_B64 repo secret and is written here by CI at build time.
 # Local backup: ~/.trackerz-signing/trackerz.jks

@@ -244,7 +244,37 @@ export function mountGcalPanel() {
       setResult("Google returned no sign-in URL.", true);
       return;
     }
-    setResult("Opening Google…");
+
+    // GOOGLE REFUSES OAUTH INSIDE AN EMBEDDED WEBVIEW. Signing in from a
+    // Capacitor WebView returns `disallowed_useragent` (403) with a Google-branded
+    // error page and no way forward, and this app's own surface on the owner's
+    // phone IS a WebView. So on native the consent page is handed to the SYSTEM
+    // browser; the callback comes back to the edge function, which redirects to
+    // the app URL, so nothing about the return leg changes.
+    //
+    // The link is rendered EITHER WAY and left on screen. `window.open` can be
+    // blocked, and a blocked popup with an encouraging "Opening Google…" beside
+    // it is a dead end with no visible cause - which is the failure shape this
+    // panel exists to prevent. A tappable link always survives.
+    const native = Boolean(globalThis.Capacitor?.isNativePlatform?.());
+    if (resultEl) {
+      resultEl.classList.remove("gcal-error-text");
+      resultEl.innerHTML = `Opening Google…  <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">open the sign-in page</a>`
+        + (native ? ` <small>(it opens in your browser, not inside the app - Google does not allow sign-in inside an app's own web view)</small>` : "");
+    }
+    if (native) {
+      try {
+        globalThis.open(url, "_blank");
+      } catch (err) {
+        // Named, not swallowed: if the WebView refuses to hand the page over,
+        // that is the reason the link below is the only way through.
+        setResult(`This app could not open your browser (${err?.message || err}). Use the sign-in link instead.`, true);
+        if (resultEl) {
+          resultEl.innerHTML += ` <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">open the sign-in page</a>`;
+        }
+      }
+      return;
+    }
     location.href = url;
   }
 

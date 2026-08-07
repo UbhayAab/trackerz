@@ -112,6 +112,33 @@ jobs:
             ./ www/
           test -f www/index.html || { echo "www/index.html missing after staging"; exit 1; }
 
+      # STAMP THE BUILD INTO THE BUNDLE.
+      #
+      # The APK freezes www/ at build time, so "fixed on main" and "fixed on the
+      # phone" are different facts - and until now the app had no way to tell
+      # them apart. Builds 35 through 45 were published and never downloaded
+      # (the immutable per-build assets recorded one download in total, on
+      # 1.0.34), so eleven builds of fixes were reported as still broken by
+      # someone running an app that predated them.
+      #
+      # This file ships INSIDE the APK and describes the build it is part of.
+      # src/services/build-info.js reads it and compares against the published
+      # release. It is deliberately NOT committed: on GitHub Pages the browser
+      # always has whatever was pushed a moment ago, so an update banner there
+      # would be noise, and its absence is exactly how the app knows it is not
+      # running from a bundle.
+      - name: Stamp build-info.json into the bundle
+        run: |
+          cat > www/build-info.json <<JSON
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "1.0.${{ github.run_number }}",
+            "commit": "${{ github.sha }}",
+            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          JSON
+          node -e "const i=require('./www/build-info.json');if(!Number.isInteger(i.versionCode))throw new Error('build-info.json has no integer versionCode');console.log('stamped build',i.versionCode,i.commit.slice(0,7))"
+
       # android/ is committed (it holds the Kotlin Health Connect plugin), so
       # normally we only sync. The `cap add` branch is a safety net for a fresh
       # checkout where android/ was somehow not committed.
