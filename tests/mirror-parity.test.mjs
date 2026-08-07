@@ -175,3 +175,32 @@ for (const s of GYM_CORPUS) {
 }
 
 console.log(`mirror-parity tests passed: lexicons + regexes + gym-behaviour lib↔edge in sync`);
+
+
+// EVERY NEGATION CONSTANT MUST EXIST IN THE EDGE COPY.
+//
+// lib/negation.mjs is NOT in scripts/sync-mirror.mjs, because the edge copy
+// carries TypeScript annotations and cannot be byte-identical. The existing
+// parity check compares extracted string LEXICONS, so adding a whole new regex
+// to lib left it green while the guard was missing from production entirely -
+// NEG_CEASE ("stop eating the aloo bhujia") shipped to lib and never to the
+// edge, and only a second, unrelated layer stopped the phantom meal.
+//
+// A structural check instead of a lexical one: if lib declares it, the edge has
+// to declare it too, whatever its types look like.
+{
+  const libSrc = readFileSync("lib/negation.mjs", "utf8");
+  const edgeSrc = readFileSync("supabase/functions/agent/index.ts", "utf8");
+  const names = [...libSrc.matchAll(/^const (NEG_[A-Z_]+)\s*=/gm)].map((m) => m[1]);
+  assert.ok(names.length >= 6, `expected the negation lexicon, found ${names.length}`);
+  for (const n of names) {
+    assert.ok(edgeSrc.includes(`const ${n} `) || edgeSrc.includes(`const ${n}=`),
+      `${n} is declared in lib/negation.mjs and MISSING from the agent function - the guard is not in production`);
+    // Declared is not enough: NEG_CEASE could have been pasted in and never
+    // wired into clauseDeniesEvent, which reads identically from a diff and does
+    // nothing at all. NEG_CLAUSE_SPLIT is the one that is consumed by .split().
+    const used = edgeSrc.includes(`${n}.test(`) || edgeSrc.includes(`split(${n})`);
+    assert.ok(used, `${n} exists in the agent function but is never CALLED there - a dead guard is not a guard`);
+  }
+  console.log(`negation parity: ${names.length} guards present and called in the edge`);
+}

@@ -1545,10 +1545,16 @@ function isAlreadyRecorded(text: string, mentions: (s: string) => boolean): bool
   return unflagged === 0;
 }
 
+const NEG_CEASE = /\b(?:stop|stops|stopped|stopping|quit|quits|quitting|cut\s+out|cutting\s+out|give\s+up|giving\s+up|gave\s+up)\s+(?:the\s+|my\s+|all\s+|on\s+)?(?:eat|eating|ate|having|have|taking|drinking|snacking|ordering|buying)\b/i;
+const NEG_ADMIN = /\b(?:membership|subscription|renewal|renew|joining\s+fee|registration|sign\s*-?\s*up|invoice|receipt|bill|fees?|plan\s+expires?|expiry|due\s+date)\b/i;
+function clauseIsAdministrative(clause: string): boolean {
+  return NEG_ADMIN.test(String(clause || "").toLowerCase());
+}
 function clauseDeniesEvent(clause: string): boolean {
   const t = String(clause || "").toLowerCase();
   if (!t.trim()) return false;
-  return NEG_NO_EVENT.test(t) || NEG_AUX_VERB.test(t) || NEG_DENIAL_VERB.test(t) || NEG_IDIOM.test(t);
+  return NEG_NO_EVENT.test(t) || NEG_AUX_VERB.test(t) || NEG_DENIAL_VERB.test(t) || NEG_IDIOM.test(t)
+    || NEG_CEASE.test(t) || NEG_ADMIN.test(t);
 }
 function clauseIsReportedSpeech(clause: string): boolean {
   return NEG_REPORTED_SPEECH.test(String(clause || "").toLowerCase());
@@ -1966,6 +1972,26 @@ function zonedToUtcIso(dayKey, time, tz) {
 }
 
 /**
+ * Drop every key whose value is null, because these objects are INSERT payloads.
+ *
+ * `reminders.rule_interval` is NOT NULL DEFAULT 1. Sending an explicit null
+ * OVERRIDES the default and violates the constraint, so every reminder the agent
+ * wrote failed - and the failure was invisible: the edge function reads a write
+ * that returned no row as "contract failure, demote to proposed", discards the
+ * error, and the owner sees a growing list of things "pending review" with no
+ * reason attached. That is what "why are there so many pending, why is it not
+ * automatic" turned out to be.
+ *
+ * Omitting is never worse than sending null: a nullable column with no default
+ * ends up null either way, and a defaulted column gets its default.
+ */
+function dropNulls(row) {
+  const out = {};
+  for (const k of Object.keys(row)) if (row[k] !== null && row[k] !== undefined) out[k] = row[k];
+  return out;
+}
+
+/**
  * The `reminders` columns for one create_reminder_candidate call.
  *
  * Returns rule PARTS only. Nothing here decides WHEN it fires - that is
@@ -1988,7 +2014,7 @@ function reminderColumns(args, opts) {
   // say one outright - an explicit weekday is the more direct statement of the
   // two and must win.
   const weekday = clampInt(a.weekday, 0, 6) ?? ((weekdays && weekdays.length) ? null : nth.weekday);
-  return {
+  return dropNulls({
     title: String(a.title || "").slice(0, 200),
     note: a.note ? String(a.note).slice(0, 500) : null,
     kind,
@@ -2011,7 +2037,7 @@ function reminderColumns(args, opts) {
     // "every other week" mean "whichever week the server evaluates it in".
     dtstart: isDateKey(a.dtstart) ? String(a.dtstart) : (onDate || today),
     timezone: o.tz || "Asia/Kolkata",
-  };
+  });
 }
 
 /**
@@ -2078,7 +2104,7 @@ function taskRow(args, opts) {
     ? a.weekdays.map((d) => clampInt(d, 0, 6)).filter((d) => d !== null)
     : null;
 
-  return {
+  return dropNulls({
     fire_at: zonedToUtcIso(key, time, tz),
     tz,
     recurrence: freq === "once" ? null : {
@@ -2094,7 +2120,7 @@ function taskRow(args, opts) {
     },
     intent: ["check", "answer", "remind", "review"].indexOf(String(a.intent)) >= 0 ? String(a.intent) : "check",
     prompt: String(a.prompt || "").slice(0, 2000),
-  };
+  });
 }
 // ==== SCHEDULE-ARGS MIRROR END ====
 
@@ -3214,12 +3240,34 @@ function mutationTier(tc) {
 //   "hard" - do NOT write; render the diff card and wait for a tap.
 function mutationGate(tc) {
   var tier = mutationTier(tc);
-  if (tier !== "reversible") return "hard";
-  // The refinement that keeps the fast path fast. "Swap today's leg day for
-  // cardio" is one day of one plan: a diff card there is friction with nothing
-  // behind it, and the LOG-THAT-CONTRADICTS-THE-PLAN rule deliberately emits one
-  // of these ALONGSIDE a real log, so gating it would stall an ordinary capture.
-  if (tc && tc.name === "update_plan_candidate") return "soft";
+  var name = tc && tc.name ? String(tc.name) : "";
+
+  // A HARD gate writes nothing and waits for a tap. Reserved for the two things
+  // that are genuinely expensive to get wrong, because everything sitting behind
+  // a tap is a thing the owner has to come back and do.
+  //
+  // This used to be `tier !== "reversible"`, i.e. EVERY consequential tool. The
+  // owner's actual instruction was "auto-apply, but plan rewrites need two
+  // signals" and that is much narrower. The wide version turned a birthday, a
+  // remembered preference and a reminder into a review queue, and a queue nobody
+  // clears is indistinguishable from the app not working - which is exactly how
+  // it was reported: "why are there so many pending, why is it not automatic".
+  //
+  //   destructive - amend / delete / merge. It changes or removes a row that is
+  //                 already in the day's totals; wrong here is a number that
+  //                 silently stops being true, which nobody goes looking for.
+  //   external    - anything that leaves the app. Unsendable once sent.
+  //   permanent plan rewrite - the two-signal rule, stated outright.
+  if (tier === "destructive" || tier === "external") return "hard";
+  if (name === "update_plan_candidate" && isStandingChange(tc)) return "hard";
+
+  // SOFT writes immediately and shows an undo for UNDO_TOAST_MS. A reminder, a
+  // target or a durable fact is one row the owner can see and reverse, so the
+  // honest cost of being wrong is one tap AFTER the fact rather than one tap
+  // before every correct one. Undo beats confirm whenever the action is
+  // reversible and the app is usually right.
+  if (tier === "consequential") return "soft";
+  if (name === "update_plan_candidate") return "soft";
   return "auto";
 }
 
@@ -3511,7 +3559,15 @@ function expandToolCalls(toolCalls: ToolCall[], evidence = "", now = ""): ToolCa
   //     row rather than dropped: that keeps it out of the streak and out of the
   //     "you trained yesterday" brief, while still telling the evening nudge the
   //     day was answered. Only an affirmative capture salvages a real workout.
-  if (!command && gymDenied) {
+  // ADMIN IS NOT A SKIPPED SESSION. "remind me to renew my gym membership on 20
+  // September" trips the gym denial, and a denial normally becomes an explicit
+  // `skipped` row - which here claims the owner answered 20 September and did not
+  // train. A skipped row is still a row, and it still lands in the review queue.
+  // Mirror of lib/fan-out-expander.mjs.
+  const gymAdmin = clauseIsAdministrative(denialClause(ev, looksLikeGym) || ev);
+  if (!command && gymDenied && gymAdmin) {
+    out = out.filter((tc) => tc?.name !== "create_workout_log_candidate");
+  } else if (!command && gymDenied) {
     out = out.filter((tc) => tc?.name !== "create_workout_log_candidate");
     out.push({
       name: "create_workout_log_candidate",
@@ -5816,6 +5872,19 @@ async function persistRunAndActions(
           // A write tool that produced no row is a contract failure, not a
           // success. Do NOT record auto_applied with a null id - demote to
           // proposed so a human sees it and nothing is silently lost.
+          //
+          // AND KEEP THE REASON. This branch used to discard `res.error`, so a
+          // constraint violation arrived on screen as a bare "pending review"
+          // with nothing to act on. Every reminder the agent wrote failed this
+          // way for a day - rule_interval is NOT NULL DEFAULT 1 and the payload
+          // sent an explicit null - and the queue of unexplained pending rows was
+          // the only symptom. PostgREST returns { data: null, error } rather than
+          // throwing, so the catch below never sees it either.
+          const writeErr = (res as any)?.error;
+          const why = writeErr?.message || writeErr?.details || "the write returned no row";
+          groundingNote = groundingNote ? `write_failed,${groundingNote}` : "write_failed";
+          (tc.arguments as any)._write_error = String(why).slice(0, 300);
+          console.error(`[apply] ${tc.name} wrote nothing:`, why);
           status = "proposed";
         }
       } catch (err) {
