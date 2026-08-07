@@ -3,6 +3,7 @@ import { decideActionPolicy, autonomousViolations } from "../src/agent/action-po
 import { buildSystemBoundary } from "../src/agent/prompt-boundaries.js";
 import { chooseModelRoute } from "../src/agent/model-router.js";
 import { toolRegistry } from "../src/agent/tool-registry.js";
+import { filterAutonomousActions } from "../lib/agent-tasks.mjs";
 import {
   mutationTier, mutationGate, mutationRisk, canAutoApply, tierRank, MUTATION_TIERS, UNDO_TOAST_MS,
 } from "../lib/mutation-risk.mjs";
@@ -112,13 +113,27 @@ console.log("tool-argument repair tests passed");
     // non-writing tools ride the auto path with them
     ["request_user_review", {}, "reversible", "auto", "auto_apply"],
     ["answer_question", {}, "reversible", "auto", "auto_apply"],
-    // consequential: rewrites the standing setup. Confirm.
-    ["set_target_candidate", { kind: "daily_protein", amount: 180 }, "consequential", "hard", "confirm"],
-    ["remember_fact", { key: "usual_lunch", value: "egg curry" }, "consequential", "hard", "confirm"],
-    ["create_reminder_candidate", { title: "Mom's birthday", freq: "yearly" }, "consequential", "hard", "confirm"],
+    // CONSEQUENTIAL, BUT SOFT: written immediately, with an undo. These were all
+    // "hard" for a day and it was the wrong call - the owner's instruction was
+    // "auto-apply, but plan rewrites need two signals", and gating a birthday, a
+    // remembered preference and a reminder behind a tap turned the feed into a
+    // review queue nobody cleared. A queue nobody clears is indistinguishable
+    // from the app not working, and that is how it got reported.
+    //
+    // Undo beats confirm whenever the action is reversible and the app is usually
+    // right: the cost moves from a tap before every CORRECT action to a tap after
+    // the occasional wrong one.
+    ["set_target_candidate", { kind: "daily_protein", amount: 180 }, "consequential", "soft", "auto_apply"],
+    ["remember_fact", { key: "usual_lunch", value: "egg curry" }, "consequential", "soft", "auto_apply"],
+    ["create_reminder_candidate", { title: "Mom's birthday", freq: "yearly" }, "consequential", "soft", "auto_apply"],
+    // THE TWO SIGNALS RULE, still hard and still explicit: a PERMANENT plan
+    // rewrite replaces the standing setup that every later capture, checklist tick
+    // and brief is then read against.
     ["update_plan_candidate", { kind: "diet", scope: "permanent" }, "consequential", "hard", "confirm"],
     // an ABSENT scope reads as permanent, because applyTool defaults it that way
     ["update_plan_candidate", { kind: "diet" }, "consequential", "hard", "confirm"],
+    // a DATED plan change bends one named day and is undone by deleting one row
+    ["update_plan_candidate", { kind: "diet", scope: "2026-08-07" }, "reversible", "soft", "auto_apply"],
     // destructive: a merge deletes the loser of a duplicate pair
     ["link_duplicate_candidates", {}, "destructive", "hard", "confirm"],
   ];
@@ -163,41 +178,97 @@ console.log("tool-argument repair tests passed");
   assert.equal(mutationRisk(A("create_food_log_candidate")).softDeleteOnly, false);
 
   // --- THE INVARIANT ---------------------------------------------------------
-  // In an autonomous context nothing above `reversible` may apply itself. Asserted
-  // over every tool in the registry, so a tool added later is covered by this test
-  // without anyone remembering to extend it.
+  // Stated separately for the two contexts, because they are not the same
+  // question and conflating them is what produced a review queue for a birthday.
+  //
+  // INTERACTIVE: the owner just typed it and is watching the feed. Nothing above
+  // reversible may commit SILENTLY, but "soft" - write now, show an undo - is a
+  // legitimate answer and the right one for anything a single tap can reverse.
+  // The bar here is that it must never be plain `auto`.
+  //
+  // AUTONOMOUS: a scheduled run at 03:00 with nobody watching. THAT is where
+  // nothing above reversible may apply itself, and it is enforced by the narrow
+  // allowlist in lib/agent-tasks.mjs rather than by the gate - asserted below
+  // against the registry so a tool added later is covered without anyone
+  // remembering to extend this.
   for (const tool of toolRegistry) {
     const action = A(tool.name, tool.name === "update_plan_candidate" ? { scope: "permanent" } : {});
     const decision = decideActionPolicy(action);
     if (tierRank(decision.tier) > 0) {
-      assert.equal(decision.mode, "confirm", `${tool.name} is above reversible and must not auto-apply`);
+      assert.notEqual(mutationGate(action), "auto",
+        `${tool.name} is above reversible and must not commit silently - soft (undo) or hard (confirm), never auto`);
       assert.equal(canAutoApply(action), false, `${tool.name} must fail canAutoApply`);
     } else {
       assert.notEqual(decision.mode, "block", `${tool.name} is registered and reversible - it must not be blocked`);
     }
   }
-  assert.deepEqual(
-    autonomousViolations(toolRegistry.map((t) => A(t.name, t.name === "update_plan_candidate" ? { scope: "permanent" } : {}))),
-    [],
-    "no registered tool above `reversible` may auto-apply autonomously",
-  );
+
+  // The autonomous half of the same invariant, at its real enforcement point.
+  {
+    const calls = toolRegistry.map((t) => ({
+      name: t.name,
+      arguments: t.name === "update_plan_candidate" ? { scope: "permanent" } : {},
+    }));
+    const { allowed } = filterAutonomousActions(calls, 0);
+    for (const c of allowed) {
+      assert.equal(tierRank(mutationTier(c)), 0,
+        `${c.name} survived the autonomous allowlist but is above reversible`);
+    }
+  }
+  // autonomousViolations reports what would commit without a human present. Since
+  // the consequential tools became SOFT - written immediately with an undo - they
+  // now correctly appear here: an undo toast at 03:00 is nobody watching. The
+  // property that matters is not that the list is empty, it is that EVERY entry on
+  // it is stopped by the autonomous allowlist before it can run.
+  {
+    const all = toolRegistry.map((t) => A(t.name, t.name === "update_plan_candidate" ? { scope: "permanent" } : {}));
+    const flagged = autonomousViolations(all);
+    const { allowed } = filterAutonomousActions(all, 0);
+    const allowedNames = new Set(allowed.map((c) => c.name));
+    for (const v of flagged) {
+      assert.equal(allowedNames.has(v.name), false,
+        `${v.name} would commit unattended and the autonomous allowlist lets it through`);
+    }
+    // And the reverse, so the allowlist cannot quietly widen: nothing it permits
+    // is above reversible.
+    for (const c of allowed) {
+      assert.equal(tierRank(mutationTier(c)), 0, `${c.name} is allowed autonomously but is above reversible`);
+    }
+  }
 
   // Block still outranks everything: an unknown tool never reaches the tiers.
   assert.equal(decideActionPolicy({ name: "drop_all_tables", confidence: 1, evidenceId: "x" }).mode, "block");
 
   // Confirm carries a reason the UI can render, and the mode set is closed.
-  const confirmDecision = decideActionPolicy(A("set_target_candidate", { kind: "daily_protein", amount: 180 }));
+  // Uses a PERMANENT plan rewrite, which is the case that still confirms; a
+  // target is soft now and would have no confirm reason to carry.
+  const confirmDecision = decideActionPolicy(A("update_plan_candidate", { kind: "diet", scope: "permanent" }));
+  assert.equal(confirmDecision.mode, "confirm");
   assert.ok(confirmDecision.reasons.includes("confirm_consequential"));
   assert.ok(MUTATION_TIERS.includes(confirmDecision.tier));
+
+  // A SOFT decision must still say it is soft, or the UI has no way to know an
+  // undo is owed and the write lands with no affordance at all - which is worse
+  // than the confirm it replaced.
+  const softDecision = decideActionPolicy(A("set_target_candidate", { kind: "daily_protein", amount: 180 }));
+  assert.equal(softDecision.mode, "auto_apply");
+  assert.equal(softDecision.gate, "soft", "a consequential write must be marked soft so the UI offers an undo");
 
   // Low confidence does NOT gate a reversible capture - capture-first is the
   // product, and the old confidence gate is still dead on purpose.
   assert.equal(decideActionPolicy({ name: "create_food_log_candidate", confidence: 0.1 }).mode, "auto_apply");
-  // ...and high confidence does NOT un-gate a consequential one.
+  // ...and high confidence does NOT un-gate the one thing that stays hard.
   assert.equal(
-    decideActionPolicy({ name: "set_target_candidate", confidence: 0.99, evidenceId: "ev", arguments: { kind: "daily_protein", amount: 180 } }).mode,
+    decideActionPolicy({ name: "update_plan_candidate", confidence: 0.99, evidenceId: "ev", arguments: { kind: "diet", scope: "permanent" } }).mode,
     "confirm",
-    "0.99 confidence is not permission to rewrite a target",
+    "0.99 confidence is not permission to replace the standing plan",
+  );
+  // And an amendment stays hard at any confidence: it rewrites a row already in
+  // the totals, which is the one error nobody goes looking for.
+  assert.equal(
+    decideActionPolicy({ name: "amend_log_candidate", confidence: 0.99, evidenceId: "ev", arguments: { target_ref: "30 g bhujia" } }).mode,
+    "confirm",
+    "an amendment always shows its diff",
   );
 }
 

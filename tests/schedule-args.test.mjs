@@ -157,12 +157,12 @@ const TODAY = "2026-08-06"; // a Thursday
     { title: "X", freq: "weekly", interval: 999, weekday: 12, at_time: "banana", until: "soon", nth_weekday: "9ZZ", count: -3 },
     { today: TODAY, tz: IST },
   );
-  assert.equal(r.rule_interval, null);
-  assert.equal(r.weekday, null);
-  assert.equal(r.at_time, null);
-  assert.equal(r.until, null);
-  assert.equal(r.nth_weekday, null);
-  assert.equal(r.max_count, null);
+  assert.equal(r.rule_interval ?? null, null);
+  assert.equal(r.weekday ?? null, null);
+  assert.equal(r.at_time ?? null, null);
+  assert.equal(r.until ?? null, null);
+  assert.equal(r.nth_weekday ?? null, null);
+  assert.equal(r.max_count ?? null, null);
 }
 
 // lead_days still defaults by kind, and an explicit 0 survives.
@@ -170,6 +170,32 @@ assert.equal(reminderColumns({ title: "GST", freq: "monthly", kind: "filing" }, 
 assert.equal(reminderColumns({ title: "Bday", freq: "yearly", kind: "birthday" }, { today: TODAY }).lead_days, 2);
 assert.equal(reminderColumns({ title: "X", freq: "daily" }, { today: TODAY }).lead_days, 0);
 assert.equal(reminderColumns({ title: "X", freq: "daily", kind: "filing", lead_days: 0 }, { today: TODAY }).lead_days, 0);
+
+// ---- NO KEY IS EVER null, because these are INSERT payloads ----
+// reminders.rule_interval is NOT NULL DEFAULT 1. An explicit null OVERRIDES the
+// default and violates the constraint, so every reminder the agent wrote failed -
+// silently, because PostgREST returns { data: null, error } rather than throwing,
+// and the caller read "no row" as "demote to proposed" and dropped the reason.
+// The owner saw a growing list of unexplained pending items and no reminders.
+{
+  const shapes = [
+    { title: "A", freq: "once" },
+    { title: "B", freq: "weekly", weekday: 1 },
+    { title: "C", freq: "monthly", day_of_month: 5, interval: 3 },
+    { title: "D", freq: "yearly", month_of_year: 10, day_of_month: 19, at_time: "09:00" },
+    { title: "E", freq: "weekly", weekdays: [1, 3], count: 6, until: "2026-12-31" },
+  ];
+  for (const shape of shapes) {
+    const row = reminderColumns(shape, { today: TODAY, tz: IST });
+    for (const [k, v] of Object.entries(row)) {
+      assert.notEqual(v, null, `reminderColumns emitted an explicit null for "${k}" - omit the key instead`);
+    }
+  }
+  const t = taskRow({ prompt: "x" }, { today: TODAY, tz: IST });
+  for (const [k, v] of Object.entries(t)) {
+    assert.notEqual(v, null, `taskRow emitted an explicit null for "${k}" - omit the key instead`);
+  }
+}
 
 // ---- firstFireKey ----
 assert.equal(firstFireKey({ on_date: "2026-09-01" }, TODAY), "2026-09-01");
@@ -189,7 +215,7 @@ assert.equal(firstFireKey({ freq: "daily" }, TODAY), TODAY);
   const t = taskRow({ prompt: "check protein", at_time: "15:00" }, { today: TODAY, nowMinutes: 16 * 60, tz: IST });
   assert.equal(saDayKey(t.fire_at, IST), "2026-08-07", "a passed hour rolls to tomorrow");
   assert.equal(saMinuteOfDay(t.fire_at, IST), 15 * 60);
-  assert.equal(t.recurrence, null, "a one-shot has no recurrence");
+  assert.equal(t.recurrence ?? null, null, "a one-shot has no recurrence - the key is omitted so the column default applies");
   assert.equal(t.intent, "check");
 }
 {
@@ -250,7 +276,7 @@ assert.equal(firstFireKey({ freq: "daily" }, TODAY), TODAY);
   assert.ok(m, "could not find the max_count check constraint in any migration");
   assert.equal(SA_MAX_COUNT, Number(m[1]),
     `the clamp (${SA_MAX_COUNT}) and the database check (${m[1]}) disagree - a capture in between passes here and dies on the INSERT`);
-  assert.equal(reminderColumns({ title: "X", freq: "weekly", weekday: 1, count: SA_MAX_COUNT + 1 }, { today: TODAY }).max_count, null,
+  assert.equal(reminderColumns({ title: "X", freq: "weekly", weekday: 1, count: SA_MAX_COUNT + 1 }, { today: TODAY }).max_count ?? null, null,
     "a count past the database limit must be dropped, not written through to fail the insert");
   assert.equal(reminderColumns({ title: "X", freq: "weekly", weekday: 1, count: SA_MAX_COUNT }, { today: TODAY }).max_count, SA_MAX_COUNT);
 }
