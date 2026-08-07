@@ -23,6 +23,7 @@ bootWithAuth(async () => {
 // Every check resolves to one of these. A check that succeeds with something
 // worth reporting (a row sample, a rejection reason) still has to score green -
 // scoring a detail string as failure is what made this page lie.
+import { outboxStats, listOfflineQueue, drainOfflineQueue, retryNow } from "../services/offline-queue.js";
 const ok = (detail = "") => ({ status: "ok", detail });
 const warn = (detail) => ({ status: "warn", detail });
 const fail = (detail) => ({ status: "fail", detail });
@@ -61,6 +62,13 @@ async function runChecks() {
     { source: "diet", name: "Read food_logs", run: readFoodLogs },
     { source: "uploaded media", name: "Read storage bucket", run: readBucket },
     { source: "the AI agent", name: "Edge function 'agent' reachable", run: pingEdgeFn },
+    // THE ONE THAT WAS MISSING. Captures are written to IndexedDB before any
+    // network call, so a stalled queue looks exactly like a working app that is
+    // simply quiet - the owner types, the box clears, and nothing ever arrives.
+    // There was no surface anywhere in the app that could tell you that, which
+    // is the same unknowable-silence failure this codebase keeps rediscovering,
+    // except this time it was the thing built to PREVENT loss that went quiet.
+    { source: "captures waiting on this device", name: "Outbox drained", run: outboxHealthy },
   ];
 
   const list = document.getElementById("diagList");
@@ -194,3 +202,79 @@ async function runE2E() {
     btn.disabled = false;
   }
 }
+
+
+// Stranded captures, named and counted. A number here is the difference between
+// "the app is broken" and "these four are still on your phone, press send".
+async function outboxHealthy() {
+  let stats;
+  try {
+    stats = await outboxStats();
+  } catch (err) {
+    return fail(`could not read the outbox: ${err?.message || err}`);
+  }
+  if (!stats.depth && !stats.dead) return ok("nothing waiting");
+
+  // The counts alone are still worth showing if the detail read fails, but the
+  // failure has to travel with them - a diagnostic that quietly shows less than
+  // it knows is the bug it is here to find.
+  let items = [];
+  let detailErr = null;
+  try {
+    items = await listOfflineQueue();
+  } catch (err) {
+    detailErr = err?.message || String(err);
+  }
+  const detail = items
+    .filter((i) => i.state !== "sent")
+    .slice(0, 6)
+    .map((i) => {
+      const when = i.createdAt ? new Date(i.createdAt).toLocaleString() : "unknown time";
+      const why = i.lastError ? ` - ${String(i.lastError).slice(0, 80)}` : "";
+      return `"${String(i.text || "(media only)").slice(0, 40)}" ${i.state} after ${i.attempts || 0} tries, ${when}${why}`;
+    })
+    .join(" | ");
+
+  const msg = `${stats.depth} waiting, ${stats.dead} gave up. ${detailErr ? `(could not list them: ${detailErr})` : detail}`;
+  // `dead` means it stopped retrying on its own, which no amount of waiting
+  // fixes - that is a failure, not a warning.
+  return stats.dead ? fail(msg) : warn(msg);
+}
+
+// A button, because knowing is only half of it. Retries everything, including
+// the ones that gave up, and says what happened to each.
+function mountOutboxFlush() {
+  const host = document.getElementById("diagList")?.parentNode;
+  if (!host || document.getElementById("diagFlushBtn")) return;
+  const btn = document.createElement("button");
+  btn.id = "diagFlushBtn";
+  btn.type = "button";
+  btn.className = "secondary-button";
+  btn.textContent = "Send everything waiting on this device";
+  const out = document.createElement("p");
+  out.className = "agent-detail";
+  out.id = "diagFlushOut";
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    out.textContent = "Sending…";
+    try {
+      // Hand the ones that gave up back to the retry machine first, or the drain
+      // walks straight past them - `dead` is deliberately not "due".
+      const items = await listOfflineQueue();
+      for (const i of items.filter((x) => x.state === "dead")) await retryNow(i.id, runCapture);
+      const res = await drainOfflineQueue(runCapture);
+      const sent = res.filter((r) => r.ok).length;
+      const failed = res.filter((r) => !r.ok);
+      out.textContent = failed.length
+        ? `${sent} sent. ${failed.length} still failing: ${failed.map((f) => f.error).slice(0, 3).join("; ")}`
+        : `${sent} sent, nothing left waiting.`;
+    } catch (err) {
+      out.textContent = `Could not send: ${err?.message || err}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  host.appendChild(btn);
+  host.appendChild(out);
+}
+mountOutboxFlush();
