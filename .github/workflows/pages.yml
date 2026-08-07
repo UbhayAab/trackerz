@@ -1,9 +1,27 @@
 name: Deploy GitHub Pages
 
+# THIS WORKFLOW NO LONGER DEPLOYS, AND MUST NOT RUN ON PUSH.
+#
+# The repository's Pages source is the LEGACY branch build:
+#   gh api repos/UbhayAab/trackerz/pages
+#   -> {"build_type":"legacy","source":{"branch":"main","path":"/"},"status":"built"}
+#
+# Legacy mode publishes the branch itself on every push, which is why the live
+# site is current. But it also means `actions/deploy-pages` has no deployment
+# target to claim, so a run started here never finishes - it sits in `waiting`
+# holding the `pages` concurrency group, and because cancel-in-progress is false
+# every later push queues behind it forever. Measured on 2026-08-08: one run had
+# been waiting 25 hours, two more were cancelled behind it, and the newest had
+# been pending for 9 hours.
+#
+# The cost was not a broken site. The cost was a permanently red-looking deploy
+# pipeline in front of a working one, which is the kind of false signal that
+# sends the next person hunting a deploy bug that does not exist.
+#
+# Left as workflow_dispatch only so it is one click away if Pages is ever
+# switched back to build_type "workflow" in repo settings. If you do switch it,
+# restore the `push` trigger in the same change.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:

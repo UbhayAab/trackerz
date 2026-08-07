@@ -1,4 +1,4 @@
-import { bootWithAuth } from "./bootstrap.js";
+import { bootWithAuth, deviceSyncStatuses } from "./bootstrap.js";
 import { getSupabaseClient } from "../services/supabase-client.js";
 import { getCurrentSession } from "../services/auth.js";
 import { isLiveTranscriptionSupported } from "../services/speech.js";
@@ -69,6 +69,13 @@ async function runChecks() {
     // is the same unknowable-silence failure this codebase keeps rediscovering,
     // except this time it was the thing built to PREVENT loss that went quiet.
     { source: "captures waiting on this device", name: "Outbox drained", run: outboxHealthy },
+    // THE OTHER ONE THAT WAS MISSING. The three background device syncs used to
+    // start with `.catch(() => {})`, so "no bridge, working as designed",
+    // "permission never granted" and "threw on startup" all produced the same
+    // evidence: nothing at all. Passive spend capture has written ONE capture in
+    // its entire life and no payment row has ever been created automatically, and
+    // until now there was no surface anywhere that could tell you why.
+    { source: "device syncs", name: "Background device syncs started", run: deviceSyncsHealthy },
   ];
 
   const list = document.getElementById("diagList");
@@ -206,6 +213,25 @@ async function runE2E() {
 
 // Stranded captures, named and counted. A number here is the difference between
 // "the app is broken" and "these four are still on your phone, press send".
+// The three background syncs record how their startup went (see bootstrap.js).
+// Reporting them is deliberately three-valued, not two: a browser has no native
+// bridge, so "did not start" there is CORRECT and must read as a warning about
+// what is unavailable, never as a failure. Only a sync that actually threw is a
+// failure, and it is named along with the reason.
+function deviceSyncsHealthy() {
+  const statuses = deviceSyncStatuses();
+  // Nothing recorded at all means bootWithAuth's onReady never ran, which is
+  // itself worth saying rather than scoring green on an empty list.
+  if (!statuses.length) return warn("no device sync has reported yet");
+
+  const failed = statuses.filter((s) => !s.result.ok);
+  if (failed.length) {
+    return fail(failed.map((s) => `${s.name}: ${s.result.kind} (${s.result.message})`).join("; "));
+  }
+  const names = statuses.map((s) => s.name).join(", ");
+  return ok(`${names} started. In a browser these are no-ops by design; on the phone they still need their Android permissions granted.`);
+}
+
 async function outboxHealthy() {
   let stats;
   try {

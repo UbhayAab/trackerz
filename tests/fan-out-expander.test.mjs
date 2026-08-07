@@ -560,8 +560,13 @@ console.log("fan-out-expander tests passed");
   // Real dates still parse, in both orders, abbreviated and full.
   assert.equal(day("ate on 25 June"), "2026-06-25", "explicit day-month still works");
   assert.equal(day("on 25 Jun had dosa"), "2026-06-25", "abbreviation still works");
-  assert.equal(day("September 14 dinner"), "2026-09-14", "month-day order still works");
-  assert.equal(day("on 3 Dec paid 200"), "2026-12-03", "abbreviation + amount still works");
+  // A bare month-day that has not happened yet this year names LAST year: a
+  // salvaged log is a record of something that already happened, and September
+  // said in June is September gone, not September coming. Same rule
+  // lib/amend-target.mjs applies to the same ambiguity. The DAY the user stated
+  // survives, which is why this rolls the year rather than collapsing to today.
+  assert.equal(day("September 14 dinner"), "2025-09-14", "month-day order still works, in the past");
+  assert.equal(day("on 3 Dec paid 200"), "2025-12-03", "abbreviation + amount still works, in the past");
   assert.equal(day("25/06 lunch"), "2026-06-25", "numeric date still works");
   assert.equal(day("yesterday dosa"), "2026-06-25", "relative dates still work");
 }
@@ -776,6 +781,73 @@ console.log("meta-commentary guard tests passed");
   );
   assert.equal(has(mixed, "create_food_log_candidate").length, 1,
     "carriesLoggedEvent keeps the honest mixed capture working");
+}
+
+// ---------------------------------------------------------------------------
+// A DATE THAT BELONGS TO A FACT IS NOT THE DATE OF THE EVENT. 2026-08-06, live:
+//   food_logs 41f2c028-d519-4225-b2a5-66f311d5a967
+//   occurred_at 2026-10-19T06:30:00Z, created_at 2026-08-06T18:06:35Z
+//   description "My bday is 19 oct 2002\n\nAlso, I had 50g aloo bhujia and 2
+//                soop sachet, the same as yesterday"
+// The salvage layer (`_auto_expanded: true`) read "19 oct" out of the BIRTHDAY,
+// dropped the "2002" that would have made the misread obvious, and filed the
+// lunch seventy-four days into the FUTURE. The owner's real 2026-08-06 lunch left
+// that day's totals and a phantom one is waiting in October.
+// ---------------------------------------------------------------------------
+{
+  const CAPTURED = "2026-08-06T23:36:35+05:30";
+  const SENTENCE = "My bday is 19 oct 2002\n\nAlso, I had 50g aloo bhujia and 2 soop sachet, the same as yesterday";
+
+  // The date the birthday carries must not become the meal's date, and the meal
+  // must not land in the future. (This sentence also ends "the same as
+  // yesterday", which the relative-word branch reads as a backdate to 08-05 -
+  // a separate ambiguity, deliberately not asserted here.)
+  const at = resolveOccurredAt(SENTENCE, CAPTURED);
+  assert.ok(!at.startsWith("2026-10-19"), `the birth date must not date the meal, got ${at}`);
+  assert.ok(Date.parse(at) <= Date.parse(CAPTURED) + 60_000, `a meal cannot be logged in the future, got ${at}`);
+  // The same sentence without the relative-date tail lands on the capture day.
+  assert.ok(
+    resolveOccurredAt("My bday is 19 oct 2002\n\nAlso, I had 50g aloo bhujia and 2 soop sachet", CAPTURED)
+      .startsWith("2026-08-06"),
+    "with no relative words, the meal happened on the day it was captured",
+  );
+
+  // ...and it must not do so through the whole expander either.
+  const calls = expandToolCalls([], { evidence: SENTENCE, now: CAPTURED });
+  for (const tc of calls) {
+    const when = String(tc.arguments?.occurred_at || "");
+    if (!when) continue;
+    assert.ok(Date.parse(when) <= Date.parse(CAPTURED) + 60_000,
+      `${tc.name} was filed in the future at ${when}`);
+  }
+
+  // Every spelling of the same mistake.
+  for (const s of [
+    "my birthday is 19 October 2002, and I had 50g aloo bhujia",
+    "our anniversary is 3 May - had 2 rotis",
+    "her birth date is 14 Aug. I ate 6 eggs",
+  ]) {
+    const got = resolveOccurredAt(s, CAPTURED);
+    assert.ok(got.startsWith("2026-08-06"), `"${s}" -> ${got}`);
+  }
+
+  // A REAL backdate in the same breath still works: only the fact's own clause
+  // is blanked, so a date in the next clause is read exactly as before.
+  assert.equal(
+    resolveOccurredAt("my birthday is 19 oct 2002. I ate biryani on 24 June evening", CAPTURED),
+    "2026-06-24T17:00:00+05:30",
+    "masking the fact clause must not blind the parser to a genuine backdate",
+  );
+
+  // The clock-only backstop, independent of any phrasing: a salvaged log is a
+  // record of something that already happened, so a future date is a misread. A
+  // bare month-day keeps the day the user said and rolls the YEAR back...
+  assert.equal(resolveOccurredAt("had dal rice on 25 December", "2026-06-26T10:00:00+05:30"),
+    "2025-12-25T12:00:00+05:30", "December said in June is December gone");
+  // ...and a STATED future year cannot be salvaged into anything true, so it
+  // falls back to the moment of capture rather than inventing a year.
+  assert.equal(resolveOccurredAt("had dal rice on 25/12/2027", "2026-06-26T10:00:00+05:30"),
+    "2026-06-26T10:00:00+05:30");
 }
 
 console.log("instruction-is-not-a-meal regressions passed");

@@ -258,26 +258,33 @@ assert.deepEqual(laneLayout(null, {}).blocks, [], "nulls are survivable");
   assert.ok(!/<table/i.test(html), "never a table at 320px");
 }
 {
-  // Empty HERE names the next real thing, so a quiet fortnight cannot be read as
-  // a broken calendar.
+  // THE EMPTY-VIEWS REGRESSION, 2026-08-08. The owner's live calendar held two
+  // rules, 63 and 72 days out, and agenda / week / month were ALL blank at once
+  // ("what is this calendar view dude, it's so empty"). A sentence naming the
+  // next date is not a calendar: an empty near window must REACH AHEAD and draw
+  // the real rows, and say that it did.
   const far = [{ id: "f", title: "Diwali", kind: "other", freq: "yearly", month_of_year: 11, day_of_month: 8 }];
   const html = renderAgenda(far, TODAY);
-  assert.ok(html.includes("Nothing in the next 21 days"));
-  assert.ok(html.includes("Diwali"), "and it says when the next one is");
-  assert.ok(html.includes("Sun 8 Nov"));
+  assert.ok(html.includes("Nothing in the next 21 days, so this reaches ahead to Sun 8 Nov"));
+  assert.ok(html.includes("Diwali"), "and the far item is DRAWN, not merely named");
+  assert.ok(html.includes('data-day="2026-11-08"'), "as a real, openable day");
+  assert.ok(html.includes("cal-agenda-items"), "with the agenda's own markup");
 }
 {
-  // Nothing at all, ever: no invented "next".
+  // Nothing at all, ever: no invented "next", and no claim about 21 days when it
+  // looked much further than that.
   const html = renderAgenda([], TODAY);
-  assert.ok(html.includes("Nothing scheduled in the next 21 days"));
+  assert.ok(html.includes("Nothing scheduled, now or ahead"));
   assert.ok(!html.includes("Next is"));
+  assert.ok(!html.includes("cal-widened"), "nothing was widened, because there was nothing to widen to");
 }
 {
   // More days than fit are counted, not dropped.
   const daily = [{ id: "d", title: "Water", kind: "other", freq: "daily" }];
   const html = renderAgenda(daily, TODAY);
-  assert.ok(/1[34] more days in the next 21\./.test(html), html.slice(-120));
+  assert.ok(/1[34] more days ahead\./.test(html), html.slice(-120));
   assert.ok(!html.includes("Nothing else until"), "a truncated agenda counts, it does not look past the window");
+  assert.ok(!html.includes("cal-widened"), "a full near window is never widened");
 }
 {
   // The owner's real shape: one thing inside the window, the next one two months
@@ -325,16 +332,18 @@ assert.deepEqual(laneLayout(null, {}).blocks, [], "nulls are survivable");
   assert.ok(html.includes("cal-wchip"), "the birthday is an all-day chip");
 }
 {
-  // An empty week says so AND names the next thing. (Rent and the birthday only;
-  // the weekly rules put something in every week by construction.)
+  // An empty week says so AND draws what IS coming - up to three of them, as
+  // openable rows rather than one sentence. (Rent and the birthday only; the
+  // weekly rules put something in every week by construction.)
   const html = renderWeek(RULES().slice(0, 2), { anchor: "2026-09-20", today: TODAY });
-  assert.ok(html.includes("Nothing this week"));
-  assert.ok(/Next is/.test(html));
+  assert.ok(html.includes("Nothing this week. What is coming:"));
+  assert.ok(html.includes("Rent"), "the next real dates are drawn");
+  assert.ok(html.includes("cal-jump"), "and each one jumps the calendar to that day");
 }
 {
   const html = renderWeek([], { anchor: TODAY, today: TODAY });
-  assert.ok(html.includes("Nothing this week"));
-  assert.ok(!html.includes("Next is"), "no next date is invented when there is none");
+  assert.ok(html.includes("Nothing this week, and nothing ahead either."));
+  assert.ok(!html.includes("cal-jump"), "no next date is invented when there is none");
 }
 
 // ---- the month -------------------------------------------------------------
@@ -366,8 +375,9 @@ assert.deepEqual(laneLayout(null, {}).blocks, [], "nulls are survivable");
   // A month with nothing in it is a fact about the month. It must not read as a
   // fact about the user's life, so the next real date is named.
   const html = renderMonth([RULES()[1]], { year: 2026, month: 10, today: TODAY });
-  assert.ok(html.includes("Nothing in October 2026"));
-  assert.ok(html.includes("Birthday"), "and the next real date is named");
+  assert.ok(html.includes("Nothing in October 2026. What is coming:"));
+  assert.ok(html.includes("Birthday"), "and the next real date is drawn, not just named");
+  assert.ok(html.includes('data-day="2026-08-14"'), "as a day the calendar can jump to");
   assert.ok(html.includes("cal-grid"), "the grid still draws - the month is real, it is just quiet");
 }
 
@@ -476,8 +486,39 @@ const stateFor = (view) => ({ ...initialCalendarState(TODAY), view });
   // GENUINELY EMPTY says what to do about it.
   const html = renderCalendar(stateFor("agenda"), [], TODAY, {});
   assert.ok(html.includes("Nothing scheduled yet"));
-  assert.ok(html.includes("14 August"), "it shows how to add one");
+  assert.ok(html.includes("19 October 2002"), "it shows how to add one, in the owner's own words");
   assert.ok(!html.includes("Couldn't load"));
+}
+{
+  // THE MIRROR FAILED. A connected calendar whose events could not be read must
+  // never render as a calendar with no meetings in it - the same rule as tasks,
+  // one table over, and the failure that this whole feature was built to survive.
+  const html = renderCalendar(stateFor("agenda"), RULES(), TODAY, { eventError: "needs_reauth" });
+  assert.ok(html.includes("Events from your connected calendars are missing: needs_reauth"));
+  assert.ok(html.includes("Call mum"), "the reminders that DID load are still on screen");
+  assert.ok(html.includes('data-cal-act="retry"'));
+  assert.ok(
+    calendarStatus(stateFor("agenda"), RULES(), TODAY, { eventError: "needs_reauth" })
+      .includes("Events from your connected calendars could not be loaded"),
+    "and the live region says it too",
+  );
+}
+{
+  // A MIRRORED EVENT IS DRAWN. Until 2026-08-08 calendar_events_raw had a fetcher
+  // and no renderer, so connecting Google would have synced a year of meetings
+  // into a calendar that still showed only the user's own rules.
+  const meeting = {
+    id: "gcal:e1", title: "Standup with Dr Mehta", kind: "event", freq: "once",
+    on_date: "2026-08-07", at_time: "16:00", active: true, is_event: true,
+    note: "Clinic", calendar_id: "work@example.com",
+  };
+  const html = renderCalendar(stateFor("agenda"), [...RULES(), meeting], TODAY, {});
+  assert.ok(html.includes("Standup with Dr Mehta"));
+  assert.ok(html.includes(KIND_ICON.event), "with the read-only glyph, not a reminder bell");
+  const detail = renderDayDetail(dayItems([meeting], "2026-08-07"), "2026-08-07", TODAY, { rows: [meeting] });
+  assert.ok(detail.includes("read-only"));
+  assert.ok(detail.includes("work@example.com"));
+  assert.ok(!detail.includes("announced in the 07:00 brief"), "this app does not fire somebody else's meeting");
 }
 {
   // TASKS FAILED but reminders loaded: the calendar still renders, and it names

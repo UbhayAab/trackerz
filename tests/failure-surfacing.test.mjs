@@ -332,4 +332,51 @@ eq(unwrapOr(5, 0), 5, "a bare value passes through - migrating a call site canno
   }
 }
 
+// --- the capture page's own two silent surfaces ------------------------------
+//
+// Same disease, two more places it lived. Verified against the live project on
+// 2026-08-08: raw_ingestions has NEVER recorded source_type 'audio' or 'image'
+// in its whole history, and the raw-media bucket has held the same 2 objects
+// since 2026-06-29 - while the owner was pressing Stop and tapping the shutter.
+// Neither path had any on-screen state: voice reported into a collapsed
+// <details>, and a media upload had no per-file state at all.
+{
+  const runner = readFileSync("src/services/agent-runner.js", "utf8");
+  const panel = readFileSync("src/ui/capture-panel.js", "utf8");
+  const html = readFileSync("index.html", "utf8");
+
+  // A failed upload must carry the REAL reason, unwrapped the same way
+  // diagnostics does it - "[object Object]" is what a PostgrestError renders as
+  // when it is dropped into a template literal.
+  ok(/import \{[^}]*\bdescribeErrorSync\b[^}]*\} from "\.\.\/\.\.\/lib\/failure\.mjs"/.test(runner),
+    "agent-runner unwraps upload failures through lib/failure.mjs, not String(err)");
+  ok(/error: describeErrorSync\(err\)/.test(runner), "the onMedia failure event carries a described error");
+
+  // A failure that is only thrown is not a failure that is seen: the runner
+  // re-throws so the outbox still retries, AND reports the file first.
+  const uploadLoop = /for \(const \[index, file\] of files\.entries\(\)\)[\s\S]*?\n  \}/.exec(runner);
+  ok(uploadLoop, "the media upload loop is still recognisable");
+  ok(/status: "failed"/.test(uploadLoop[0]) && /throw err/.test(uploadLoop[0]),
+    "an upload failure is both reported to the UI and re-thrown so the capture retries");
+  ok(!/\n\s*continue;\s*\n/.test(uploadLoop[0].replace(/status: "skipped"[\s\S]*?\n/, "")),
+    "no file is skipped without being named first");
+
+  // The two live regions exist, start hidden, and sit ABOVE the collapsed
+  // AI-activity disclosure that used to swallow all of this.
+  for (const id of ["voiceStatus", "captureAttachments"]) {
+    ok(new RegExp(`id="${id}"[^>]*aria-live="polite"`).test(html), `#${id} is an aria-live region`);
+    ok(new RegExp(`id="${id}"[^>]*hidden`).test(html), `#${id} exists in the markup before it has text, so it can be announced`);
+    ok(html.indexOf(`id="${id}"`) < html.indexOf('<details class="capture-meta">'),
+      `#${id} must not be inside or below the collapsed AI activity panel`);
+  }
+
+  // Every branch of finalizeVoice ends with something on screen: either the
+  // dictation controller's outcome or an explicit describeRecording sentence.
+  const finalize = /async function finalizeVoice\(\)[\s\S]*?\n\}/.exec(panel);
+  ok(finalize, "finalizeVoice is still the single stop path");
+  ok(/setVoiceStatus\(/.test(finalize[0]), "finalizeVoice writes to the visible status line");
+  ok(/describeRecording\(/.test(finalize[0]), "the recorder-only branch reports what it produced");
+  ok(/dictation\.stop\(/.test(finalize[0]), "the dictation branch reports through the shared controller");
+}
+
 console.log(`failure-surfacing tests passed: ${n} assertions`);

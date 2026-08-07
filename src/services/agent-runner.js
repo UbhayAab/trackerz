@@ -4,6 +4,7 @@ import { runCrossSourceDedupe } from "./dedupe-scan.js";
 import { parseCapture } from "../ai/capture-parser.js";
 import { updateState } from "../state/app-state.js";
 import { isLocalSession } from "./auth.js";
+import { describeErrorSync } from "../../lib/failure.mjs";
 
 const STAGES = [
   { key: "queued",     label: "Queued",          detail: "Capture received." },
@@ -33,8 +34,12 @@ const AGENT_TIMEOUT_MS = 90_000;
 
 // options.ingestionId: reuse an existing raw_ingestions row (an explicit user
 // retry - see retryCapture); options.onIngestion: fires as soon as the row exists
-// so a caller (e.g. the offline queue) can remember it and retry against it.
-export async function runCapture({ text = "", files = [], captureType = "auto", transcript = "" }, { onStage, ingestionId = null, onIngestion } = {}) {
+// so a caller (e.g. the offline queue) can remember it and retry against it;
+// options.onMedia: fires per FILE with uploading/uploaded/failed/skipped, so the
+// UI can show whether a photo actually reached storage instead of leaving the
+// user to guess. Before this existed, a media upload had no on-screen state at
+// all: the only signal was the whole capture failing with a generic message.
+export async function runCapture({ text = "", files = [], captureType = "auto", transcript = "" }, { onStage, onMedia, ingestionId = null, onIngestion } = {}) {
   const sourceType = inferSourceType(text, files, transcript);
   const mode = captureType === "food" ? "diet" : captureType === "money" ? "money" : captureType === "wellness" ? "wellness" : "auto";
 
@@ -77,11 +82,29 @@ export async function runCapture({ text = "", files = [], captureType = "auto", 
 
   let mediaAssets = reusedIngestion ? await loadMediaAssets(supabase, ingestion.id) : [];
   const reusedMedia = mediaAssets.length > 0;
-  if (!reusedMedia) {
-    for (const file of files) {
-      if (!(file instanceof Blob) && !(file?.arrayBuffer)) continue;
-      const asset = await uploadMediaFile(file, { kind: pickKind(file), ingestionId: ingestion.id });
-      mediaAssets.push(asset);
+  if (reusedMedia) {
+    files.forEach((file, index) => onMedia?.({ index, name: file?.name || "file", status: "uploaded", reused: true }));
+  } else {
+    for (const [index, file] of files.entries()) {
+      const name = file?.name || "file";
+      // `continue` used to be the whole story here: a value that was not a Blob
+      // was dropped from the capture with nothing said anywhere. Name it.
+      if (!(file instanceof Blob) && !(file?.arrayBuffer)) {
+        onMedia?.({ index, name, status: "skipped", error: "not a readable file" });
+        continue;
+      }
+      onMedia?.({ index, name, status: "uploading", size: file.size, type: file.type });
+      try {
+        const asset = await uploadMediaFile(file, { kind: pickKind(file), ingestionId: ingestion.id });
+        mediaAssets.push(asset);
+        onMedia?.({ index, name, status: "uploaded", assetId: asset?.id, path: asset?.storage_path, size: file.size, type: file.type });
+      } catch (err) {
+        // Still fatal for the capture - it goes back to the outbox and retries -
+        // but the UI now learns WHICH file failed and WHY, instead of one
+        // generic "couldn't send" for a photo the user watched disappear.
+        onMedia?.({ index, name, status: "failed", error: describeErrorSync(err), size: file.size, type: file.type });
+        throw err;
+      }
     }
   }
 

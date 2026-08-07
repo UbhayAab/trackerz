@@ -4,6 +4,8 @@ import {
   whenLabel, reminderLines, weekdayOf, addDays, daysBetween, clampDay, isLeapYear, daysInMonth,
   occurrenceKey, timedDue, agendaBetween, ruleProblem, weekdayList, nthWeekdayOfMonth,
   minutesOfDay, formatTime, weekIndex,
+  parseSpokenDate, datedFactReminder, datedFactReminders, normalizeDatedFactCalls,
+  sameCalendarFact, ageOn, agendaWindow,
 } from "../lib/reminders.mjs";
 
 // ---------------------------------------------------------------------------
@@ -338,5 +340,149 @@ assert.equal(describeRule({ freq: "monthly", day_of_month: 1, until: "2026-11-01
 assert.equal(describeRule({ freq: "monthly", day_of_month: 1, exdates: ["2026-10-01"] }), "the 1st of every month, except 2026-10-01");
 assert.equal(reminderLines(dueReminders([{ title: "Call mum", freq: "daily", at_time: "18:30" }], "2026-08-05"))[0],
   "Call mum is due today at 18:30 (2026-08-05).");
+
+// ---------------------------------------------------------------------------
+// THE BIRTHDAY REGRESSION, 2026-08-08.
+//
+// Run against the DEPLOYED agent on 2026-08-08:
+//   "my mother's birthday is 12 March"  -> a correct yearly reminder
+//   "my birthday is 19 October 2002"    -> ZERO tool calls, ZERO rows
+// The difference was the memory context: `memory_facts.birthday` already held
+// "19 October 2002", so the brain applied the prompt's ALREADY-LOGGED rule and
+// said nothing. Knowing a date is not the same as having it on the calendar, so
+// this path must not depend on what else is in the context window.
+// ---------------------------------------------------------------------------
+{
+  const TODAY = "2026-08-08";
+  const r = datedFactReminder("my birthday is 19 October 2002", { today: TODAY });
+  assert.ok(r, "the owner's exact sentence produces a reminder");
+  assert.equal(r.title, "My birthday");
+  assert.equal(r.kind, "birthday");
+  assert.equal(r.freq, "yearly", "a birth date is a fact that recurs, never a one-off");
+  assert.equal(r.month_of_year, 10);
+  assert.equal(r.day_of_month, 19);
+  // THE YEAR IS KEPT. dtstart is the only column that can hold it, and dropping
+  // it is how "19 October 2002" became "19 October" with the age thrown away.
+  assert.equal(r.dtstart, "2002-10-19");
+  assert.equal(ruleProblem(r), null, "and the rule it produces can actually fire");
+  assert.equal(nextOccurrence(r, TODAY), "2026-10-19");
+  assert.equal(ageOn(r, "2026-10-19"), 24, "which is what lets the calendar say 'turns 24'");
+  assert.deepEqual(occurrencesBetween(r, TODAY, "2030-01-01", 10),
+    ["2026-10-19", "2027-10-19", "2028-10-19", "2029-10-19"],
+    "an anchored yearly rule keeps firing - the dtstart does not pin it to 2002");
+}
+{
+  const TODAY = "2026-08-08";
+  // The other phrasings the owner would actually speak.
+  assert.equal(datedFactReminder("my birthday is 19 October", { today: TODAY }).dtstart, undefined,
+    "no year stated, no year invented");
+  assert.equal(datedFactReminder("my mother's birthday is 12 March", { today: TODAY }).title, "Mother's birthday");
+  assert.equal(datedFactReminder("our anniversary is on 4 November", { today: TODAY }).kind, "anniversary");
+  assert.equal(datedFactReminder("Priya's birthday is 7 September", { today: TODAY }).title, "Priya's birthday");
+  assert.equal(datedFactReminder("my birthday: 19 Oct 2002", { today: TODAY }).day_of_month, 19);
+  assert.equal(datedFactReminder("her birth date is 14th Aug", { today: TODAY }).month_of_year, 8);
+  // TWO in one breath.
+  const two = datedFactReminders("my birthday is 19 October 2002 and my mum's birthday is 12 March", { today: TODAY });
+  assert.equal(two.length, 2);
+  assert.deepEqual(two.map((x) => x.title), ["My birthday", "Mum's birthday"]);
+  // And the things that must NOT become a yearly rule.
+  assert.equal(datedFactReminder("birthday party on 3 May", { today: TODAY }), null,
+    "a party on a date is a one-off event, not a birth date");
+  assert.equal(datedFactReminder("remind me to pay the electricity bill on the 5th of every month", { today: TODAY }), null);
+  assert.equal(datedFactReminder("6 boiled eggs and 500ml curd", { today: TODAY }), null);
+  assert.equal(datedFactReminder("the anniversary is 30 February", { today: TODAY }), null, "30 February is not a date");
+  // A year in the FUTURE is not a birth year; anchoring to it would silence the
+  // rule until then, so it is dropped rather than guessed at.
+  assert.equal(datedFactReminder("my birthday is 19 October 2202", { today: TODAY }).dtstart, undefined);
+}
+{
+  assert.deepEqual(parseSpokenDate("19 October 2002"), { d: 19, m: 10, y: 2002 });
+  assert.deepEqual(parseSpokenDate("Oct 19, 2002"), { d: 19, m: 10, y: 2002 });
+  assert.deepEqual(parseSpokenDate("14th Aug"), { d: 14, m: 8, y: null });
+  assert.equal(parseSpokenDate("next Tuesday"), null);
+}
+{
+  // Duplicate detection, so re-saying a birthday cannot write it twice.
+  const stored = { title: "My birthday", freq: "yearly", day_of_month: 19, month_of_year: 10 };
+  assert.equal(sameCalendarFact(stored, datedFactReminder("my birthday is 19 October 2002", { today: "2026-08-08" })), true);
+  assert.equal(sameCalendarFact(stored, { title: "My birthday", freq: "yearly", day_of_month: 14, month_of_year: 8 }), false,
+    "same title, different date, is a different claim - and only one of them can be right");
+  assert.equal(sameCalendarFact(stored, null), false);
+}
+{
+  // THE DUPLICATE-BIRTHDAY REGRESSION, measured live on 2026-08-08 minutes after
+  // the first fix landed. With the prompt bullet in place the brain DID emit the
+  // reminder - but titled it "Ubhay's birthday" where the stored row said "My
+  // birthday", so the writer could not see it was the same fact and wrote a
+  // SECOND 19 October. The stored title has to be a function of what the user
+  // said, not of how the model phrased it.
+  const TODAY = "2026-08-08";
+  const SAID = "my birthday is 19 October 2002";
+  const modelSaid = [{
+    name: "create_reminder_candidate",
+    arguments: { title: "Ubhay's birthday", kind: "birthday", freq: "yearly", month_of_year: 10, day_of_month: 19 },
+    confidence: 0.98,
+  }];
+  const out = normalizeDatedFactCalls(modelSaid, SAID, { today: TODAY });
+  assert.equal(out.length, 1, "the model's own call is kept, never doubled");
+  assert.equal(out[0].arguments.title, "My birthday", "renamed to what the sentence actually said");
+  assert.equal(out[0].arguments.dtstart, "2002-10-19", "and the year the model has no argument for is added");
+  assert.equal(out[0].arguments._dated_fact, true, "flagged so the writer looks before it inserts");
+
+  // The brain saying nothing at all - the original failure - still lands a row.
+  const salvaged = normalizeDatedFactCalls([], SAID, { today: TODAY });
+  assert.equal(salvaged.length, 1);
+  assert.equal(salvaged[0].name, "create_reminder_candidate");
+  assert.equal(salvaged[0].arguments.title, "My birthday");
+  assert.equal(salvaged[0].arguments.freq, "yearly");
+
+  // A NAMED owner is never merged into the account holder's own row: that title
+  // is derived from the text too, so two people sharing a date stay separate.
+  const other = normalizeDatedFactCalls(
+    [{ name: "create_reminder_candidate", arguments: { title: "X", kind: "birthday", freq: "yearly", month_of_year: 10, day_of_month: 19 } }],
+    "Priya's birthday is 19 October",
+    { today: TODAY },
+  );
+  assert.equal(other[0].arguments.title, "Priya's birthday");
+  assert.notEqual(other[0].arguments.title, "My birthday");
+
+  // A reminder that is not a dated fact is passed through untouched, and a
+  // capture with no stated date changes nothing at all.
+  const bill = [{ name: "create_reminder_candidate", arguments: { title: "Pay rent", kind: "bill", freq: "monthly", day_of_month: 5 } }];
+  assert.deepEqual(normalizeDatedFactCalls(bill, "remind me to pay rent on the 5th", { today: TODAY }), bill);
+  assert.deepEqual(normalizeDatedFactCalls(bill, SAID, { today: TODAY })[0], bill[0], "a bill is not a birthday");
+  assert.deepEqual(normalizeDatedFactCalls([], "6 boiled eggs and 500ml curd", { today: TODAY }), []);
+  // A food log in the same breath is carried through untouched.
+  const meal = { name: "create_food_log_candidate", arguments: { description: "50g aloo bhujia" } };
+  const mixed = normalizeDatedFactCalls([meal], "my bday is 19 oct 2002, also I had 50g aloo bhujia", { today: TODAY });
+  assert.equal(mixed.length, 2);
+  assert.equal(mixed[0], meal, "the meal is untouched");
+  assert.equal(mixed[1].arguments.title, "My birthday");
+}
+{
+  // ageOn refuses to guess. An unknown age and a newborn must never render the same.
+  assert.equal(ageOn({ freq: "yearly", month_of_year: 10, day_of_month: 19 }, "2026-10-19"), null);
+  assert.equal(ageOn({ freq: "once", dtstart: "2002-10-19" }, "2026-10-19"), null);
+  assert.equal(ageOn({ freq: "yearly", dtstart: "2002-10-19" }, "2002-10-19"), null, "the day itself is not year one");
+}
+{
+  // THE EMPTY-WINDOW REGRESSION. The owner's live rows on 2026-08-08.
+  const live = [
+    { id: "b", title: "My birthday", kind: "birthday", freq: "yearly", month_of_year: 10, day_of_month: 19 },
+    { id: "g", title: "File quarterly GST", kind: "filing", freq: "quarterly", month_of_year: 1, day_of_month: 10 },
+  ];
+  const TODAY = "2026-08-08";
+  assert.equal(Object.keys(agendaBetween(live, TODAY, addDays(TODAY, 21))).length, 0,
+    "the fixed 21-day window really was empty - the data was right, the window was not");
+  const win = agendaWindow(live, TODAY);
+  assert.equal(win.widened, true);
+  assert.equal(win.to, "2026-10-24", "a fortnight past the first real thing");
+  assert.equal(Object.keys(agendaBetween(live, TODAY, win.to)).length, 2, "and now there is a calendar to look at");
+  // A window that already has something is never widened.
+  const soon = [{ id: "s", title: "Rent", freq: "monthly", day_of_month: 12 }];
+  assert.equal(agendaWindow(soon, TODAY).widened, false);
+  // Nothing at all stays honest rather than searching forever.
+  assert.equal(agendaWindow([], TODAY).widened, false);
+}
 
 console.log("reminders tests passed");

@@ -9,6 +9,11 @@ import { getState } from "../state/app-state.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { showToast } from "./toast.js";
 import { renderAmendCard, renderAmendChooser, bindDiffCard } from "./diff-card.js";
+// A note in THIS feed is one ellipsised 60-character line among the meals and
+// the expenses, and `memory_facts` had no surface anywhere in the app. The panel
+// renders both in full. It is mounted from here rather than from the page HTML
+// so Home adopts it without an edit to index.html or src/pages/capture.js.
+import { renderNotesPanel } from "./notes-panel.js";
 
 // The two tools that CHANGE or REMOVE a row that already exists, rather than
 // adding one. They are the only actions in this feed where one tap is not
@@ -35,6 +40,11 @@ function dayLabel(dayKey) {
 export function renderAdditionsFeed(state) {
   const el = document.querySelector("#additionsFeed");
   if (!el) return;
+  // Notes and standing facts, in full, beside the feed that truncates them.
+  // Deliberately before the early return below: an empty feed is exactly when a
+  // reader is most needed, because "Nothing logged yet" over three saved notes
+  // is the same lie as a measured zero over missing data.
+  renderNotesPanel(state);
   const items = Array.isArray(state.additions) ? state.additions : [];
   if (!items.length) {
     el.innerHTML = `<p class="muted small">Nothing logged yet. Capture anything above - it lands here and you can delete any row with ✕.</p>`;

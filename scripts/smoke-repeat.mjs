@@ -4,12 +4,56 @@
 //   - the home day-plan can log water at all (it previously could not)
 //
 // Usage: node scripts/smoke-repeat.mjs [baseUrl]
-import { chromium } from "playwright";
+//        node scripts/smoke-repeat.mjs --engine     (no browser, no server)
+//
+// --engine runs the suggestion engine over the LIVE food_logs rows - byte for
+// byte the query src/services/supabase-data.js#fetchFoodLogs issues - and prints
+// the chips the home page would render. It exists because the browser path needs
+// a local server plus a minted session, and the question "does a suggestion
+// appear for his real data" deserves an answer that cannot be blocked by either.
 import { config as loadEnv } from "dotenv";
 
 loadEnv({ path: ".env.local" });
-const BASE = (process.argv[2] || "http://127.0.0.1:4173/").replace(/\/$/, "");
+const ENGINE_ONLY = process.argv.includes("--engine");
+const BASE = (process.argv.find((a) => a.startsWith("http")) || "http://127.0.0.1:4173/").replace(/\/$/, "");
 const EMAIL = "ubhayvatsaanand@gmail.com";
+
+if (ENGINE_ONLY) {
+  const pg = (await import("pg")).default;
+  const { topRepeatMeals } = await import("../lib/meal-repeats.mjs");
+  const url = (process.env.SUPABASE_DB_URL || process.env.SUPABASE_DB_URL_POOLER || "").replace(/\?.*$/, "");
+  const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  await client.connect();
+  // Identical to fetchFoodLogs: soft-deleted rows excluded, newest first.
+  const { rows } = await client.query(`
+    select occurred_at, meal_name, meal_slot, description,
+           calories_estimate, protein_g, carbs_g, fat_g
+      from food_logs
+     where deleted_at is null
+     order by occurred_at desc
+     limit 200`);
+  await client.end();
+
+  const chips = topRepeatMeals(rows, { now: new Date(), limit: 5 });
+  console.log(`live food_logs rows (deleted_at is null): ${rows.length}`);
+  console.log(`\nchips the home page renders now: ${chips.length}`);
+  for (const [i, c] of chips.entries()) {
+    const why = c.kind === "combo" ? `${c.days} separate days` : `logged ${c.count}x`;
+    console.log(` ${i + 1}. [${c.kind}] ${c.label}`);
+    console.log(`      ${Math.round(c.calories_estimate)} kcal · ${c.protein_g}g P · ${c.slot} · ${why}`);
+  }
+
+  // The specific thing the owner asked for, named out loud so a silent
+  // regression cannot pass as success.
+  const soya = chips.find((c) => (c.foods || []).includes("soya chunks") && (c.foods || []).includes("oats"));
+  console.log("\n=== VERDICT ===");
+  console.log(soya
+    ? `PASS - soya + oats is suggested: "${soya.label}" (${Math.round(soya.calories_estimate)} kcal, ${soya.days} days of evidence)`
+    : "FAIL - no soya + oats suggestion for the owner's real history");
+  process.exit(soya ? 0 : 1);
+}
+
+const { chromium } = await import("playwright");
 
 async function mintSession() {
   const S = process.env.SUPABASE_URL, K = process.env.SUPABASE_SECRET_KEY, A = process.env.SUPABASE_ANON_KEY;
@@ -76,22 +120,39 @@ async function inspect(url, label) {
 const home = await inspect(`${BASE}/index.html`, "HOME");
 const settings = await inspect(`${BASE}/pages/settings.html`, "SETTINGS");
 
-// Tap the first chip and confirm it logs without a model call.
+// Tap a chip and confirm it logs without a model call.
 //
 // This writes a REAL food row, so it is opt-in (--tap) and self-cleaning: the row
 // is deleted again below. A smoke test that leaves a meal the user never ate would
 // corrupt the very totals it is meant to verify.
+//
+// `--tap=soya` picks the first chip whose label contains that text; bare `--tap`
+// takes the first chip. Targeting matters because a generated combination chip
+// ("70 g soya chunks + 40 g oats") writes a label the app composed rather than one
+// the user ever typed, and that is the path worth exercising.
 let tapped = null;
-const wantTap = process.argv.includes("--tap");
-if (wantTap && home.chips.length) {
+const tapArg = process.argv.find((a) => a === "--tap" || a.startsWith("--tap="));
+if (tapArg && home.chips.length) {
+  const want = tapArg.includes("=") ? tapArg.split("=").slice(1).join("=").toLowerCase() : null;
   await page.goto(`${BASE}/index.html`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
-  const before = await page.locator("#mealChips .meal-chip").count();
-  await page.locator("#mealChips .meal-chip").first().click();
-  await page.waitForTimeout(3500);
-  const toast = await page.locator(".toast, [class*=toast]").first().innerText().catch(() => null);
-  tapped = { chipsBefore: before, toast };
-  console.log(`\n--- CHIP TAP ---\n${JSON.stringify(tapped, null, 1)}`);
+  // The full label lives in data-label. innerText is CLIPPED at 34 chars with an
+  // ellipsis, and using it here meant the cleanup DELETE below silently matched
+  // nothing for any long chip, leaving a meal the owner never ate in his totals.
+  const buttons = await page.locator("#mealChips .meal-chip").evaluateAll(
+    (els) => els.map((e) => e.dataset.label || ""),
+  );
+  const idx = want ? buttons.findIndex((l) => l.toLowerCase().includes(want)) : 0;
+  if (idx < 0) {
+    console.log(`\n--- CHIP TAP ---\nno chip matching "${want}" among: ${JSON.stringify(buttons)}`);
+  } else {
+    const label = buttons[idx];
+    await page.locator("#mealChips .meal-chip").nth(idx).click();
+    await page.waitForTimeout(3500);
+    const toast = await page.locator(".toast, [class*=toast]").first().innerText().catch(() => null);
+    tapped = { chipsBefore: buttons.length, tappedLabel: label, toast };
+    console.log(`\n--- CHIP TAP ---\n${JSON.stringify(tapped, null, 1)}`);
+  }
 } else if (home.chips.length) {
   console.log("\n(chip tap skipped - pass --tap to exercise the write; it writes and then deletes a real row)");
 }
@@ -119,7 +180,7 @@ await browser.close();
 // so an older real meal with the same name is never touched.
 if (tapped) {
   const S = process.env.SUPABASE_URL, K = process.env.SUPABASE_SECRET_KEY;
-  const label = home.chips[0].split(" | ")[0];
+  const label = tapped.tappedLabel;
   const since = new Date(Date.now() - 5 * 60000).toISOString();
   const url = `${S}/rest/v1/food_logs?description=eq.${encodeURIComponent(label)}&occurred_at=gte.${encodeURIComponent(since)}`;
   const res = await fetch(url, {

@@ -149,3 +149,80 @@ export async function prepareAudioFiles(files = []) {
     return plan.action === "transcode" ? toWav(f) : f;
   }));
 }
+
+// ---------------------------------------------------------------------------
+// SAYING WHAT HAPPENED TO A FILE.
+//
+// The owner's question was "if I take a photo and press the tick, does it
+// really upload? I don't even know about the upload thing." He could not know:
+// attaching a photo wrote one line into a COLLAPSED <details>, and the upload
+// itself had no on-screen state at all - not attaching, not uploading, not
+// uploaded, not failed. These two pure functions are the copy for that strip,
+// here rather than in the DOM module so every branch is unit-testable.
+// ---------------------------------------------------------------------------
+
+/**
+ * Human file size. A MEASURED zero is a real fact and prints as "0 B"; an
+ * absent one says "size unknown" rather than borrowing zero's clothes.
+ * `Number(null)` is 0, which is exactly how absent becomes a measurement.
+ */
+export function formatBytes(bytes) {
+  if (bytes === null || bytes === undefined) return "size unknown";
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n < 0) return "size unknown";
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * One attachment, one sentence. Never returns an empty string, and a failure
+ * always carries its reason - "upload failed" with no cause is the same silence
+ * one level up.
+ *
+ * @param {{name?:string, size?:number, type?:string}} file
+ * @param {{status?:"attached"|"uploading"|"uploaded"|"failed"|"skipped", error?:string}} state
+ */
+export function describeUpload(file = {}, state = {}) {
+  const name = String(file.name || "attachment");
+  const size = formatBytes(file.size);
+  const kind = String(file.type || "").startsWith("image/") ? "photo"
+    : String(file.type || "").startsWith("audio/") ? "voice note"
+    : "file";
+  switch (state.status) {
+    case "uploading":
+      return { name, tone: "busy", text: `Uploading ${kind} (${size})...` };
+    case "uploaded":
+      return { name, tone: "ok", text: `Uploaded ${kind} (${size}). The AI is reading it.` };
+    case "failed":
+      return { name, tone: "error", text: `Upload failed: ${state.error || "no reason given"}. It is saved on this phone and will retry.` };
+    case "skipped":
+      return { name, tone: "error", text: `Skipped: ${state.error || "this is not a readable file"}.` };
+    case "attached":
+    default:
+      return { name, tone: "pending", text: `${kind[0].toUpperCase()}${kind.slice(1)} attached (${size}). Press Process to send it.` };
+  }
+}
+
+/**
+ * What a finished MediaRecorder actually produced, in words.
+ *
+ * An empty blob is the failure that used to be invisible: the recorder ran, the
+ * waveform moved, and `blob.size > 0` quietly skipped the attach - so pressing
+ * Stop genuinely did nothing and said nothing.
+ */
+export function describeRecording({ size = 0, mime = "", ms = 0 } = {}) {
+  const bytes = Number(size) || 0;
+  if (bytes <= 0) {
+    return {
+      ok: false,
+      message: "Nothing was recorded - the microphone produced no audio. Check that another app is not using it, then tap Voice again.",
+    };
+  }
+  const seconds = Math.max(1, Math.round(Number(ms) / 1000));
+  const container = normaliseAudioType(mime) || "audio";
+  return {
+    ok: true,
+    message: `Voice note attached: ${seconds}s, ${formatBytes(bytes)} (${container}). Press Process and it gets transcribed.`,
+  };
+}

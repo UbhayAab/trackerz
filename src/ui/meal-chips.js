@@ -36,6 +36,17 @@ function chipLabel(text) {
   return t.length > 34 ? `${t.slice(0, 33)}…` : t;
 }
 
+// Why this chip is being offered, in the user's own terms. A repeat chip is a meal
+// he logged verbatim N times; a combo chip is a pairing he kept eating on N
+// separate days even though the rest of the plate changed. Saying which is the
+// difference between a suggestion and a guess, and it is cheap to say.
+function chipReason(c) {
+  if (c.kind === "combo") {
+    return `you've had this ${c.days} days recently`;
+  }
+  return `logged ${c.count} times`;
+}
+
 export function renderMealChips() {
   const el = host();
   if (!el) return;
@@ -58,8 +69,10 @@ export function renderMealChips() {
     <div class="chip-row" role="group" aria-label="Repeat a meal you have logged before">
       ${state.chips.map((c, i) => `
         <button type="button" class="meal-chip" data-idx="${i}"
-                title="${escapeHtml(c.label)} · logged ${c.count} times"
-                aria-label="Log ${escapeHtml(c.label)}, ${c.calories_estimate} calories">
+                data-kind="${escapeHtml(c.kind || "repeat")}"
+                data-label="${escapeHtml(c.label)}"
+                title="${escapeHtml(c.label)} · ${escapeHtml(chipReason(c))}"
+                aria-label="Log ${escapeHtml(c.label)}, ${c.calories_estimate} calories, ${escapeHtml(chipReason(c))}">
           <span class="meal-chip-name">${escapeHtml(chipLabel(c.label))}</span>
           <span class="meal-chip-macros">${Math.round(c.calories_estimate)} kcal${
             c.protein_g === null ? "" : ` · ${Math.round(c.protein_g)}g P`

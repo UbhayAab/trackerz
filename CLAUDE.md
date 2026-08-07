@@ -71,7 +71,53 @@ node scripts/deploy-edge-function.mjs jarvis
 $env:GEMINI_API_KEY = "..."; ./scripts/set-supabase-secrets.ps1
 ```
 
-GitHub Pages deploy is automatic on push to `main` via `.github/workflows/pages.yml` - it uploads the whole repo as the Pages artifact, so anything outside `.gitignore` ships to production.
+### Delivery: there are TWO channels and they are not the same speed
+
+This is the single most expensive thing to get wrong here, because getting it
+wrong makes a shipped fix look like a broken fix.
+
+**Web (fast).** Pages `build_type` is **legacy**: the repo's own `main` branch is
+published directly on every push, so anything outside `.gitignore` is live within
+a minute. Confirm with `gh api repos/UbhayAab/trackerz/pages`. `sw.js` is
+network-first with `cache: "no-store"` for app code plus `skipWaiting` +
+`clients.claim`, so the browser cannot get stuck on an old bundle.
+
+`.github/workflows/pages.yml` is therefore **disabled except for
+workflow_dispatch**. In legacy mode `actions/deploy-pages` has no deployment
+target to claim, so a run started by a push never finishes: it sits in `waiting`
+holding the `pages` concurrency group and every later push queues behind it
+forever. Measured 2026-08-08: one run waiting 25 hours, two cancelled behind it,
+the newest pending 9 hours. The site was fine the whole time. If you ever switch
+Pages to `build_type: workflow` in repo settings, restore the `push` trigger in
+the same change.
+
+**Android (slow, and it is the one the owner actually uses).** The APK bundles
+the whole web app: CI stages the repo into `www/` and Capacitor freezes it into
+`assets/public`. **A fix on `main` is not a fix on the phone until a new APK is
+installed.** Measured 2026-08-08: builds 1.0.35 through 1.0.45 had ZERO downloads
+on their immutable per-build release assets while the owner reported bugs that
+those builds had already fixed. Eleven builds of work, invisible.
+
+Two guards now exist, and both must keep working:
+- CI writes `www/build-info.json` (versionCode = run number, commit, timestamp)
+  so the running bundle can identify itself. It is gitignored and must NEVER be
+  committed: its ABSENCE is how the browser knows it is not running from a
+  bundle.
+- `lib/update-check.mjs` + `src/services/build-info.js` compare the installed
+  build against the newest release asset and `src/ui/navigation.js` shows a
+  banner when the phone is behind. It runs on module load, NOT from inside
+  `bootWithAuth` - an app too old to sign in is exactly the app that most needs
+  the banner, and the auth-gated version never appeared at all.
+
+`APP_VERSION` in `src/version.js` is a hand-typed string that read "v17" while CI
+was publishing build 45. Inside the APK the badge now shows the real build number
+instead, because a stamp that cannot change cannot tell you whether an update
+landed. Do not reintroduce a hand-maintained version as the only signal.
+
+**When you report a fix, say which channel it lands on.** Edge functions and
+database changes are live the moment they deploy. Anything in `src/`, `lib/`,
+`styles/` or the HTML is live on web immediately and reaches the phone only after
+an APK reinstall.
 
 ### Test files outside `npm test`
 

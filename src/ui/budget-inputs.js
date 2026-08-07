@@ -5,7 +5,7 @@
 // No page holds its own copy of a budget.
 
 import { upsertBudget } from "../services/supabase-data.js";
-import { goalDef, goalValue, goalDisplayValue, resolveDietTargets } from "../domain/goals.js";
+import { goalDef, goalValue, resolveDietTargets } from "../domain/goals.js";
 import { planForDate } from "../domain/diet/plan.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { refreshAfterWrite } from "./refresh.js";
@@ -17,46 +17,52 @@ function canSync() {
   return Boolean(getCurrentSession()?.user?.id) && !isLocalSession();
 }
 
+// The number actually IN FORCE for a kind when the user has saved nothing.
+//
+// For diet kinds this is the scaffold-derived target the whole app enforces
+// (resolveDietTargets), not the static seed in GOALS - the two can differ once
+// the diet plan changes, and showing the seed would name a number no gauge uses.
+export function effectiveDefault(kind, dietTargets) {
+  const dt = dietTargets || {};
+  if (kind === "daily_calories") return dt.calories == null ? null : Math.round(dt.calories);
+  if (kind === "daily_protein") return dt.protein_g == null ? null : Math.round(dt.protein_g);
+  if (kind === "weekly_calories") return dt.calories == null ? null : Math.round(dt.calories * 7);
+  return goalDef(kind)?.default ?? null;
+}
+
 // Fill every budget input on the page from the single source (set value, else the
 // seed default). Call this on every state change so edits made elsewhere appear.
 export function renderBudgetInputs(state) {
   const budgets = state?.budgets || [];
-  // Diet inputs show the EFFECTIVE target (set goal, else the scaffold-derived
-  // value) so the input always matches the gauges/cards - never an input that
-  // disagrees with the target shown elsewhere.
   const dt = resolveDietTargets(budgets, planForDate(new Date()).macroTargets);
   document.querySelectorAll("input[data-budget-kind]").forEach((input) => {
     if (input.matches(":focus")) return; // don't fight the user mid-type
     const kind = input.dataset.budgetKind;
-    let v;
-    if (kind === "daily_calories") v = dt.calories;
-    else if (kind === "daily_protein") v = dt.protein_g;
-    else if (kind === "weekly_calories") v = goalValue(budgets, kind) ?? Math.round(dt.calories * 7);
-    else if (isUnsetGoal(budgets, kind)) {
-      // An unsaved goal is in effect NOWHERE - the brief, the trajectory table
-      // and the insight rules all read the budgets row, not the seed. So show the
-      // seed as a placeholder (visibly unset) instead of a value that claims a
-      // target the app isn't enforcing.
-      //
-      // This used to cover money caps only, so the gym box rendered a filled-in
-      // "4" that was indistinguishable from a saved value while the budgets table
-      // held no weekly_workouts row at all. The two consumers then disagreed: the
-      // Gym page fell back to 4 and showed "/4", while the Analytics gym card read
-      // the same missing row as null and dropped the target entirely.
-      const def = goalDef(kind);
-      input.value = "";
-      input.placeholder = def?.default != null ? `Not set (using ${def.default})` : "Not set";
-      return;
-    } else v = goalDisplayValue(budgets, kind);
-    if (v != null) input.value = v;
-  });
-}
 
-// Any goal with no saved row. Diet targets are excluded because the branches
-// above resolve them from the diet scaffold, which IS what the app enforces when
-// nothing is set - so for those the seed is the honest answer, not a claim.
-function isUnsetGoal(budgets, kind) {
-  return goalValue(budgets, kind) == null;
+    const saved = goalValue(budgets, kind);
+    if (saved != null) {
+      input.value = saved;
+      input.placeholder = "";
+      return;
+    }
+
+    // NOTHING SAVED. Show the value in force as a PLACEHOLDER and leave the box
+    // empty, so it cannot be mistaken for a number he chose.
+    //
+    // Diet targets used to be excluded from this branch and rendered as a filled
+    // in value instead, on the reasoning that the scaffold number really is
+    // enforced so printing it is honest. Enforcement was never the issue. The
+    // `budgets` table has held ZERO rows for the entire life of this app
+    // (verified against the live DB 2026-08-08), so the 162 g in that box was
+    // always the scaffold's, never his - and with the box filled in there was no
+    // way to tell those two apart. Every surface then reported it back as "your
+    // target" and the briefs scolded him for missing it, 0 hits in 20 logged
+    // days. A default is a fine starting point; presenting it as the user's own
+    // decision is the app inventing a fact and then holding him to it.
+    const inForce = effectiveDefault(kind, dt);
+    input.value = "";
+    input.placeholder = inForce != null ? `Not set (using ${inForce})` : "Not set";
+  });
 }
 
 export function bindBudgetInputs(statusId) {

@@ -114,4 +114,54 @@ assert.equal(
   "every return path out of runPipeline must carry the fallback reason (the injection early-return included)",
 );
 
-console.log("ai-run-accounting tests passed: DeepSeek priced at DeepSeek rates, model fallback is loud");
+// --- 5. a run that FAILS is recorded ----------------------------------------
+//
+// Section 4 above made the brain-fallback reason reachable, and it works. But a
+// 2026-08-08 audit of the live DB found `error_message` null on all 181 ai_runs
+// rows and `status` holding only 'completed' (124) and 'succeeded' (57) - never
+// 'errored'. Both halves have the same cause and it is not the fallback path:
+//
+//   persistRunAndActions is only ever called on the SUCCESS path and hardcodes
+//   status: "completed". The top-level Deno.serve catch returned a 500 to the
+//   client and wrote NOTHING. So every thrown run - provider timeout, unparsable
+//   JSON, an unreachable function, a failed insert - left no row at all.
+//
+// The evidence in the live data: the "6 boiled eggs" capture of 2026-07-24 died
+// with "Failed to send a request to the Edge Function" and has 1 ai_action and
+// ZERO ai_runs rows. And src/ui/audit-log.js has been branching on
+// `runs.some(r => r.status === "errored")` for a value nothing could write.
+//
+// A failure table that only ever receives successes reads as a 0% failure rate.
+{
+  const handler = src.slice(src.indexOf("Deno.serve(async (req)"));
+  const catchBlock = handler.slice(handler.lastIndexOf("} catch (error) {"));
+
+  assert.match(
+    catchBlock,
+    /from\("ai_runs"\)\s*\.insert\(/,
+    "the top-level catch must write an ai_runs row - a 500 that records nothing is why the failure table is all nulls",
+  );
+  assert.match(catchBlock, /status: "errored"/, 'a failed run must be stored as status "errored" - the value src/ui/audit-log.js already looks for');
+  assert.match(catchBlock, /error_message: message/, "the failed run must carry the reason, not just the status");
+  assert.match(
+    catchBlock,
+    /estimated_cost_usd: 0/,
+    "a run that threw is not billed by this function: 0, so an errored row cannot eat the daily cost cap",
+  );
+
+  // The ids have to be captured OUTSIDE the try or the catch cannot name who
+  // failed, and the insert must be wrapped so a logging failure never replaces
+  // the real error with a different one.
+  assert.ok(
+    /let failedUserId[\s\S]{0,200}try \{/.test(handler),
+    "failedUserId/failedIngestionId must be declared before the try, or the catch has nothing to write",
+  );
+  assert.ok(
+    /try \{[\s\S]{0,600}from\("ai_runs"\)[\s\S]{0,400}\} catch \{/.test(catchBlock),
+    "the failure-logging insert must be wrapped in its own try - it must never mask the original error",
+  );
+  // And the 500 still goes out regardless.
+  assert.match(catchBlock, /return Response\.json\(\{ ok: false, error: message \}, \{ status: 500/, "the 500 response must survive the logging");
+}
+
+console.log("ai-run-accounting tests passed: DeepSeek priced at DeepSeek rates, model fallback is loud, failed runs are recorded");

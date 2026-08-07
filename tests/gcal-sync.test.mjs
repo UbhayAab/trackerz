@@ -36,6 +36,7 @@ import {
   gcIsSyncTokenExpired, gcIsAuthFailure, gcRecurrenceLines,
   eventForReminder, recurrenceForRule,
   CALENDAR_PROVENANCE, wrapUntrustedCalendar, enforceCalendarCapability,
+  mirroredEventRow, mirroredEventRows,
 } from "../lib/gcal-sync.mjs";
 import { toRRule } from "../lib/rrule-codec.mjs";
 
@@ -615,4 +616,35 @@ assert.ok(
   }
 }
 
-console.log("gcal-sync tests passed: 100-iteration echo convergence (1 write), absence-never-deletes, 3 loop guards, 2 byte-identical edge mirrors + RRULE behaviour parity over 21 rules, calendar text emits no tool calls");
+{
+  // A MIRRORED EVENT IS DRAWABLE. Until 2026-08-08 `calendar_events_raw` had a
+  // fetcher and no renderer at all, so connecting Google would have imported a
+  // year of meetings into a calendar that went on showing only reminder rules.
+  const timed = mirroredEventRow({
+    id: "e1", summary: "Standup", starts_at: "2026-08-07T10:30:00Z",
+    calendar_id: "work@example.com", location: "Room 2", status: "confirmed",
+  });
+  assert.equal(timed.on_date, "2026-08-07");
+  assert.equal(timed.at_time, "16:00", "10:30 UTC is 16:00 in Asia/Kolkata");
+  assert.equal(timed.freq, "once");
+  assert.equal(timed.kind, "event", "its own kind - the user cannot edit somebody else's meeting");
+  assert.equal(timed.is_event, true);
+  assert.equal(timed.note, "Room 2");
+
+  const allDay = mirroredEventRow({ id: "e2", summary: "Holiday", all_day: true, start_date: "2026-12-25" });
+  assert.equal(allDay.on_date, "2026-12-25");
+  assert.equal(allDay.at_time, null, "an all-day event is never placed at midnight");
+
+  // A cancelled meeting that still renders is worse than one that never
+  // rendered, because the user plans around it.
+  assert.equal(mirroredEventRow({ id: "e3", summary: "Gone", starts_at: "2026-08-07T10:30:00Z", status: "cancelled" }), null);
+  assert.equal(mirroredEventRow({ id: "e4", summary: "Gone", starts_at: "2026-08-07T10:30:00Z", tombstoned_at: "2026-08-06T00:00:00Z" }), null);
+  // Unrenderable rows are dropped, not drawn as blanks.
+  assert.equal(mirroredEventRow({ id: "e5", summary: "No date" }), null);
+  assert.equal(mirroredEventRow({ id: "e6", summary: "Bad date", starts_at: "not a time" }), null);
+  assert.equal(mirroredEventRow(null), null);
+  assert.equal(mirroredEventRows([{ id: "a", summary: "Ok", all_day: true, start_date: "2026-09-01" }, null, { id: "b" }]).length, 1);
+  assert.equal(mirroredEventRows(null).length, 0);
+}
+
+console.log("gcal-sync tests passed: 100-iteration echo convergence (1 write), absence-never-deletes, 3 loop guards, 2 byte-identical edge mirrors + RRULE behaviour parity over 21 rules, calendar text emits no tool calls, mirrored events render");

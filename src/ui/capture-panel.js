@@ -6,25 +6,27 @@ import { hydrateStateFromSupabase } from "../state/sync.js";
 import { renderSpendSuggestion, clearSpendSuggestion } from "./spend-suggestion.js";
 import { renderAnswer, clearAnswer, answerFrom, bindAnswerCard } from "./answer-card.js";
 import { classifyRequestKind } from "../../lib/request-router.mjs";
-import { startDictation, isLiveTranscriptionSupported, collapseStutter } from "../services/speech.js";
+import { createDictationController, isLiveTranscriptionSupported } from "../services/speech.js";
 import { enqueueCapture, markSending, markSent, markFailed } from "../services/offline-queue.js";
 import { recordLatency, bucketFor } from "../services/latency-stats.js";
 import { setLiveDetail, renderOutbox } from "./outbox-panel.js";
-import { pickRecorderMime, prepareAudioFiles } from "../services/audio-convert.js";
+import { pickRecorderMime, prepareAudioFiles, describeUpload, describeRecording } from "../services/audio-convert.js";
 import { showToast } from "./toast.js";
 
 let recorder = null;
 let chunks = [];
 let pendingMediaFiles = [];
 let liveTranscript = "";
-let recognitionHandle = null;
 let waveformHandle = null;
-// The textarea contents at the moment dictation started. Live text is rendered
-// as `voiceBaseText + transcript` so speaking never eats something already typed.
-let voiceBaseText = "";
+let recordingStartedAt = 0;
 // Resolves when an in-flight recording has produced its Blob. Submitting while
 // recording awaits this instead of losing the audio - see finalizeVoice.
 let recorderStopped = null;
+// The live-dictation controller, shared byte-for-byte with the Gym page.
+let dictation = null;
+// Per-file upload state for the strip under the buttons. `pending` mirrors what
+// is attached right now; `inflight` is the snapshot being sent.
+let inflightAttachments = [];
 
 // How long Process waits for MediaRecorder to flush its final chunk. The box has
 // already cleared and the pending row is already on screen, so this is invisible.
@@ -72,16 +74,27 @@ function handleFileInputChange() {
   if (!input) return;
   const count = input.files?.length || 0;
   if (count) updateState((state) => state.parseLog.unshift(`${count} file(s) attached.`));
+  inflightAttachments = [];
+  renderAttachments();
   renderRoutePreview();
 }
 
 function handleCameraInputChange() {
   const input = $("#cameraInput");
   const file = input.files?.[0];
-  if (!file) return;
+  if (!file) {
+    // The camera Activity came back with nothing. On Android that is usually the
+    // WebView being reclaimed while the camera was in front, and it used to be
+    // completely silent - the photo the user thought they took simply was not
+    // there. Say so rather than returning as if nothing had been asked for.
+    setVoiceStatus("No photo came back from the camera. Try again, or attach it from Files.", "error");
+    return;
+  }
   pendingMediaFiles.push(file);
   updateState((state) => state.parseLog.unshift(`Camera capture attached: ${file.name}`));
   input.value = "";
+  inflightAttachments = [];
+  renderAttachments();
   renderRoutePreview();
 }
 
@@ -99,8 +112,58 @@ function handlePaste(event) {
   }
   if (added > 0) {
     updateState((state) => state.parseLog.unshift(`${added} pasted file(s) attached.`));
+    inflightAttachments = [];
+    renderAttachments();
     renderRoutePreview();
   }
+}
+
+// ---------------------------------------------------------------------------
+// THE ATTACHMENT STRIP.
+//
+// "Camera works, sure... But if I take a photo and press on tick, does it really
+// upload? I don't even know about the upload thing." He could not know: the only
+// trace of an attached photo was one line inside a COLLAPSED <details>, and the
+// upload itself had no on-screen state whatsoever. Now every file has a visible
+// row that moves attached -> uploading -> uploaded, or names the failure.
+// ---------------------------------------------------------------------------
+function renderAttachments() {
+  const host = document.querySelector("#captureAttachments");
+  if (!host) return;
+  const rows = inflightAttachments.length
+    ? inflightAttachments
+    : getCaptureFiles().map((f) => ({ file: f, status: "attached" }));
+  if (!rows.length) {
+    host.hidden = true;
+    host.textContent = "";
+    return;
+  }
+  host.hidden = false;
+  host.innerHTML = rows.map(({ file, status, error }) => {
+    const d = describeUpload({ name: file.name, size: file.size, type: file.type }, { status, error });
+    return `<div class="attachment-chip is-${d.tone}"><span class="attachment-name">${esc(d.name)}</span><span class="attachment-state">${esc(d.text)}</span></div>`;
+  }).join("");
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+// The one always-visible line for voice and camera. `hidden` is toggled rather
+// than the element being created on demand, so the aria-live region exists
+// before it ever has text - a live region inserted at the same moment it gets
+// content is frequently not announced at all.
+function setVoiceStatus(message, tone = "info") {
+  const el = document.querySelector("#voiceStatus");
+  if (!el) return;
+  if (!message) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.hidden = false;
+  el.dataset.tone = tone;
+  el.textContent = message;
 }
 
 async function handleSubmit() {
@@ -110,7 +173,7 @@ async function handleSubmit() {
   // the recording entirely: the audio File is only built inside the recorder's
   // `stop` listener, which fired AFTER resetForm() had wiped pendingMediaFiles,
   // so the blob landed in the NEXT capture's array. Finalise first, then read.
-  if (recorder && recorder.state === "recording") {
+  if (isVoiceActive()) {
     submitBtn.disabled = true;
     await finalizeVoice();
     submitBtn.disabled = false;
@@ -144,6 +207,11 @@ async function handleSubmit() {
   // Android WebView has no Web Speech API at all) there is no transcript to
   // send anyway - the audio file is transcribed server-side instead.
   const submitted = { text, files: allFiles, transcript: "", captureType };
+  // Freeze the strip on what is actually being sent, BEFORE resetForm() wipes
+  // the pending list. Without this the rows vanish the instant you press
+  // Process, which is precisely when you want to see them.
+  inflightAttachments = allFiles.map((f) => ({ file: f, status: "attached" }));
+  renderAttachments();
   resetForm();
 
   // Timing for the learned ETA. The bar is drawn from this user's own past runs
@@ -208,6 +276,16 @@ async function handleSubmit() {
             state.parseLog.unshift(`${s.label}: ${s.detail}`);
           });
           updateOptimistic(outboxId, { status: s.key, detail: s.detail });
+        },
+        // Per FILE, not per capture. This is the answer to "does it really
+        // upload?" - the row for that photo says uploading, then uploaded, or
+        // names the reason it did not.
+        onMedia(ev) {
+          const row = inflightAttachments[ev.index];
+          if (!row) return;
+          row.status = ev.status;
+          row.error = ev.error || "";
+          renderAttachments();
         },
       },
     );
@@ -312,7 +390,6 @@ function resetForm() {
   if ($("#fileInput")) $("#fileInput").value = "";
   pendingMediaFiles = [];
   liveTranscript = "";
-  voiceBaseText = "";
   renderRoutePreview();
 }
 
@@ -358,81 +435,204 @@ function inferKind(f) {
   return "file";
 }
 
+// ===========================================================================
+// VOICE.
+//
+// THE BUG THIS SECTION EXISTS TO END, in the owner's words: "even when I
+// capture, I'm talking something, it shows that it's kind of recording, but
+// when I press on stop, nothing happens."
+//
+// He was right, and it was structural rather than intermittent. The old flow
+// took the microphone with getUserMedia + MediaRecorder FIRST and started
+// dictation second, and the recorder's `stop` handler reported what had
+// happened by pushing one line into `state.parseLog` - which renders inside
+// `<details class="capture-meta">`, closed by default. Measured on the real
+// signed-in app: after pressing Stop, #captureText was "", no toast, #agentDetail
+// unchanged, and the <details> shut. Stop was a visible no-op by construction.
+//
+// The Gym page's voice, which the owner likes, does exactly one thing: live
+// dictation straight into a textarea, no recorder anywhere near it. So that is
+// what this now does too, through the SAME controller
+// (services/speech.js -> createDictationController).
+//
+// The audio recording survives as a FALLBACK rather than a co-tenant:
+//   - Live text available  -> dictation only on native, dictation + a silent
+//     safety recording in a browser (one process, Chrome mixes the mic fine).
+//   - No live text at all  -> record, say so, and let Gemini transcribe on send.
+// Two apps cannot hold the Android microphone at once: the native recogniser
+// runs in the Google app's process, so opening a MediaRecorder in the WebView
+// at the same time leaves one of the two with silence. UNVERIFIED ON HARDWARE,
+// but it is the only mic-sharing arrangement Android documents, and there is
+// nothing to lose by not competing with ourselves.
+// ===========================================================================
+
+let lastRecordingBytes = 0;
+let lastRecordingFile = null;
+// One automatic fallback per voice session, so a recogniser that refuses cannot
+// bounce us between engines.
+let voiceFellBack = false;
+
+function isVoiceActive() {
+  return Boolean(dictation?.isListening()) || Boolean(recorder && recorder.state === "recording");
+}
+
+// In a browser both captures live in the same process. In the Capacitor APK the
+// recogniser is a different app, and a second capture is a fight over the mic.
+function recorderMayRunAlongsideDictation() {
+  return !globalThis.Capacitor?.isNativePlatform?.();
+}
+
 /**
- * Stop an in-flight recording and wait for its audio File to exist.
+ * Stop everything voice-related and SAY WHAT HAPPENED.
  *
- * MediaRecorder delivers its last chunk asynchronously, so `stop()` returning is
- * not the same as the Blob being ready. Bounded, because a provider that never
- * fires `stop` must not hang the submit - if the race expires we send the
- * transcript alone rather than nothing.
+ * Guaranteed to leave a sentence in #voiceStatus on every path: the transcript,
+ * the recorded voice note, or the reason there is neither. MediaRecorder
+ * delivers its last chunk asynchronously, so `stop()` returning is not the same
+ * as the Blob being ready - bounded, because a provider that never fires `stop`
+ * must not hang the submit.
  */
 async function finalizeVoice() {
-  const button = $("#voiceButton");
-  try { recognitionHandle?.stop(); } catch { /* already stopped */ }
-  recognitionHandle = null;
+  const button = document.querySelector("#voiceButton");
+  if (button) setVoiceLabel(button, "Voice");
+  button?.classList.remove("is-listening");
+  setVoiceStatus("Finishing up...", "busy");
+
+  // Recorder first: its byte count is an input to what we tell the user.
   if (recorder && recorder.state === "recording") {
     const settled = recorderStopped;
-    try { recorder.stop(); } catch { /* already stopped */ }
+    try {
+      recorder.stop();
+    } catch (err) {
+      console.error("[capture] recorder.stop() threw:", err);
+      setVoiceStatus(`Could not stop the recorder cleanly (${err?.name || err?.message || "unknown"}).`, "error");
+    }
     await Promise.race([settled, new Promise((r) => setTimeout(r, RECORDER_FLUSH_MS))]);
   }
   stopWaveform();
-  if (button) setVoiceLabel(button, "Voice");
+
+  if (dictation) {
+    // The controller writes the outcome to #voiceStatus through onNotice, so
+    // there is exactly one place that decides the wording.
+    const outcome = await dictation.stop({ recordedBytes: lastRecordingBytes });
+    liveTranscript = outcome.text || "";
+    dictation = null;
+    // Live text won, so the recording is a second copy of the same sentence.
+    // Uploading both doubles the extraction cost and hands the model the meal
+    // twice, which is exactly how a capture turns into two rows.
+    if (outcome.text && lastRecordingFile) {
+      pendingMediaFiles = pendingMediaFiles.filter((f) => f !== lastRecordingFile);
+      lastRecordingFile = null;
+    }
+  } else {
+    // Recorder-only mode: nothing else is going to speak for it.
+    const summary = describeRecording({ size: lastRecordingBytes, mime: lastRecordingFile?.type, ms: Date.now() - recordingStartedAt });
+    setVoiceStatus(summary.message, summary.ok ? "ok" : "error");
+  }
+
+  renderAttachments();
+  renderRoutePreview();
 }
 
 async function handleVoiceClick() {
-  const button = $("#voiceButton");
-  if (recorder && recorder.state === "recording") {
+  const button = document.querySelector("#voiceButton");
+  if (isVoiceActive()) {
     await finalizeVoice();
     return;
   }
 
-  if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) {
-    showToast("Recording isn't available in this browser. Attach an audio file instead.", { kind: "error" });
-    return;
+  liveTranscript = "";
+  lastRecordingBytes = 0;
+  lastRecordingFile = null;
+  voiceFellBack = false;
+  inflightAttachments = [];
+
+  // 1. LIVE TEXT FIRST. This is the whole ask: words on screen as you speak.
+  let listening = false;
+  if (isLiveTranscriptionSupported()) {
+    dictation = createDictationController({
+      getBaseText: () => document.querySelector("#captureText")?.value || "",
+      // Direct DOM write, deliberately not updateState: that serialises the
+      // whole app state to localStorage and re-renders seven panels, and it
+      // would run once per spoken word.
+      onText: (text) => {
+        const box = document.querySelector("#captureText");
+        if (box) box.value = text;
+      },
+      onState: (state) => {
+        if (state === "listening") setVoiceStatus("Listening. Your words appear in the box above as you speak.", "busy");
+        if (state === "restarting") setVoiceStatus("Listening (picking up after a pause)...", "busy");
+      },
+      onNotice: (message, info) => {
+        setVoiceStatus(message, info?.ok ? "ok" : info?.fatal ? "error" : "warning");
+        if (info?.fatal) {
+          showToast(message, { kind: "error", duration: 6000 });
+          // The native plugin resolves start() asynchronously, so a phone with
+          // no recognition service installed reports "unavailable" a beat AFTER
+          // we have already decided not to run the recorder. Falling back here
+          // is the difference between a named error and a lost capture.
+          void fallbackToRecording(message);
+        }
+      },
+    });
+    listening = dictation.start();
+    if (!listening) dictation = null;
   }
 
+  // 2. AUDIO, as evidence - but never as a competitor for the microphone.
+  const wantRecorder = !listening || recorderMayRunAlongsideDictation();
+  const recording = wantRecorder ? await startRecorder({ quiet: listening }) : false;
+
+  if (!listening && !recording) {
+    // Both paths refused. startRecorder has already named the reason.
+    return;
+  }
+  if (!listening && recording) {
+    setVoiceStatus("No live text on this device, so I am recording. Press Stop, then Process, and it gets transcribed.", "busy");
+  }
+  setVoiceLabel(button, "Stop");
+  button?.classList.add("is-listening");
+}
+
+/**
+ * Live dictation died on us. Keep the microphone open on the recorder instead,
+ * so the words the user is still speaking end up somewhere.
+ */
+async function fallbackToRecording(reason) {
+  if (voiceFellBack) return;
+  voiceFellBack = true;
+  dictation = null;
+  if (recorder && recorder.state === "recording") return; // already capturing
+  const started = await startRecorder();
+  if (!started) return; // startRecorder has already said why
+  const button = document.querySelector("#voiceButton");
+  setVoiceStatus(`${reason} Recording the audio instead - press Stop, then Process, and it gets transcribed.`, "warning");
+  if (button) {
+    setVoiceLabel(button, "Stop");
+    button.classList.add("is-listening");
+  }
+}
+
+/**
+ * Start the MediaRecorder safety net. Returns whether it is running.
+ * `quiet` means dictation is already live and owns the status line, so a
+ * recorder failure is logged rather than shouted - the user has live text.
+ */
+async function startRecorder({ quiet = false } = {}) {
+  if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) {
+    const msg = "Recording isn't available in this browser. Attach an audio file instead.";
+    if (quiet) console.warn(`[capture] ${msg}`);
+    else { setVoiceStatus(msg, "error"); showToast(msg, { kind: "error" }); }
+    return false;
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     chunks = [];
-    liveTranscript = "";
-    // Anything already typed stays; dictation appends to it.
-    voiceBaseText = $("#captureText")?.value || "";
+    recordingStartedAt = Date.now();
     // Prefer a container Gemini accepts so no conversion is needed at all.
     // Chrome's default is audio/webm, which the API rejects outright.
     const preferredMime = pickRecorderMime();
     recorder = preferredMime ? new MediaRecorder(stream, { mimeType: preferredMime }) : new MediaRecorder(stream);
     startWaveform(stream);
-
-    if (isLiveTranscriptionSupported()) {
-      recognitionHandle = startDictation({
-        onUpdate({ text }) {
-          // STRAIGHT INTO THE BOX. This is the whole difference between the Gym
-          // page's voice (which felt instant) and this one (which felt broken):
-          // Gym wrote the transcript into its textarea, Home wrote it into
-          // state.activeJob.detail, which renders inside a COLLAPSED <details>
-          // and is therefore invisible. The user reported having to "click back
-          // on voice" to make the text appear.
-          //
-          // Direct DOM write, deliberately not updateState: that serialises the
-          // entire app state to localStorage and re-renders seven panels, and it
-          // ran once per spoken word.
-          liveTranscript = text;
-          const box = $("#captureText");
-          if (!box) return;
-          box.value = voiceBaseText ? `${voiceBaseText} ${text}`.trim() : text;
-        },
-        onError(code, info) {
-          if (info?.fatal) {
-            showToast(info.message || code, { kind: "error", duration: 6000 });
-            finalizeVoice();
-          } else if (info?.message) {
-            // Non-fatal: the MediaRecorder is still capturing and Gemini can
-            // transcribe on submit, so say that rather than implying failure.
-            updateState((state) => state.parseLog.unshift(info.message));
-          }
-        },
-      });
-    }
 
     // Resolves once the Blob exists, so Process can await it - see finalizeVoice.
     recorderStopped = new Promise((resolve) => {
@@ -448,15 +648,16 @@ async function handleVoiceClick() {
         const ext = mime.split("/")[1] || "webm";
         const blob = new Blob(chunks, { type: mime });
         const fileName = `voice-note-${new Date().toISOString().replace(/[:.]/g, "-")}.${ext}`;
-        if (blob.size > 0) pendingMediaFiles.push(new File([blob], fileName, { type: mime }));
+        lastRecordingBytes = blob.size;
+        if (blob.size > 0) {
+          lastRecordingFile = new File([blob], fileName, { type: mime });
+          pendingMediaFiles.push(lastRecordingFile);
+        }
         updateState((state) => {
           state.activeJob = null;
-          state.parseLog.unshift(liveTranscript
-            ? `Voice transcript captured: "${liveTranscript.slice(0, 80)}"`
-            : blob.size > 0
-              ? "Voice recording attached. Will be transcribed on submit."
-              : "Nothing was recorded.");
+          state.parseLog.unshift(describeRecording({ size: blob.size, mime, ms: Date.now() - recordingStartedAt }).message);
         });
+        renderAttachments();
         renderRoutePreview();
         resolve();
       }, { once: true });
@@ -467,19 +668,26 @@ async function handleVoiceClick() {
     });
 
     recorder.start();
-    setVoiceLabel(button, "Stop");
+    return true;
   } catch (err) {
     // The bare `catch {}` here threw away the DOMException name, so a blocked
     // mic, a missing mic and an unsupported browser all produced one identical
     // line buried in a collapsed panel. Say which it was, out loud.
     const name = err?.name || "";
     const msg = name === "NotAllowedError"
-      ? "Microphone is blocked. Enable it for this site, then tap Voice again."
+      ? "Microphone is blocked. Enable it for this app, then tap Voice again."
       : name === "NotFoundError"
         ? "No microphone found. Attach an audio file instead."
         : `Couldn't start recording (${name || err?.message || "unknown error"}).`;
-    showToast(msg, { kind: "error", duration: 6000 });
-    updateState((state) => state.parseLog.unshift(msg));
+    recorder = null;
+    if (quiet) {
+      console.warn(`[capture] audio backup unavailable: ${msg}`);
+    } else {
+      setVoiceStatus(msg, "error");
+      showToast(msg, { kind: "error", duration: 6000 });
+      updateState((state) => state.parseLog.unshift(msg));
+    }
+    return false;
   }
 }
 

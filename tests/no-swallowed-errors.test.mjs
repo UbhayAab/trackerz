@@ -51,7 +51,18 @@ import { join } from "node:path";
 // Committed ratchets. These may be LOWERED (by fixing a site and deleting its
 // entry) and never raised. Raising one is a code review conversation, not an
 // edit.
-const SWALLOW_BASELINE = 92;
+// 92 -> 89 on 2026-08-08: the capture page's voice path lost three empty
+// catches when it stopped hiding what Stop had done (two swallowed a
+// recogniser/recorder stop failure, one swallowed a native listener teardown).
+// 92 -> 89: three empty catches genuinely removed from the voice path.
+// 89 -> 85: the four `.catch(() => {})` sites in src/pages/bootstrap.js, which
+// this allowlist had already flagged as a REAL GAP and deferred ("auto-capture
+// can silently never start and the Settings toggles still read as if it did").
+// They are now startDeviceSync(), which records an Ok/Err per sync and reports
+// it on the diagnostics page. The live data said the gap was not theoretical:
+// passive spend capture has written one row in its life, and that row was a
+// diagnostics self-test.
+const SWALLOW_BASELINE = 85;
 const RENDERER_BASELINE = 8;
 
 const FIXTURE = "tests/fixtures/swallow-allowlist.json";

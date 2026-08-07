@@ -40,6 +40,7 @@
 import {
   agendaBetween, weekdayOf, addDays, daysInMonth, toKey, parseKey, compareKeys,
   describeRule, whenLabel, daysBetween, minutesOfDay, formatTime, occurrencesBetween, upcoming,
+  agendaWindow, ageOn,
 } from "../../lib/reminders.mjs";
 import { dayKeyInTz, minuteOfDayInTz, DEFAULT_TZ } from "../../lib/tz.mjs";
 
@@ -59,6 +60,9 @@ export const KIND_ICON = {
   appointment: "📅", task: "🔔", other: "🔔",
   // A check the APP runs on itself, not a bell it rings at you.
   agent: "🤖",
+  // Somebody else's meeting, mirrored in read-only from a connected calendar.
+  // Its own glyph because it is the one row type the user cannot edit here.
+  event: "👥",
 };
 
 // The outcomes of one autonomous run. `silent` has a glyph because silence with
@@ -296,10 +300,21 @@ function timeChip(r) {
     : `<span class="cal-time">${escapeHtml(formatTime(mins))}</span>`;
 }
 
-function itemLine(r) {
+// "turns 24" - only when the rule carries a real birth YEAR. A birthday whose
+// year was never stated must say nothing rather than imply a number, which is
+// the same rule every other absent value in this app follows.
+export function ageChip(r, key) {
+  const years = ageOn(r, key || r.next_due_on);
+  if (years == null) return "";
+  const text = String(r.kind || "") === "anniversary" ? `${years} years` : `turns ${years}`;
+  return `<span class="cal-time cal-age">${escapeHtml(text)}</span>`;
+}
+
+function itemLine(r, key = null) {
   return `<li class="cal-item" data-kind="${escapeHtml(r.kind || "task")}">
       <span class="cal-icon" aria-hidden="true">${iconFor(r)}</span>
       <span class="cal-title">${escapeHtml(r.title)}</span>
+      ${ageChip(r, key)}
       ${timeChip(r)}
     </li>`;
 }
@@ -331,17 +346,24 @@ function emptyDayNote(key, today, rows) {
  * disagree about a date the user is relying on.
  */
 export function renderAgenda(rows, today, { days = 21, limitDays = 8, selected = null } = {}) {
-  const to = addDays(today, days);
+  // THE WINDOW IS NOT FIXED. Measured against the owner's live data on
+  // 2026-08-08: two reminder rules, 63 and 72 days out, so a 21-day agenda, a
+  // 7-day week and a 31-day month were ALL blank at once and the app read as
+  // broken - "what is this calendar view dude, it's so empty". A calendar made
+  // of birthdays and quarterly filings is empty in any fixed short window nearly
+  // all of the time, and a sentence naming the next date is not a calendar. So
+  // when the near window has nothing the agenda reaches forward until it does -
+  // and SAYS it looked further, because a widened window presented as "the next
+  // 21 days" would be a second untruth on top of the first.
+  const win = agendaWindow(rows || [], today, { days });
+  const to = win.to || addDays(today, days);
   const byDay = agendaBetween(rows || [], today, to);
   const all = Object.keys(byDay).sort();
   const keys = all.slice(0, limitDays);
   if (!keys.length) {
-    // Empty HERE is not empty overall, and saying which is the difference between
-    // "quiet fortnight" and "your calendar is broken".
-    const next = upcoming(rows || [], today, { limit: 1, withinDays: 4000 })[0];
-    return next
-      ? `<p class="cal-empty">Nothing in the next ${days} days. Next is ${escapeHtml(next.title)} on ${escapeHtml(dayHeading(next.next_due_on, today))}, ${escapeHtml(whenLabel(next.days_away))}.</p>`
-      : `<p class="cal-empty">Nothing scheduled in the next ${days} days.</p>`;
+    // Nothing near AND nothing ahead - agendaWindow already looked. Say so once,
+    // and say how to put something there.
+    return `<p class="cal-empty">Nothing scheduled, now or ahead. Say something like "my birthday is 19 October 2002" or "remind me to pay the electricity bill on the 5th of every month" in a capture and it lands here.</p>`;
   }
   const more = all.length - keys.length;
   // Nothing was truncated, so the agenda has shown everything it knows about -
@@ -350,12 +372,15 @@ export function renderAgenda(rows, today, { days = 21, limitDays = 8, selected =
   // owner's live data is exactly this shape, a birthday inside the window and a
   // GST filing two months past it.
   const beyond = more > 0 ? null : upcoming(rows || [], addDays(to, 1), { limit: 1, withinDays: 4000 })[0];
+  const head = win.widened
+    ? `<p class="cal-foot cal-widened">Nothing in the next ${days} days, so this reaches ahead to ${escapeHtml(dayHeading(keys[0], today))}.</p>`
+    : "";
   const foot = more > 0
-    ? `<p class="cal-foot">${more} more ${more === 1 ? "day" : "days"} in the next ${days}.</p>`
+    ? `<p class="cal-foot">${more} more ${more === 1 ? "day" : "days"} ahead.</p>`
     : beyond
       ? `<p class="cal-foot">Nothing else until ${escapeHtml(beyond.title)} on ${escapeHtml(dayHeading(beyond.next_due_on, today))}, ${escapeHtml(awayLabel(today, beyond.next_due_on))}.</p>`
       : "";
-  return `<ul class="cal-agenda">${keys.map((key) => `
+  return `${head}<ul class="cal-agenda">${keys.map((key) => `
     <li class="cal-agenda-day${key === today ? " is-today" : ""}">
       <button type="button" class="cal-agenda-head${key === selected ? " is-open" : ""}" data-day="${key}"
         aria-expanded="${key === selected}"
@@ -363,7 +388,7 @@ export function renderAgenda(rows, today, { days = 21, limitDays = 8, selected =
         <span class="cal-agenda-when">${escapeHtml(dayHeading(key, today))}</span>
         <span class="cal-agenda-away">${escapeHtml(awayLabel(today, key))}</span>
       </button>
-      <ul class="cal-agenda-items">${byDay[key].map(itemLine).join("")}</ul>
+      <ul class="cal-agenda-items">${byDay[key].map((r) => itemLine(r, key)).join("")}</ul>
     </li>`).join("")}</ul>${foot}`;
 }
 
@@ -436,11 +461,26 @@ export function renderWeek(rows, { anchor, today, selected = null } = {}) {
 // "Nothing in August" is a fact about August. "You have no deadlines" is a claim
 // about the user's life, and only one of those is true here - so the empty range
 // always names the next real thing when there is one.
-function emptyRangeNote(rows, today, what) {
-  const next = upcoming(rows || [], today, { limit: 1, withinDays: 4000 })[0];
-  return next
-    ? `<p class="cal-empty">Nothing ${escapeHtml(what)}. Next is ${escapeHtml(next.title)} on ${escapeHtml(dayHeading(next.next_due_on, today))}, ${escapeHtml(whenLabel(next.days_away))}.</p>`
-    : `<p class="cal-empty">Nothing ${escapeHtml(what)}.</p>`;
+// A one-line "next is X" left the week and the month looking as empty as they
+// did before, because the whole complaint was that there was nothing to LOOK at.
+// Naming the next few, with their dates, gives an empty month something true and
+// useful in it - and each one is a button, so the calendar can jump there.
+// Deliberately reuses the AGENDA's markup and classes rather than inventing new
+// ones: it needs no new CSS, it is already keyboard- and screen-reader-correct,
+// and an empty month then reads exactly like the agenda the user can switch to.
+function emptyRangeNote(rows, today, what, { limit = 3 } = {}) {
+  const next = upcoming(rows || [], today, { limit, withinDays: 4000 });
+  if (!next.length) return `<p class="cal-empty">Nothing ${escapeHtml(what)}, and nothing ahead either.</p>`;
+  return `<p class="cal-foot">Nothing ${escapeHtml(what)}. What is coming:</p>
+    <ul class="cal-agenda">${next.map((r) => `
+      <li class="cal-agenda-day">
+        <button type="button" class="cal-agenda-head cal-jump" data-day="${escapeHtml(r.next_due_on)}"
+          aria-label="Go to ${escapeHtml(longDayHeading(r.next_due_on))}, ${escapeHtml(r.title)}">
+          <span class="cal-agenda-when">${escapeHtml(dayHeading(r.next_due_on, today))}</span>
+          <span class="cal-agenda-away">${escapeHtml(whenLabel(r.days_away))}</span>
+        </button>
+        <ul class="cal-agenda-items">${itemLine(r, r.next_due_on)}</ul>
+      </li>`).join("")}</ul>`;
 }
 
 // ---- the month grid ---------------------------------------------------------
@@ -526,13 +566,19 @@ export function renderDayDetail(items, key, today, { rows = [], runs = {} } = {}
   const body = list.map((r) => {
     const mins = minutesOfDay(r.at_time);
     // A reminder with no clock is not fired at midnight - it is announced in the
-    // morning brief. Saying so is the difference between a gap and a rule.
-    const rule = `${describeRule(r)}${mins == null && !r.is_task ? " · announced in the 07:00 brief" : ""}`;
+    // morning brief. Saying so is the difference between a gap and a rule. A
+    // MIRRORED event is not fired by this app at all, so it must not carry that
+    // promise: it says where it came from instead.
+    const rule = r.is_event
+      ? `from ${escapeHtml(r.calendar_id || "a connected calendar")} · read-only`
+      : `${describeRule(r)}${mins == null && !r.is_task ? " · announced in the 07:00 brief" : ""}`;
     return `<li class="cal-item is-detail" data-kind="${escapeHtml(r.kind || "task")}">
         <span class="cal-icon" aria-hidden="true">${iconFor(r)}</span>
         <span class="cal-title">${escapeHtml(r.title)}</span>
+        ${ageChip(r, key)}
         ${timeChip(r)}
-        <small class="cal-rule">${escapeHtml(rule)}</small>
+        <small class="cal-rule">${r.is_event ? rule : escapeHtml(rule)}</small>
+        ${r.is_event && r.note ? `<small class="cal-rule">${escapeHtml(r.note)}</small>` : ""}
         ${r.is_task ? renderTaskRuns(r, runs[r.task_id]) : ""}
       </li>`;
   }).join("");
@@ -596,7 +642,7 @@ export function runStamp(iso, tz = DEFAULT_TZ) {
  * worse outage than the one it is reporting.
  */
 export function renderCalendar(state, rows, today, opts = {}) {
-  const { error = null, taskError = null, loaded = true, runs = {} } = opts;
+  const { error = null, taskError = null, eventError = null, loaded = true, runs = {} } = opts;
   const view = VIEWS.includes(state && state.view) ? state.view : "agenda";
   const head = `
     <div class="cal-head">
@@ -621,10 +667,17 @@ export function renderCalendar(state, rows, today, opts = {}) {
     ? `<p class="chips-error">Scheduled checks are missing from this calendar: ${escapeHtml(taskError)}
         <button type="button" class="cal-linklike" data-cal-act="retry">Retry</button></p>`
     : "";
+  // Same rule, one table over: a connected calendar whose mirror failed to read
+  // must not render as a calendar with no meetings in it.
+  const eventNote = eventError
+    ? `<p class="chips-error">Events from your connected calendars are missing: ${escapeHtml(eventError)}
+        <button type="button" class="cal-linklike" data-cal-act="retry">Retry</button></p>`
+    : "";
+  const notes = `${taskNote}${eventNote}`;
 
   const all = rows || [];
   if (!all.length) {
-    return `${head}<div class="cal-body">${taskNote}<p class="cal-empty">Nothing scheduled yet. Say something like "my birthday is 14 August" or "remind me to file GST on the 10th of every 3rd month" in a capture and it lands here.</p></div>`;
+    return `${head}<div class="cal-body">${notes}<p class="cal-empty">Nothing scheduled yet. Say something like "my birthday is 19 October 2002" or "remind me to file GST on the 10th of every 3rd month" in a capture and it lands here.</p></div>`;
   }
 
   const body = view === "month"
@@ -637,7 +690,7 @@ export function renderCalendar(state, rows, today, opts = {}) {
     ? renderDayDetail(dayItems(all, state.selected), state.selected, today, { rows: all, runs })
     : "";
 
-  return `${head}<div class="cal-body" data-view="${view}">${taskNote}${body}${detail}</div>`;
+  return `${head}<div class="cal-body" data-view="${view}">${notes}${body}${detail}</div>`;
 }
 
 // Everything that falls on one day, from the rules. One call, so the detail panel
@@ -653,7 +706,7 @@ export function dayItems(rows, key) {
  * people switch off. Never assertive - nothing here interrupts anything.
  */
 export function calendarStatus(state, rows, today, opts = {}) {
-  const { error = null, taskError = null, loaded = true } = opts;
+  const { error = null, taskError = null, eventError = null, loaded = true } = opts;
   if (error) return `Calendar failed to load: ${error}`;
   if (!loaded) return "Loading calendar";
   const all = rows || [];
@@ -672,7 +725,10 @@ export function calendarStatus(state, rows, today, opts = {}) {
   } else {
     sentence = `Agenda: ${countBetween(all, today, addDays(today, 21))} in the next 21 days`;
   }
-  return taskError ? `${sentence}. Scheduled checks could not be loaded.` : sentence;
+  const missing = [];
+  if (taskError) missing.push("Scheduled checks");
+  if (eventError) missing.push("Events from your connected calendars");
+  return missing.length ? `${sentence}. ${missing.join(" and ")} could not be loaded.` : sentence;
 }
 
 function countBetween(rows, from, to) {
@@ -745,6 +801,13 @@ export function bindCalendar(el, getState, onChange, handlers = {}) {
     const cell = ev.target.closest("button[data-day]");
     if (cell) {
       const key = cell.dataset.day;
+      // A "what is coming" row in an empty month points at a date the grid on
+      // screen does not contain. Selecting it without MOVING there would open a
+      // day detail for October while August is drawn, which reads as a bug.
+      if (cell.classList.contains("cal-jump")) {
+        const p = parseKey(key);
+        if (p) { onChange({ ...state, selected: key, focus: key, year: p.y, month: p.m, anchor: key }); return; }
+      }
       onChange({ ...state, selected: state.selected === key ? null : key, focus: key });
       refocus(`button[data-day="${key}"]`);
     }

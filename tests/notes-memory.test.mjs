@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { buildRowForTool, APPLIER_WRITE_TOOLS } from "../src/services/action-applier.js";
 import { buildAdditions } from "../lib/additions.mjs";
+import { buildNotesView, provenanceLabel, FEED_LABEL_CHARS } from "../src/ui/notes-panel.js";
 
 // --- new tools are write tools ---
 for (const t of ["create_note_candidate", "set_target_candidate", "remember_fact"]) {
@@ -83,5 +84,93 @@ assert.match(reviewRow.label, /mushroom sandwich/, "shows the raw captured text 
 // archived notes are hidden
 const hidden = buildAdditions([], [], [], { notes: [{ id: "n2", body: "old", status: "archived", created_at: "2026-06-25T09:00:00Z" }] });
 assert.equal(hidden.find((i) => i.id === "n2"), undefined, "archived notes are not shown");
+
+// ---------------------------------------------------------------------------
+// THE READER. The feed above proves a note is ACKNOWLEDGED; it does not let the
+// owner READ it - `label` is body.slice(0, 60) on one ellipsised line, and
+// `memory_facts` had no surface in the app at all. buildNotesView is the shaping
+// half of src/ui/notes-panel.js, which fixes both.
+// ---------------------------------------------------------------------------
+const LONG_NOTE = "When I am seen eating 6 boiled eggs daily, or protein powder daily with 500g curd or 500g milk, auto-add these to the Log again section so I do not retype them every day.";
+
+// 1. The whole body survives, and the panel knows how much the feed was hiding.
+{
+  const view = buildNotesView({
+    notes: [{ id: "n1", kind: "note", domain: "diet", status: "open", body: LONG_NOTE, occurred_at: "2026-08-04T11:16:05Z" }],
+    memoryFacts: [],
+  });
+  assert.equal(view.notes.state, "ready");
+  assert.equal(view.notes.rows[0].body, LONG_NOTE, "the panel keeps the FULL body, never a slice");
+  assert.equal(view.notes.rows[0].hiddenChars, LONG_NOTE.length - FEED_LABEL_CHARS);
+  assert.equal(view.truncatedInFeed, 1, "counts the notes the feed cuts off");
+  assert.equal(view.notes.rows[0].kindLabel, "Note");
+}
+
+// 2. Newest first, and every kind gets a human label.
+{
+  const view = buildNotesView({
+    notes: [
+      { id: "old", kind: "aspiration", body: "a", occurred_at: "2026-08-01T00:00:00Z" },
+      { id: "new", kind: "todo", body: "b", occurred_at: "2026-08-04T00:00:00Z" },
+    ],
+    memoryFacts: [],
+  });
+  assert.deepEqual(view.notes.rows.map((r) => r.id), ["new", "old"], "newest note first");
+  assert.equal(view.notes.rows[0].kindLabel, "To do");
+  assert.equal(view.notes.rows[1].kindLabel, "Aspiration");
+}
+
+// 3. THE ABSENT-DATA RULE. undefined (not synced), a failed read and a genuinely
+//    empty table are three different states and must never print the same thing.
+//    "0 notes" is a claim; it may only be made when the read actually succeeded.
+{
+  const loading = buildNotesView({});
+  assert.equal(loading.notes.state, "loading");
+  assert.equal(loading.facts.state, "loading");
+  assert.ok(!/\b0\b/.test(loading.badge), `an unsynced panel must not claim a count, got "${loading.badge}"`);
+
+  const failed = buildNotesView({ notes: [], memoryFacts: [], failedReads: ["notes: fetch failed", "memory: fetch failed"] });
+  assert.equal(failed.notes.state, "failed", "a failed read is NOT an empty table");
+  assert.equal(failed.facts.state, "failed");
+  assert.match(failed.notes.reason, /fetch failed/, "the panel can say WHICH read died");
+  assert.ok(!/\b0\b/.test(failed.badge), `a failed read must not be reported as zero, got "${failed.badge}"`);
+
+  const empty = buildNotesView({ notes: [], memoryFacts: [] });
+  assert.equal(empty.notes.state, "empty");
+  assert.match(empty.badge, /0 notes/, "a real empty table may say zero");
+}
+
+// 4. memory_facts carries provenance, and the panel says who authored it. A fact
+//    read out of a photograph must never look like one the owner typed.
+{
+  const view = buildNotesView({
+    notes: [],
+    memoryFacts: [
+      { id: "f1", key: "daily_foods", value: "whey + 500g curd", kind: "pattern", confidence: 0.7, provenance: "typed", updated_at: "2026-08-06T01:45:41Z" },
+      { id: "f2", key: "monthly_budget", value: "500000", kind: "fact", confidence: 0.9, provenance: "ocr", updated_at: "2026-08-06T01:45:41Z" },
+      { id: "f3", key: "birthday", value: "19 October 2002", kind: "fact", confidence: 0.7, provenance: null, updated_at: "2026-08-07T09:15:57Z" },
+    ],
+  });
+  assert.equal(view.facts.state, "ready");
+  assert.equal(view.facts.rows[0].provenanceTone, "ok");
+  assert.match(view.facts.rows[0].provenanceLabel, /you said it/);
+  assert.equal(view.facts.rows[1].provenanceTone, "warn", "an OCR-sourced fact is flagged, not laundered");
+  assert.match(view.facts.rows[1].provenanceLabel, /not from you/);
+  // NULL predates the column. It must read as untracked, never as a measured
+  // "unknown source" - that is the same absent-as-measured bug one layer down.
+  assert.equal(view.facts.rows[2].provenanceTone, "neutral");
+  assert.match(view.facts.rows[2].provenanceLabel, /before origins were tracked/);
+  assert.match(view.badge, /3 facts/);
+}
+
+// 5. Provenance labels cover the whole closed set plus the two edges.
+{
+  assert.equal(provenanceLabel("voice").trust, "owner");
+  assert.equal(provenanceLabel("sms").trust, "untrusted");
+  assert.equal(provenanceLabel("calendar").trust, "untrusted");
+  assert.equal(provenanceLabel("memory").trust, "derived");
+  assert.equal(provenanceLabel("unknown").tone, "warn", "unattributed is shown as unattributed");
+  assert.equal(provenanceLabel(undefined).trust, "untracked");
+}
 
 console.log("notes-memory tests passed");

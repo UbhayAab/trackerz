@@ -111,6 +111,48 @@
 }
 .version-stamp:active { transform: translateY(1px); color: var(--ink); }
 
+/* "A newer build is ready." Sits above the bottom nav so it cannot cover the
+   tabs, and never covers the capture box at the top of Home. */
+.update-banner {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+  z-index: 60;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface, rgba(255, 255, 255, 0.96));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.78rem;
+}
+.update-banner-text { flex: 1; color: var(--ink); }
+.update-banner-cta {
+  flex: none;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--accent, #1f7a4d);
+  color: #fff;
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.update-banner-dismiss {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
 .file-chip,
 .primary-button,
 .secondary-button,

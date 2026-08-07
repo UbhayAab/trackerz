@@ -8,7 +8,7 @@
 // bars, never as zero-height bars claimed to be measured.
 
 import { computeDietInsights } from "../../lib/diet-insights.mjs";
-import { resolveDietTargets } from "../domain/goals.js";
+import { resolveDietTargets, goalValue } from "../domain/goals.js";
 
 function esc(v) {
   return String(v == null ? "" : v).replace(/[&<>"']/g, (c) => (
@@ -95,24 +95,38 @@ function fmtG(v) {
 function proteinCardBody(r) {
   const p = r.protein;
   const rows = [];
+  // A target nobody chose is labelled as such. Saying "your 162g target" when the
+  // budgets table holds no row for it is the app inventing a decision and then
+  // scoring him against it.
+  const tgtNote = p.targetUserSet ? "" : ` <span class="di-muted">(default)</span>`;
   rows.push(`<div class="di-stat-row">
-    <span class="di-stat"><span class="di-stat-label">Today</span><strong>${fmtG(p.today)}</strong></span>
+    <span class="di-stat"><span class="di-stat-label">Today${p.todayPartial ? " (at least)" : ""}</span><strong>${fmtG(p.today)}</strong></span>
     <span class="di-stat"><span class="di-stat-label">${r.daysWithData ? `${r.daysWithData}-day avg` : "Avg"}</span><strong>${fmtG(p.avg)}</strong></span>
-    <span class="di-stat"><span class="di-stat-label">Target</span><strong>${fmtG(p.target)}</strong></span>
+    <span class="di-stat"><span class="di-stat-label">Target</span><strong>${fmtG(p.target)}</strong>${tgtNote}</span>
   </div>`);
+
+  if (!p.targetUserSet) {
+    rows.push(`<p class="di-muted">${Math.round(p.target)}g is the app's default, not a target you set. Change it in Settings if it is wrong for you.</p>`);
+  }
 
   if (p.today == null && p.avg == null) {
     rows.push(`<p class="di-muted">No protein logged yet. Log today's meals to see your gap against the ${Math.round(p.target)}g target.</p>`);
   } else {
     const gap = p.todayGap != null ? p.todayGap : p.avgGap;
     const basis = p.todayGap != null ? "today" : "on your logged days";
-    if (gap != null && gap > 0) {
+    // With a meal's protein missing, the shortfall is an upper bound. "Short by
+    // 117g" reads as measured; it is not, and the gap could be far smaller.
+    if (gap != null && gap > 0 && p.todayPartial && p.todayGap != null) {
+      rows.push(`<p class="di-line di-warn">Short by <strong>at most ${Math.round(gap)}g</strong> ${basis} - ${p.todayUnknownMeals} meal${p.todayUnknownMeals === 1 ? "" : "s"} today ${p.todayUnknownMeals === 1 ? "has" : "have"} no protein estimate, so the real figure is higher than what is counted.</p>`);
+    } else if (gap != null && gap > 0) {
       rows.push(`<p class="di-line di-warn">Short by <strong>${Math.round(gap)}g</strong> ${basis}.</p>`);
     } else if (gap != null) {
       rows.push(`<p class="di-line di-good">Target met ${basis}. Nice.</p>`);
     }
     if (p.consistentlyShort) {
       rows.push(`<p class="di-muted">Every one of your ${r.daysWithData} logged days came in under ${Math.round(p.target)}g - protein is the consistent gap, not a one-off.</p>`);
+    } else if (p.partialDays > 0) {
+      rows.push(`<p class="di-muted">${p.partialDays} of your ${r.daysWithData} logged day${p.partialDays === 1 ? " has a meal" : "s have meals"} with no protein estimate, so those totals are floors rather than sums - not enough to call this a consistent pattern either way.</p>`);
     } else if (r.thin && r.daysWithData > 0) {
       rows.push(`<p class="di-muted">Only ${r.daysWithData} day${r.daysWithData === 1 ? "" : "s"} logged - log a few more before reading this as a trend.</p>`);
     }
@@ -225,10 +239,14 @@ export function renderDietInsights(state) {
   const foodLogs = (state && Array.isArray(state.foodLogs)) ? state.foodLogs : [];
   const budgets = (state && Array.isArray(state.budgets)) ? state.budgets : [];
   const targets = resolveDietTargets(budgets);
+  // Whether the protein target is HIS or the scaffold's. `budgets` holds one row
+  // per goal kind; no row means nobody set it and the number on screen is a
+  // default that must be labelled, not reported back as his decision.
+  const targetUserSet = goalValue(budgets, "daily_protein") != null;
 
   let r;
   try {
-    r = computeDietInsights(foodLogs, targets);
+    r = computeDietInsights(foodLogs, targets, { targetUserSet });
   } catch (err) {
     root.innerHTML = `<div class="di-head"><p class="eyebrow">Diet coach</p><h2>Protein &amp; macro intelligence</h2></div>
       <p class="di-error">Diet insights failed to compute: ${esc(err && err.message)}.</p>`;
