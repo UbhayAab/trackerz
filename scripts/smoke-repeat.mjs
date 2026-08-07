@@ -94,7 +94,9 @@ async function inspect(url, label) {
   await page.goto(url, { waitUntil: "networkidle" });
   await page.waitForTimeout(3000);
   const out = await page.evaluate(() => {
-    const chips = [...document.querySelectorAll("#mealChips .meal-chip")].map((b) => b.innerText.replace(/\n/g, " | "));
+    // The usuals live INSIDE the plan now, as ordinary tickable rows, not in a
+    // separate "Log again" chip strip above it.
+    const chips = [...document.querySelectorAll("#dietPlan .diet-item.is-usual")].map((b) => b.innerText.replace(/\n/g, " | "));
     // Every control on the page that can ADD water. Two of these was the bug.
     const waterAdders = [...document.querySelectorAll('[data-act="water"]')].map((b) => b.innerText.trim());
     // The old six-slot water checklist, which must be gone.
@@ -139,15 +141,15 @@ if (tapArg && home.chips.length) {
   // The full label lives in data-label. innerText is CLIPPED at 34 chars with an
   // ellipsis, and using it here meant the cleanup DELETE below silently matched
   // nothing for any long chip, leaving a meal the owner never ate in his totals.
-  const buttons = await page.locator("#mealChips .meal-chip").evaluateAll(
-    (els) => els.map((e) => e.dataset.label || ""),
+  const buttons = await page.locator("#dietPlan .diet-item.is-usual").evaluateAll(
+    (els) => els.map((e) => e.dataset.usualLabel || ""),
   );
   const idx = want ? buttons.findIndex((l) => l.toLowerCase().includes(want)) : 0;
   if (idx < 0) {
     console.log(`\n--- CHIP TAP ---\nno chip matching "${want}" among: ${JSON.stringify(buttons)}`);
   } else {
     const label = buttons[idx];
-    await page.locator("#mealChips .meal-chip").nth(idx).click();
+    await page.locator("#dietPlan .diet-item.is-usual input[type=checkbox]").nth(idx).check();
     await page.waitForTimeout(3500);
     const toast = await page.locator(".toast, [class*=toast]").first().innerText().catch(() => null);
     tapped = { chipsBefore: buttons.length, tappedLabel: label, toast };

@@ -179,6 +179,51 @@ function foodDescriptionFor(recordId) {
   return row?.description || null;
 }
 
+// YOUR USUALS, INSIDE THE PLAN - not a separate strip above it.
+//
+// These used to render as a "Log again" chip row pinned near the top of Home,
+// a second, differently-shaped list of meals sitting above the one list of
+// meals the user actually works from. The owner asked three times for it to be
+// in the plan itself, and he was right: the plan is where meals get ticked off,
+// so a suggested meal that cannot be ticked there is in the wrong place.
+//
+// They render as ordinary plan rows with an ordinary checkbox. Ticking one logs
+// it immediately, exactly as tapping the chip did, and the row it writes then
+// shows up in the day like any other. They deliberately sit BELOW the planned
+// meals: the plan is the intent, the usuals are the shortcut.
+let _usuals = [];
+let _usualBusy = false;
+
+/** Called by meal-chips.js once the repeat engine has ranked the history. */
+export function setUsualMeals(list) {
+  _usuals = Array.isArray(list) ? list : [];
+}
+
+function usualReason(c) {
+  if (c.kind === "combo") return `you've had this ${c.days} days recently`;
+  return `logged ${c.count} times`;
+}
+
+function usualRows() {
+  if (!_usuals.length || !isViewingToday()) return "";
+  return `
+    <p class="diet-sub">Your usuals - tick to log, no typing</p>
+    ${_usuals.map((c, i) => {
+      const macros = `${Math.round(c.calories_estimate)} kcal${
+        c.protein_g === null ? "" : ` · ${Math.round(c.protein_g)}g P`}`;
+      // data-usual-label carries the FULL text. A previous smoke script matched
+      // on the rendered label, which was clipped at 34 chars, so its cleanup
+      // DELETE silently matched nothing and left a meal he never ate in his
+      // totals. Anything automating this row should key on the attribute.
+      return `<label class="diet-item is-usual" data-usual-label="${escapeHtml(c.label)}">
+        <input type="checkbox" data-usual-idx="${i}"
+               aria-label="Log ${escapeHtml(c.label)}, ${macros}, ${escapeHtml(usualReason(c))}" />
+        <span class="diet-time"></span>
+        <span class="diet-body"><span class="diet-name">${escapeHtml(c.label)}<span class="diet-usual-badge" title="${escapeHtml(usualReason(c))}">usual</span></span><span class="diet-detail">${macros} · ${escapeHtml(usualReason(c))}</span></span>
+      </label>`;
+    }).join("")}`;
+}
+
 function item(plan, state, { id, time, name, detail }) {
   const r = resolveItem(id, state);
   const cls = [r.done ? "is-done" : "", r.source === "auto" ? "is-auto" : "", r.source === "suggested" ? "is-suggested" : ""].filter(Boolean).join(" ");
@@ -529,6 +574,7 @@ export function renderDietPlan(appState) {
     <div class="diet-section">
       <p class="diet-head">🍽️ Meals${isViewingToday() ? "" : ' <span class="diet-detail">plan for that weekday - ticks come from real logs</span>'}</p>
       ${plan.meals.map((m) => item(plan, state, { id: m.id, time: m.time, name: m.name, detail: m.detail })).join("")}
+      ${usualRows()}
     </div>
 
     <div class="diet-section">
@@ -677,6 +723,30 @@ export function bindDietPlan() {
     if (!input) return;
     const d = parseDayKey(input.value);
     if (d) goToDate(d);
+  });
+
+  // Ticking a usual logs it straight away. It has no plan id and no persisted
+  // done-state: the row it writes IS the record, and it shows up in the day like
+  // any other meal on the next refresh.
+  el.addEventListener("change", async (event) => {
+    const cb = event.target.closest("input[type=checkbox][data-usual-idx]");
+    if (!cb || _usualBusy) return;
+    const chip = _usuals[Number(cb.dataset.usualIdx)];
+    if (!chip) return;
+    _usualBusy = true;
+    cb.disabled = true;
+    try {
+      const { logUsualMeal } = await import("./meal-chips.js");
+      await logUsualMeal(chip);
+    } catch (err) {
+      // Loud on failure. A tick that silently does nothing is how this app used
+      // to look like it had logged something when it had not.
+      cb.checked = false;
+      showToast(`Didn't log it: ${err?.message || err}`, { kind: "error", duration: 5000 });
+    } finally {
+      _usualBusy = false;
+      cb.disabled = false;
+    }
   });
 
   el.addEventListener("change", async (event) => {

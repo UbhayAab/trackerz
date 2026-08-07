@@ -265,3 +265,28 @@
 @media (prefers-reduced-motion: reduce) {
   .diet-water .water-meter > span { transition: none; }
 }
+
+/* YOUR USUALS - repeat-meal suggestions, rendered as plan rows rather than a
+   separate chip strip above the plan. Same shape as .diet-item on purpose: the
+   whole point of moving them here was that they stop being a second kind of
+   list and become something you tick like everything else. */
+.diet-sub {
+  margin: 10px 0 4px;
+  font-size: 0.72rem;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.diet-item.is-usual .diet-name { font-weight: var(--weight-medium); }
+.diet-usual-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.6rem;
+  font-weight: var(--weight-semibold);
+  text-transform: lowercase;
+  vertical-align: middle;
+}
