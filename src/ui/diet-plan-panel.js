@@ -289,24 +289,51 @@ function macroTally(plan) {
   </div>`;
 }
 
-// Full macro + micro panel driven by the VIEW DATE'S LOGGED FOOD. Calories/protein/
-// carbs/fat are summed from the real food_logs; fiber/sat-fat/micros (which logged
-// food doesn't carry) stay proportional estimates scaled to calories-vs-target.
-function nutrientPanel(plan) {
-  const cal = sumFood("calories_estimate");
-  const frac = plan.macroTargets.calories ? cal / plan.macroTargets.calories : 0;
-  const rows = nutrientsSoFar(plan.dietType, frac);
-  const actual = { calories: cal, protein: sumFood("protein_g"), carbs: sumFood("carbs_g"), fat: sumFood("fat_g") };
+// Full macro + micro panel for the VIEW DATE.
+//
+// FOUR of these thirty numbers are measurements. Calories, protein, carbs and fat
+// are summed from real food_logs rows. Nothing else exists on a food row - there
+// is no fibre column, no sodium column, no vitamin anything - so the other 26 are
+// properties of the PLAN, and they are labelled as such and drawn differently.
+//
+// They used to be drawn identically, scaled by caloriesEaten/calorieTarget, which
+// meant a 3,367 kcal Taco Bell day rendered a full 451 mg of vitamin C. See the
+// comment on nutrientsSoFar. The share used here is PLAN ADHERENCE - what fraction
+// of the day's planned calories were actually ticked off - so off-plan food moves
+// nothing, which is the honest answer when we know nothing about its micronutrients.
+function nutrientPanel(plan, state) {
+  const measured = {
+    calories: sumFood("calories_estimate"),
+    protein: sumFood("protein_g"),
+    carbs: sumFood("carbs_g"),
+    fat: sumFood("fat_g"),
+  };
+  const plannedCal = (plan.meals || []).reduce((a, m) => a + (Number(m.macros?.calories) || 0), 0);
+  const tickedCal = (plan.meals || [])
+    .filter((m) => resolveItem(m.id, state).done)
+    .reduce((a, m) => a + (Number(m.macros?.calories) || 0), 0);
+  const adherence = plannedCal ? tickedCal / plannedCal : 0;
+
+  const rows = nutrientsSoFar(plan.dietType, { measured, planAdherence: adherence });
   const targetFromScaffold = { calories: "calories", protein: "protein_g", carbs: "carbs_g", fat: "fat_g", fiber: "fiber_g" };
   for (const r of rows) {
-    if (r.key in actual) r.current = Math.round(actual[r.key] * 100) / 100;
     const tk = targetFromScaffold[r.key];
     if (tk && plan.macroTargets?.[tk] != null) r.target = plan.macroTargets[tk];
   }
+
   const labels = { macro: "Macros", mineral: "Minerals", vitamin: "Vitamins" };
   const section = (grp) => {
     const items = rows.filter((r) => r.group === grp);
     return `<div class="nutgroup"><p class="nutgroup-head">${labels[grp]}</p>${items.map((r) => {
+      if (!r.measured) {
+        // No gauge and no status colour: a gauge is a verdict, and there is
+        // nothing here to pass or fail. Just what the plan would have given for
+        // the part of it he actually ate, said out loud as an estimate.
+        return `<div class="nutrow nut-unmeasured">
+          <span class="nutname">${r.label}${r.limit ? " ≤" : ""}</span>
+          <span class="nutval">not measured · plan so far ~${r.plannedSoFar} of ${r.target} ${r.unit}</span>
+        </div>`;
+      }
       const g = gauge({ current: r.current, target: r.target, kind: r.kind, limit: r.limit });
       return `<div class="nutrow nut-${g.status}${g.over ? " nut-pegged" : ""}">
         <span class="nutname">${r.label}${r.limit ? " ≤" : ""}</span>
@@ -319,7 +346,12 @@ function nutrientPanel(plan) {
       </div>`;
     }).join("")}</div>`;
   };
-  return `<details class="nutrients"><summary>Macros &amp; micros - from the day's logs (${Math.round(frac * 100)}% of calorie target · micros estimated · centre = target)</summary>${["macro", "mineral", "vitamin"].map(section).join("")}</details>`;
+  return `<details class="nutrients"><summary>Macros &amp; micros - 4 measured, 26 from the plan</summary>
+    <p class="nutrients-lead">Calories, protein, carbs and fat are summed from what you logged. Nothing else is:
+    a logged meal carries no fibre, sodium or vitamin data at all. The rest show what the plan would have
+    delivered for the ${Math.round(adherence * 100)}% of it you ticked off - food logged outside the plan
+    counts for nothing here, because its micronutrients are genuinely unknown.</p>
+    ${["macro", "mineral", "vitamin"].map(section).join("")}</details>`;
 }
 
 function countDone(ids, state) { return ids.filter((id) => resolveItem(id, state).done).length; }
@@ -568,7 +600,7 @@ export function renderDietPlan(appState) {
       <span class="metric-badge">${mealBadge}</span>
     </div>
     ${macroTally(plan)}
-    ${dayDataStatus() === "ok" ? nutrientPanel(plan) : ""}
+    ${dayDataStatus() === "ok" ? nutrientPanel(plan, state) : ""}
     ${loggedSection()}
 
     <div class="diet-section">

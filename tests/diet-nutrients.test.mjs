@@ -14,10 +14,39 @@ assert.equal(soy.find((n) => n.key === "sodium").plan, 1739);
 assert.ok(soy.find((n) => n.key === "sodium").limit, "sodium is an upper-limit nutrient");
 assert.equal(planNutrients("paneer-soy").find((n) => n.key === "calcium").plan, 1376);
 
-// Proportional fill: half the day's calories => half the plan value; full => plan; none => 0.
-assert.equal(nutrientsSoFar("soybean", 0.5).find((n) => n.key === "zinc").current, Math.round(11.2 * 0.5 * 100) / 100);
-assert.equal(nutrientsSoFar("soybean", 1).find((n) => n.key === "protein").current, 164);
-assert.equal(nutrientsSoFar("soybean", 0).find((n) => n.key === "iron").current, 0);
+// MEASURED vs NOT MEASURED - the whole point of this module.
+//
+// It used to return `current = plan[nutrient] * caloriesEaten/calorieTarget` for
+// every nutrient, so the panel drew vitamin C in the same gauge as protein. A
+// 3,367 kcal Taco Bell day therefore rendered a full 451 mg of vitamin C. A
+// nutrient the logs cannot carry must never come back as a number.
+{
+  const half = nutrientsSoFar("soybean", {
+    measured: { calories: 1000, protein: 82, carbs: 95, fat: 38 }, planAdherence: 0.5,
+  });
+  const zinc = half.find((n) => n.key === "zinc");
+  assert.equal(zinc.measured, false, "zinc is not on a food_logs row");
+  assert.equal(zinc.current, null, "an unmeasured nutrient must be null, never a number");
+  assert.equal(zinc.plannedSoFar, Math.round(11.2 * 0.5 * 100) / 100, "the plan reference still scales");
+
+  const protein = half.find((n) => n.key === "protein");
+  assert.equal(protein.measured, true);
+  assert.equal(protein.current, 82, "a measured macro is the real sum, not a scaled plan value");
+
+  // Eating MORE off-plan food must not raise a single micronutrient.
+  const binge = nutrientsSoFar("soybean", {
+    measured: { calories: 3367, protein: 160, carbs: 322, fat: 174 }, planAdherence: 0,
+  });
+  assert.equal(binge.find((n) => n.key === "vit_c").current, null);
+  assert.equal(binge.find((n) => n.key === "vit_c").plannedSoFar, 0,
+    "no plan ticked means no claim about vitamin C, whatever the calorie count");
+  assert.equal(binge.find((n) => n.key === "calories").current, 3367);
+
+  // Absent measurements stay null rather than collapsing to 0.
+  const nothing = nutrientsSoFar("soybean", {});
+  assert.equal(nothing.find((n) => n.key === "protein").current, null);
+  assert.equal(nothing.find((n) => n.key === "iron").current, null);
+}
 
 // Kinds drive the gauge semantics.
 assert.equal(soy.find((n) => n.key === "sodium").kind, "limit");

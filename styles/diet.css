@@ -182,6 +182,13 @@
    266 at 320px. Half a pointer width back and it sits flush. */
 #dietPlan .nutrow.nut-pegged .nutgauge-ptr { left: calc(100% - 2.5px) !important; }
 
+/* A nutrient the logs cannot carry gets no gauge and no verdict colour: a green
+   pointer is a claim, and there is nothing here to make a claim about. Muted and
+   italic so it reads as a note next to the four rows that are real. */
+#dietPlan .nutrow.nut-unmeasured .nutval { opacity: 0.5; font-style: italic; color: inherit; }
+#dietPlan .nutrow.nut-unmeasured .nutname { opacity: 0.6; }
+#dietPlan .nutrients-lead { font-size: 0.78rem; opacity: 0.7; margin: 6px 0 10px; line-height: 1.45; }
+
 /* Additions feed: day-over-day rows, green adds, one-tap ✕ delete. Capped +
    scrollable (same shape as .audit-list in styles/audit.css) so a long capture
    history doesn't push the rest of the Home page down indefinitely. */
