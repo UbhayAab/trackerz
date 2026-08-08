@@ -62,12 +62,48 @@ export function planNutrients(dietType) {
   }));
 }
 
-// Given the fraction of the day's calories already eaten (0..1), how much of each
-// nutrient is logged so far - a proportional estimate so the panel fills in as
-// meals are checked, hitting the full plan value when the day is complete.
-export function nutrientsSoFar(dietType, fractionOfDay) {
-  const f = Math.max(0, Math.min(1, Number(fractionOfDay) || 0));
-  return planNutrients(dietType).map((n) => ({ ...n, current: Math.round(n.plan * f * 100) / 100 }));
+// Only these four exist on a food_logs row. Everything else in NUTRIENTS is a
+// property of the PLAN, not of anything the user has ever logged.
+export const MEASURED_KEYS = Object.freeze(["calories", "protein", "carbs", "fat"]);
+
+// WHAT THIS USED TO DO, AND WHY IT WAS A LIE.
+//
+// It returned `current = plan[nutrient] * (caloriesEaten / calorieTarget)` for all
+// 30 nutrients, and the panel rendered every one of them in the same
+// `current / target` gauge as protein - which IS measured. So the number next to
+// "Vitamin C" was not a measurement of vitamin C. It was the calorie count wearing
+// a vitamin's name.
+//
+// On 2026-08-08 the owner ate 3,367 kcal of Taco Bell, a burger bun, mashed
+// potatoes and paneer. fraction = min(1, 3367/2000) = 1.0, so the panel showed him
+// 100% of the plan's 451 mg vitamin C, 5,141 mg potassium and 19.3 mg iron, on a
+// day containing no vitamin C source at all. Eating MORE junk moved every
+// micronutrient closer to "good". The summary said "micros estimated", which does
+// not begin to cover it.
+//
+// Now: a nutrient is either measured or it is not, and the two never render the
+// same way. `current` is a real sum for the four macros and NULL for the rest.
+// `plannedSoFar` is what the PLAN would have delivered for the share of the plan
+// actually ticked - a genuinely useful reference, and off-plan food contributes
+// nothing to it, because we have no micronutrient data for off-plan food.
+//
+// `measured` is { calories, protein, carbs, fat } summed from real rows.
+// `planAdherence` is 0..1: the fraction of the day's PLANNED calories ticked off.
+// It is deliberately NOT caloriesEaten/calorieTarget.
+export function nutrientsSoFar(dietType, { measured = {}, planAdherence = 0 } = {}) {
+  const f = Math.max(0, Math.min(1, Number(planAdherence) || 0));
+  const measurable = new Set(MEASURED_KEYS);
+  return planNutrients(dietType).map((n) => ({
+    ...n,
+    measured: measurable.has(n.key),
+    // null, never 0: "we did not measure this" and "you ate none of this" are
+    // different facts and this app has a history of printing the second when it
+    // means the first.
+    current: measurable.has(n.key) && measured[n.key] != null
+      ? Math.round(Number(measured[n.key]) * 100) / 100
+      : null,
+    plannedSoFar: Math.round(n.plan * f * 100) / 100,
+  }));
 }
 
 // Range-gauge model: the TARGET sits at the centre (50%), the track runs 0..2×target,
