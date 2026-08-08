@@ -368,11 +368,48 @@ function harness(overrides = {}) {
   const gym = readFileSync("src/ui/gym-today.js", "utf8");
   const html = readFileSync("index.html", "utf8");
 
+  // SHARING THE ENGINE WAS NOT ENOUGH.
+  //
+  // The first version of this block asserted both surfaces called
+  // createDictationController, and both did - and the owner still reported them
+  // as different, because the divergence had moved up a layer. Home wrapped the
+  // shared engine in a MediaRecorder running alongside the recogniser, an
+  // automatic fallback to recording, and a Process step before anything became
+  // text. Gym had none of that. Same engine, two experiences.
+  //
+  // So the invariant is now the CONTROL, not the engine: one module owns the
+  // button markup, both labels, the active class and the toggle, and neither
+  // page is allowed to hand-roll any of it.
+  const control = readFileSync("src/ui/voice-control.js", "utf8");
   for (const [name, src] of [["capture-panel", capture], ["gym-today", gym]]) {
-    assert.match(src, /createDictationController/, `${name} must use the shared dictation controller`);
+    assert.match(src, /from "\.\/voice-control\.js"/, `${name} must use the shared voice control`);
+    assert.ok(!/createDictationController\s*\(/.test(src),
+      `${name} must not build its own dictation controller - voice-control.js owns that`);
     assert.ok(!/startLiveTranscription|startDictation\(/.test(src),
       `${name} must not keep a second hand-rolled dictation implementation`);
+    // The labels live in exactly one place. A page that spells its own is how
+    // "Listening…" on one screen became "Stop" on the other.
+    assert.ok(!/Listening…|🎙 Voice/.test(src),
+      `${name} must not hard-code a voice label - import them from voice-control.js`);
   }
+
+  // No recorder may run on the voice path again. Audio as evidence is attached
+  // as a FILE; the microphone button is dictation only, on both pages, because
+  // two apps cannot hold the Android microphone at once.
+  //
+  // Comments are stripped before matching: both files legitimately DESCRIBE the
+  // recorder they no longer open, and a guard that cannot tell code from prose
+  // about the code is a guard that gets deleted the first time it cries wolf.
+  const codeOnly = (src) => src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  for (const [name, src] of [["capture-panel", capture], ["gym-today", gym]]) {
+    assert.ok(!/new MediaRecorder|getUserMedia/.test(codeOnly(src)),
+      `${name} must not open a recorder on the voice path - that is the divergence that made Home feel broken`);
+  }
+
+  assert.match(control, /VOICE_IDLE_LABEL/, "voice-control must define the idle label");
+  assert.match(control, /VOICE_ACTIVE_LABEL/, "voice-control must define the listening label");
 
   assert.match(html, /id="voiceStatus"[^>]*aria-live="polite"/,
     "index.html needs a live region for what voice just did");
@@ -386,20 +423,26 @@ function harness(overrides = {}) {
 
   // Stopping voice writes to that region, not only to the parse log.
   assert.match(capture, /setVoiceStatus\(/, "capture-panel must write to #voiceStatus");
-  assert.match(capture, /function finalizeVoice/, "capture-panel still owns one stop path");
+  // ONE STOP PATH, AND IT IS THE SHARED ONE.
+  //
+  // These assertions used to require finalizeVoice(), a duplicate-audio drop,
+  // recorderMayRunAlongsideDictation() and an isNativePlatform gate. All four
+  // existed to make a recorder coexist with the recogniser on the Home page
+  // only - the very asymmetry the owner kept reporting. There is no recorder on
+  // the voice path now, so the correct guard is that neither page can grow one
+  // back, which is asserted above.
+  assert.match(capture, /voice\.isListening\(\)/,
+    "Process must stop an in-flight dictation through the shared toggle, so the last phrase lands in the box");
+  assert.match(capture, /voice\.stop\(\)/, "and it must await that stop before reading the text");
+  assert.match(capture, /paintVoiceButton/,
+    "the Home button must be painted by the shared control, not by a bespoke label writer");
 
-  // Live text and a recording of the same sentence are the SAME evidence.
-  // Uploading both doubles the extraction cost and hands the model the meal
-  // twice, which is how one capture becomes two rows.
-  assert.match(capture, /if \(outcome\.text && lastRecordingFile\)[\s\S]{0,200}pendingMediaFiles = pendingMediaFiles\.filter/,
-    "when live text succeeded, the duplicate audio recording is dropped before upload");
-
-  // The recogniser must never have to fight the app for the microphone on
-  // Android, where the two live in different processes.
-  assert.match(capture, /recorderMayRunAlongsideDictation/,
-    "the recorder is gated on whether it can share the mic with the recogniser");
-  assert.match(capture, /isNativePlatform/,
-    "and that gate keys on the native platform, where the recogniser is another app");
+  // The Home button lives in static HTML while Gym renders its own, so the two
+  // could still drift through markup alone. Pin the one attribute that proves
+  // both are the shared control's button.
+  assert.match(html, /id="voiceButton"[^>]*data-voice-toggle/,
+    "index.html's voice button must be the shared control's button");
+  assert.match(control, /data-voice-toggle/, "voiceButtonHtml must stamp the same marker Gym renders");
 }
 
 console.log("speech transcript tests passed");

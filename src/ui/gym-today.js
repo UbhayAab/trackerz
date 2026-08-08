@@ -21,7 +21,7 @@ import { planForDate } from "../domain/diet/plan.js";
 import { weeklyWorkoutCount } from "../domain/diet/plan.js";
 import { goalDisplayValue } from "../domain/goals.js";
 import { showToast } from "./toast.js";
-import { createDictationController, isLiveTranscriptionSupported } from "../services/speech.js";
+import { createVoiceToggle, voiceButtonHtml } from "./voice-control.js";
 
 const HOST = "#gymToday";
 
@@ -29,7 +29,6 @@ let _state = { workoutLogs: [], budgets: [] };
 let _today = null;      // today's gym answer row, or null
 let _busy = false;
 let _listening = false;
-let _rec = null;
 
 function canSync() { return Boolean(getCurrentSession()?.user?.id) && !isLocalSession(); }
 function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
@@ -80,7 +79,7 @@ export function renderGymToday(appState) {
       <label class="visually-hidden" for="gymFreeText">What did you train?</label>
       <textarea id="gymFreeText" rows="2" placeholder="cardio + triceps and abs · bench 3x10 60kg · back day, lat pulldown"></textarea>
       <div class="gt-actions">
-        ${isLiveTranscriptionSupported() ? `<button type="button" class="secondary-button gt-voice${_listening ? " is-active" : ""}" data-gt="voice">${_listening ? "Listening…" : "🎙 Voice"}</button>` : ""}
+        ${voiceButtonHtml({ listening: _listening, action: "voice", extraClass: "gt-voice" })}
         <button type="button" class="primary-button" data-gt="log" ${_busy ? "disabled" : ""}>${_busy ? "Logging…" : "Log it"}</button>
       </div>
       <p class="muted small">Say it however you say it. The AI turns it into exercises and muscles, and it counts as trained.</p>
@@ -159,34 +158,20 @@ async function logFreeText() {
 // transcript is written straight into the box and only the button state
 // re-renders when listening starts or stops.
 //
-// This is now the SAME controller the Home capture box uses
-// (services/speech.js -> createDictationController). It used to be a second,
-// slightly different implementation over the same engine, and that divergence
-// is exactly why one of the two surfaces felt instant and the other felt dead.
-// The controller also guarantees a sentence on every stop, so "I spoke and
-// nothing happened" cannot be the outcome here either.
+// This is now the SAME CONTROL as the Home capture box, not merely the same
+// engine: ui/voice-control.js owns the button markup, both labels, the active
+// class and the toggle. Sharing only the engine was not enough - the surfaces
+// still owned their own buttons and their own stop semantics, and the owner
+// reported them as different a second time. A page can no longer render a voice
+// button that behaves differently, because a page no longer writes one.
+const _voice = createVoiceToggle({
+  getBox: () => document.querySelector("#gymFreeText"),
+  setStatus,
+  onListeningChange: (listening) => { _listening = listening; renderGymToday(); },
+});
+
 async function dictate() {
-  if (_listening) {
-    _listening = false;
-    renderGymToday();
-    setStatus("Finishing up...");
-    await _rec?.stop();
-    _rec = null;
-    return;
-  }
-  _rec = createDictationController({
-    getBaseText: () => document.querySelector("#gymFreeText")?.value || "",
-    onText: (text) => {
-      const b = document.querySelector("#gymFreeText");
-      if (b) b.value = text;
-    },
-    onNotice: (message, info) => {
-      setStatus(message);
-      if (info?.fatal) { _listening = false; _rec = null; renderGymToday(); }
-    },
-  });
-  if (!_rec.start()) { _rec = null; return; } // the controller already said why
-  _listening = true; renderGymToday();
+  await _voice.toggle();
 }
 
 export function bindGymToday() {
