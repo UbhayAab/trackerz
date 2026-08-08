@@ -370,13 +370,19 @@ eq(unwrapOr(5, 0), 5, "a bare value passes through - migrating a call site canno
       `#${id} must not be inside or below the collapsed AI activity panel`);
   }
 
-  // Every branch of finalizeVoice ends with something on screen: either the
-  // dictation controller's outcome or an explicit describeRecording sentence.
-  const finalize = /async function finalizeVoice\(\)[\s\S]*?\n\}/.exec(panel);
-  ok(finalize, "finalizeVoice is still the single stop path");
-  ok(/setVoiceStatus\(/.test(finalize[0]), "finalizeVoice writes to the visible status line");
-  ok(/describeRecording\(/.test(finalize[0]), "the recorder-only branch reports what it produced");
-  ok(/dictation\.stop\(/.test(finalize[0]), "the dictation branch reports through the shared controller");
+  // THE STOP PATH MOVED, AND SHRANK.
+  //
+  // This used to require finalizeVoice() with a recorder branch and a dictation
+  // branch, because Home ran both at once. That co-tenancy is exactly what made
+  // Home feel different from Gym, so it is gone: there is one stop, it lives in
+  // ui/voice-control.js, and both pages use it. What still has to be true is the
+  // thing the owner actually reported - a stop always says something on screen.
+  const control = readFileSync("src/ui/voice-control.js", "utf8");
+  ok(/async function stop\(\)/.test(control), "voice-control owns the single stop path");
+  ok(/Finishing up/.test(control), "stop reports immediately, before the engine has finished");
+  ok(/setStatus/.test(control), "voice-control routes every notice to the page's status line");
+  ok(/onNotice/.test(control), "and subscribes to the controller's notices, which guarantee a sentence per stop");
+  ok(/setVoiceStatus\(/.test(panel), "capture-panel still writes those notices to #voiceStatus");
 }
 
 console.log(`failure-surfacing tests passed: ${n} assertions`);

@@ -62,7 +62,10 @@ import { join } from "node:path";
 // it on the diagnostics page. The live data said the gap was not theoretical:
 // passive spend capture has written one row in its life, and that row was a
 // diagnostics self-test.
-const SWALLOW_BASELINE = 85;
+// 85 -> 83: two more went with the recorder that used to run alongside the
+// speech recogniser on the Home capture box. Deleting the code that swallowed
+// is the only reduction that is not a promise.
+const SWALLOW_BASELINE = 83;
 const RENDERER_BASELINE = 8;
 
 const FIXTURE = "tests/fixtures/swallow-allowlist.json";

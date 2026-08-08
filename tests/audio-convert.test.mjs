@@ -200,7 +200,11 @@ import {
   const panel = readFileSync("src/ui/capture-panel.js", "utf8");
   assert.match(panel, /onMedia\(/, "capture-panel must subscribe to per-file upload state");
   assert.match(panel, /describeUpload\(/, "and render it with the tested copy");
-  assert.match(panel, /describeRecording\(/, "and report what the recorder produced");
+  // describeRecording used to be asserted here, when the Home voice button ran a
+  // MediaRecorder alongside the speech recogniser. It no longer does: voice is
+  // dictation on both pages, and audio arrives as an attached FILE, which the
+  // two assertions above already cover. describeRecording stays exported and
+  // tested as a pure formatter for any surface that records in future.
 }
 
 console.log("audio-convert tests passed");

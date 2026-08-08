@@ -452,7 +452,7 @@
     {
       "file": "src/state/sync.js",
       "pattern": "absent-as-zero",
-      "line": 319,
+      "line": 322,
       "text": ".reduce((acc, r) => acc + Number(r.amount || 0), 0);",
       "reason": "Mostly defensive casts on NOT NULL ledger_entries.amount. The exception is `row_count ?? 0`, which renders an import whose row count was never recorded as '0 rows' - a real if small instance of the disease, in a status cell on the imports table rather than a total the user acts on. src/state/sync.js is owned by another workstream in this phase."
     },
@@ -473,37 +473,23 @@
     {
       "file": "src/ui/capture-panel.js",
       "pattern": "catch-null",
-      "line": 265,
+      "line": 250,
       "text": "if (outboxId) await markSending(outboxId).catch(() => null);",
       "reason": "MIXED, DEFERRED: audioCtx.close() is genuinely correct (closing an already-closed AudioContext has nothing to report), but markSending/markSent/markFailed swallowing leaves an outbox row stuck in the wrong state with no signal, which is how a capture can look sent and never be. src/ui/capture-panel.js is explicitly out of scope for this phase."
     },
     {
       "file": "src/ui/capture-panel.js",
       "pattern": "catch-null",
-      "line": 324,
+      "line": 309,
       "text": "if (outboxId) await markSent(outboxId, result?.ingestion?.id || null).catch(() => null);",
       "reason": "MIXED, DEFERRED: audioCtx.close() is genuinely correct (closing an already-closed AudioContext has nothing to report), but markSending/markSent/markFailed swallowing leaves an outbox row stuck in the wrong state with no signal, which is how a capture can look sent and never be. src/ui/capture-panel.js is explicitly out of scope for this phase."
     },
     {
       "file": "src/ui/capture-panel.js",
       "pattern": "catch-null",
-      "line": 346,
+      "line": 331,
       "text": "if (outboxId) outcome = await markFailed(outboxId, err).catch(() => null);",
       "reason": "MIXED, DEFERRED: audioCtx.close() is genuinely correct (closing an already-closed AudioContext has nothing to report), but markSending/markSent/markFailed swallowing leaves an outbox row stuck in the wrong state with no signal, which is how a capture can look sent and never be. src/ui/capture-panel.js is explicitly out of scope for this phase."
-    },
-    {
-      "file": "src/ui/capture-panel.js",
-      "pattern": "catch-null",
-      "line": 731,
-      "text": "audioCtx.close().catch(() => null);",
-      "reason": "MIXED, DEFERRED: audioCtx.close() is genuinely correct (closing an already-closed AudioContext has nothing to report), but markSending/markSent/markFailed swallowing leaves an outbox row stuck in the wrong state with no signal, which is how a capture can look sent and never be. src/ui/capture-panel.js is explicitly out of scope for this phase."
-    },
-    {
-      "file": "src/ui/capture-panel.js",
-      "pattern": "empty-catch",
-      "line": 739,
-      "text": "try { waveformHandle?.stop(); } catch {}",
-      "reason": "Correct: stop() on a MediaRecorder or SpeechRecognition that has already stopped throws and means nothing - the recorder is already in the state the caller asked for."
     },
     {
       "file": "src/ui/charts.js",
