@@ -71,6 +71,12 @@
 
         <section class="command-panel" id="spendCapturePanel"></section>
 
+        <!-- Install / update (src/ui/install-panel.js). Always rendered, unlike
+             the two callouts above, which hide themselves as soon as the native
+             bridge exists - i.e. exactly inside the app, where an update link is
+             the only thing that can help. -->
+        <section class="command-panel" id="installPanel"></section>
+
         <section class="command-panel">
           <div class="panel-title-row">
             <div>

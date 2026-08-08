@@ -5,6 +5,7 @@ import { bindJarvisCard } from "../ui/jarvis-settings.js";
 import { mountAccountPanel } from "../ui/account-panel.js";
 import { mountHealthPanel } from "../ui/health-panel.js";
 import { mountSpendCapturePanel } from "../ui/spend-capture-panel.js";
+import { mountInstallPanel } from "../ui/install-panel.js";
 import { mountGcalPanel } from "../ui/gcal-panel.js";
 import { bootWithAuth } from "./bootstrap.js";
 import { renderNav } from "../ui/navigation.js";
@@ -40,6 +41,10 @@ bootWithAuth(async () => {
   // app only" fallback in a browser; inside the APK the user grants access once and
   // every payment is logged without changing how they pay.
   mountSpendCapturePanel();
+  // Which build is running and where to get a newer one. The two panels above
+  // hide their download link as soon as the native bridge exists, so inside the
+  // app there was no way to update from Settings at all.
+  void mountInstallPanel();
   // Google Calendar two-way sync. With no OAuth client configured this renders
   // an honest "setup needed" naming the two missing secrets; when a grant later
   // dies (Google's Testing mode revokes refresh tokens after 7 days) it renders

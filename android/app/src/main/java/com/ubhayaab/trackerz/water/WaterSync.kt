@@ -180,7 +180,14 @@ internal object WaterSync {
         val (startIso, endIso) = WaterStore.dayBoundsIso()
         // The ISO strings carry a "+05:30" offset, and a raw + in a query string
         // means a space. Encoding is not optional here.
+        // deleted_at=is.null is NOT optional. hydration_logs is soft-deleted:
+        // undoing a glass tombstones the row, it does not remove it. Without this
+        // filter the widget keeps counting water the user explicitly took back,
+        // so the widget and the app show different totals for the same day and
+        // the widget is the one that is wrong. fetchHydrationTotal in
+        // src/services/supabase-data.js has always filtered it; this copy did not.
         val query = "select=ml" +
+            "&deleted_at=is.null" +
             "&occurred_at=gte." + URLEncoder.encode(startIso, "UTF-8") +
             "&occurred_at=lt." + URLEncoder.encode(endIso, "UTF-8")
         val url = URL("${WaterStore.supabaseUrl(ctx).trimEnd('/')}/rest/v1/hydration_logs?$query")
