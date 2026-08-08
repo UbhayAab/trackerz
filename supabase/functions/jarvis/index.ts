@@ -867,6 +867,35 @@ function jbBudgetAmount(budgets, kind) {
   return null;
 }
 
+// THE TARGET THAT EXISTED EVERYWHERE EXCEPT WHERE IT WAS CHECKED.
+//
+// The morning brief has always printed "Targets: 162g protein, 2000 kcal" - it
+// reads them off the active diet plan. `protein_hit` read them off a `budgets`
+// row instead, and the `budgets` table has never held a single row: 0 rows for
+// every user, all time. So the app stated a target at 07:00 and then evaluated
+// the day against nothing, which made `protein_hit` false and `streaks.protein`
+// zero on every day since the check moved to budgets - including three of the
+// last five days, when he actually cleared 90% of 162 g.
+//
+// An explicit budget still wins (it is the thing the user set by hand). The plan
+// is the fallback, not the override, and null still means "no target anywhere",
+// which keeps the "absence is never a failure" rule intact.
+function jbPlanTarget(dietTargets, key) {
+  var t = dietTargets || {};
+  var v = Number(t[key]);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+function jbProteinTarget(budgets, dietTargets) {
+  var explicit = jbBudgetAmount(budgets, "daily_protein");
+  return explicit != null ? explicit : jbPlanTarget(dietTargets, "protein_g");
+}
+
+function jbCaloriesTarget(budgets, dietTargets) {
+  var explicit = jbBudgetAmount(budgets, "daily_calories");
+  return explicit != null ? explicit : jbPlanTarget(dietTargets, "calories");
+}
+
 // Daily spend cap derived the same way src/services/briefing.js does it.
 function jbDailySpendCap(budgets) {
   var monthly = jbBudgetAmount(budgets, "monthly_spend");
@@ -880,6 +909,7 @@ function jbDailySpendCap(budgets) {
 function jbCloseDay(input) {
   var ledger = input.ledger || [], foods = input.foods || [], workouts = input.workouts || [];
   var wellness = input.wellness || [], bodyMetrics = input.bodyMetrics || [], budgets = input.budgets || [];
+  var dietTargets = input.dietTargets || null;
   var plannedKind = input.plannedKind || "gym";
 
   var spend = 0, discretionarySpend = 0, income = 0;
@@ -937,8 +967,8 @@ function jbCloseDay(input) {
     if (mood > 0) { moodSum += mood; moodN++; }
   }
 
-  var proteinTarget = jbBudgetAmount(budgets, "daily_protein");
-  var caloriesTarget = jbBudgetAmount(budgets, "daily_calories");
+  var proteinTarget = jbProteinTarget(budgets, dietTargets);
+  var caloriesTarget = jbCaloriesTarget(budgets, dietTargets);
   var spendCap = jbDailySpendCap(budgets);
 
   // `logged` counts ALL rows including a skipped workout - declining the gym is
@@ -1013,8 +1043,8 @@ function jbBriefFacts(o) {
     diet_label: jbDietLabelForWeekday(wd),
     workout: { name: workout.name, kind: workout.kind },
     targets: {
-      protein_g: jbBudgetAmount(o.budgets, "daily_protein"),
-      calories: jbBudgetAmount(o.budgets, "daily_calories"),
+      protein_g: jbProteinTarget(o.budgets, o.dietTargets),
+      calories: jbCaloriesTarget(o.budgets, o.dietTargets),
       spend_cap: jbDailySpendCap(o.budgets),
     },
     yesterday: y ? {
@@ -1290,6 +1320,21 @@ async function fetchDayRows(admin: any, userId: string, startISO: string, endISO
 async function fetchBudgets(admin: any, userId: string) {
   const { data } = await admin.from("budgets").select("kind, amount").eq("user_id", userId).not("kind", "is", null);
   return data || [];
+}
+
+// The active diet plan's own targets ({calories, protein_g}), which is where the
+// morning brief has always got "162g protein, 2000 kcal" from. jbCloseDay falls
+// back to these when `budgets` holds no daily_protein / daily_calories row - and
+// it never has, for anyone, which is why protein_hit was false on every day the
+// owner actually hit his protein. Null-safe: a user with no diet plan gets null,
+// and null still means "no target", not "missed".
+async function fetchDietTargets(admin: any, userId: string) {
+  const { data } = await admin.from("user_plans")
+    .select("payload")
+    .eq("user_id", userId).eq("kind", "diet").eq("active", true).is("deleted_at", null)
+    .order("created_at", { ascending: false }).limit(1);
+  const t = data?.[0]?.payload?.targets;
+  return t && typeof t === "object" ? t : null;
 }
 
 async function fetchGymPayload(admin: any, userId: string) {
@@ -1923,13 +1968,14 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
   if (existing && !force) return { userId: profile.id, action: "closeout", forDate: dateKey, skipped: "exists" };
 
   const win = jbDayWindow(dateKey, tz);
-  const [rows, budgets, gymPayload] = await Promise.all([
+  const [rows, budgets, gymPayload, dietTargets] = await Promise.all([
     fetchDayRows(admin, profile.id, win.startISO, win.endISO),
     fetchBudgets(admin, profile.id),
     fetchGymPayload(admin, profile.id),
+    fetchDietTargets(admin, profile.id),
   ]);
   const plannedKind = jbPlannedWorkout(jbWeekdayFromKey(dateKey), gymPayload).kind;
-  const day = jbCloseDay({ ...rows, budgets, plannedKind });
+  const day = jbCloseDay({ ...rows, budgets, dietTargets, plannedKind });
   const prev = await fetchHabitDay(admin, profile.id, jbAddDays(dateKey, -1));
   const streaks = jbNextStreaks(prev?.streaks, day.flags);
 
@@ -2037,9 +2083,10 @@ async function runMorning(admin: any, profile: Profile, now: Date, force: boolea
     yday = await fetchHabitDay(admin, profile.id, ydayKey);
   }
 
-  const [budgets, gymPayload, monthSpend, subsDue, weeklyWorkouts, allReminders] = await Promise.all([
+  const [budgets, gymPayload, dietTargets, monthSpend, subsDue, weeklyWorkouts, allReminders] = await Promise.all([
     fetchBudgets(admin, profile.id),
     fetchGymPayload(admin, profile.id),
+    fetchDietTargets(admin, profile.id),
     fetchMonthSpend(admin, profile.id, todayKey, tz),
     fetchSubsDue(admin, profile.id, now),
     fetchWeeklyWorkouts(admin, profile.id, todayKey, tz),
@@ -2051,7 +2098,7 @@ async function runMorning(admin: any, profile: Profile, now: Date, force: boolea
   const remindersDue = dueReminders(allReminders, todayKey);
 
   const facts = jbBriefFacts({
-    dateKey: todayKey, budgets, gymPayload,
+    dateKey: todayKey, budgets, dietTargets, gymPayload,
     yesterday: yday ? { ...(yday.summary || {}), flags: yday.flags } : null,
     streaks: yday?.streaks || {},
     monthSpend, subsDue, weeklyWorkouts, remindersDue,
@@ -2123,13 +2170,14 @@ async function runMidday(admin: any, profile: Profile, now: Date, force: boolean
   if (existingRow && !force) return { userId: profile.id, action: "midday", forDate: todayKey, skipped: "exists" };
 
   const win = jbDayWindow(todayKey, tz);
-  const [rows, budgets, gymPayload] = await Promise.all([
+  const [rows, budgets, gymPayload, dietTargets] = await Promise.all([
     fetchDayRows(admin, profile.id, win.startISO, now.toISOString()),
     fetchBudgets(admin, profile.id),
     fetchGymPayload(admin, profile.id),
+    fetchDietTargets(admin, profile.id),
   ]);
   const planned = jbPlannedWorkout(jbWeekdayFromKey(todayKey), gymPayload);
-  const sofar = jbCloseDay({ ...rows, budgets, plannedKind: planned.kind });
+  const sofar = jbCloseDay({ ...rows, budgets, dietTargets, plannedKind: planned.kind });
 
   // Hours of the local day still ahead, so "still to do" is only said while it
   // is still true. jbMinutesOfDay parses "HH:MM", so format the instant in the
@@ -2178,13 +2226,14 @@ async function runEvening(admin: any, profile: Profile, now: Date, force: boolea
   if (existingRow && !force) return { userId: profile.id, action: "evening", forDate: todayKey, skipped: "exists" };
 
   const win = jbDayWindow(todayKey, tz);
-  const [rows, budgets, gymPayload] = await Promise.all([
+  const [rows, budgets, gymPayload, dietTargets] = await Promise.all([
     fetchDayRows(admin, profile.id, win.startISO, now.toISOString()),
     fetchBudgets(admin, profile.id),
     fetchGymPayload(admin, profile.id),
+    fetchDietTargets(admin, profile.id),
   ]);
   const planned = jbPlannedWorkout(jbWeekdayFromKey(todayKey), gymPayload);
-  const sofar = jbCloseDay({ ...rows, budgets, plannedKind: planned.kind });
+  const sofar = jbCloseDay({ ...rows, budgets, dietTargets, plannedKind: planned.kind });
   const evening = jbEveningBody({
     proteinTarget: sofar.caps.proteinTarget, proteinToday: sofar.protein,
     caloriesTarget: sofar.caps.caloriesTarget, caloriesToday: sofar.calories,
@@ -2521,13 +2570,14 @@ async function executeTask(admin: any, profile: Profile, task: any, now: Date, t
 
     // Today's real numbers, the same ones the midday slot uses.
     const win = jbDayWindow(todayKey, zone);
-    const [rows, budgets, gymPayload] = await Promise.all([
+    const [rows, budgets, gymPayload, dietTargets] = await Promise.all([
       fetchDayRows(admin, profile.id, win.startISO, now.toISOString()),
       fetchBudgets(admin, profile.id),
       fetchGymPayload(admin, profile.id),
+      fetchDietTargets(admin, profile.id),
     ]);
     const planned = jbPlannedWorkout(jbWeekdayFromKey(todayKey), gymPayload);
-    const sofar = jbCloseDay({ ...rows, budgets, plannedKind: planned.kind });
+    const sofar = jbCloseDay({ ...rows, budgets, dietTargets, plannedKind: planned.kind });
     const hoursLeftInDay = Math.max(0, (24 * 60 - localMinutesNow(now, zone)) / 60);
 
     // "check" is DETERMINISTIC and free. jbMiddayBody returns a null body on a

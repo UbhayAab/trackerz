@@ -37,11 +37,39 @@ export function deviceSyncStatuses() {
  * either is recorded as an Err with a named source and never rethrown, because
  * a dead microphone bridge must not stop the app from booting.
  */
+// A sync that DECLINED to start is not a sync that started.
+//
+// initHealthAutoSync returns `{started: false, reason}` instead of throwing, so
+// "Health Connect permission was never granted" was being stored as an Ok and
+// the diagnostics page listed watch health data as fine. It is not fine:
+// sleep_sessions has three rows ever, the newest 2026-07-30, and not one of them
+// came from Health Connect - the source that was supposed to make sleep
+// automatic has never written a single row, and nothing said so.
+//
+// "browser" is the one honest not-started: there is no bridge to permit in a
+// browser, and calling that a failure would put a permanent red mark on the web
+// app for a feature it cannot have. Everything else - no_permission, a reason
+// string from a thrown init - is a real gap the user can act on.
+function classifyStart(detail) {
+  if (!detail || typeof detail !== "object" || detail.started !== false) return null;
+  const reason = String(detail.reason || "unknown");
+  if (reason === "browser" || reason === "recent") return null;
+  return reason;
+}
+
 async function startDeviceSync(name, load, start) {
   try {
     const mod = await load();
     const detail = await start(mod);
-    deviceSyncResults.set(name, Ok(detail ?? true, { source: name }));
+    const declined = classifyStart(detail);
+    // no_permission is `unauthorized` (the OS refused, and granting it is the
+    // fix); anything else is `unknown`, which this codebase defines as "never
+    // silently treat as ok" - exactly the right default for a reason we have not
+    // seen before.
+    deviceSyncResults.set(name, declined
+      ? Err(declined === "no_permission" ? "unauthorized" : "unknown",
+          new Error(`did not start: ${declined}`), { source: name, detail })
+      : Ok(detail ?? true, { source: name }));
     return mod;
   } catch (e) {
     deviceSyncResults.set(name, Err(classify(e), e, { source: name }));

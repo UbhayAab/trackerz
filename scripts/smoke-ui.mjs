@@ -265,18 +265,42 @@ await page.goto(BASE, { waitUntil: "networkidle" });
 await page.waitForTimeout(2000);
 
 // Actually press a water button and confirm the total moves.
+//
+// "Undo leaves no trace" WAS NOT TRUE, and it cost a real audit. hydration_logs
+// is soft-deleted, so the undo tombstones the row instead of removing it: every
+// run left an insert plus a `deleted_at` two seconds later in the OWNER'S LIVE
+// day. By 2026-08-08 there were 30 such pairs, which is what "water is not being
+// logged" looked like from the database - a metronome of writes that were
+// immediately taken back, indistinguishable from a UI deleting the user's taps.
+// A check that has to write to production must purge what it wrote, all the way.
 if (report.quickActionsPresent && !OVERFLOW_ONLY) {
+  const sinceIso = new Date(Date.now() - 5000).toISOString();
   const before = await page.textContent("#quickActions .quick-row:nth-child(2) .quick-note");
   await page.click('#quickActions button[data-act="water"][data-ml="250"]');
   await page.waitForTimeout(2200);
   const after = await page.textContent("#quickActions .quick-row:nth-child(2) .quick-note");
   console.log(`\nwater before: ${before.trim().replace(/\s+/g, " ")}`);
   console.log(`water after : ${after.trim().replace(/\s+/g, " ")}`);
-  // Undo so the smoke test leaves no trace.
   await page.click('#quickActions button[data-act="water-undo"]');
   await page.waitForTimeout(1800);
   const undone = await page.textContent("#quickActions .quick-row:nth-child(2) .quick-note");
   console.log(`water undone: ${undone.trim().replace(/\s+/g, " ")}`);
+  console.log(`water purge : ${await purgeSmokeHydration(sinceIso)}`);
+}
+
+// Hard-delete only the hydration rows this run created. Bounded by created_at >=
+// the instant before the tap, so a glass the owner logged himself a minute
+// earlier - tombstoned or not - is out of range and cannot be touched.
+async function purgeSmokeHydration(sinceIso) {
+  const S = process.env.SUPABASE_URL, K = process.env.SUPABASE_SECRET_KEY;
+  if (!S || !K) return "skipped (no service key in .env.local)";
+  const url = `${S}/rest/v1/hydration_logs?created_at=gte.${encodeURIComponent(sinceIso)}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { apikey: K, Authorization: `Bearer ${K}`, Prefer: "return=representation" },
+  });
+  if (!res.ok) return `FAILED ${res.status} ${(await res.text()).slice(0, 120)}`;
+  return `${((await res.json()) || []).length} row(s) removed - nothing left behind`;
 }
 
 await page.screenshot({ path: "docs/smoke-home.png", fullPage: true });

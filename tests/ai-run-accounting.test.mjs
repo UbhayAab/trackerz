@@ -96,9 +96,14 @@ for (const [i, o] of answerPricing) {
 const jarvis = readFileSync("supabase/functions/jarvis/index.ts", "utf8");
 const jarvisRates = jarvis.match(/const GEMINI_IN_USD = [^\n]*\nconst DEEPSEEK_IN_USD = [^\n]*/);
 assert.ok(jarvisRates, "could not find the rate constants in the jarvis function");
+// .trim() because the two files do not agree about line endings: jarvis/index.ts
+// is CRLF, so `[^\n]*` keeps the \r and the whitespace collapse turns it into a
+// trailing space. That is not drift, but it failed this assertion - and since
+// `npm test` chains every file with &&, one carriage return was silently
+// skipping every suite after this one.
 assert.equal(
-  jarvisRates[0].replace(/\s+/g, " "),
-  rateLine.split("\n").filter((l) => l.startsWith("const ")).join("\n").replace(/\s+/g, " "),
+  jarvisRates[0].replace(/\s+/g, " ").trim(),
+  rateLine.split("\n").filter((l) => l.startsWith("const ")).join("\n").replace(/\s+/g, " ").trim(),
   "agent and jarvis pricing tables have drifted",
 );
 

@@ -305,4 +305,44 @@ assert.ok(prompt.includes('"for_date":"2026-07-06"'));
   assert.match(knownEmpty, /no spending logged/);
 }
 
+// THE TARGET THAT WAS PRINTED BUT NEVER CHECKED.
+//
+// `budgets` has held zero rows for every user since the table existed, so
+// protein_hit was false on every day ever closed and streaks.protein never left
+// 0 - while the morning brief printed "Targets: 162g protein" from the diet plan
+// the whole time. These four cases lock the fallback and its limits.
+{
+  const dayRows = (proteinG) => ({
+    foods: [{ protein_g: proteinG, calories_estimate: 2000 }],
+    ledger: [], workouts: [], wellness: [], bodyMetrics: [],
+    plannedKind: "rest",
+  });
+  const plan = { protein_g: 162, calories: 2000 };
+
+  const noTarget = jbCloseDay({ ...dayRows(160), budgets: [] });
+  assert.equal(noTarget.caps.proteinTarget, null, "no budget and no plan means no target");
+  assert.equal(noTarget.flags.protein_hit, false);
+
+  // The regression itself: 160 g against the plan's 162 g target is a hit.
+  const fromPlan = jbCloseDay({ ...dayRows(160), budgets: [], dietTargets: plan });
+  assert.equal(fromPlan.caps.proteinTarget, 162, "an absent budget must fall back to the diet plan's target");
+  assert.equal(fromPlan.flags.protein_hit, true, "160g against a 162g target is a hit at the 90% rule");
+  assert.equal(jbNextStreaks({ protein: 3 }, fromPlan.flags).protein, 4);
+
+  // Short of 90% is still a miss - the fallback supplies a target, not a pass.
+  const short = jbCloseDay({ ...dayRows(120), budgets: [], dietTargets: plan });
+  assert.equal(short.flags.protein_hit, false, "120g against 162g is below the 90% line");
+
+  // An explicit budget outranks the plan: it is the number the user set by hand.
+  const explicit = jbCloseDay({
+    ...dayRows(160), budgets: [{ kind: "daily_protein", amount: 200 }], dietTargets: plan,
+  });
+  assert.equal(explicit.caps.proteinTarget, 200, "an explicit budget must win over the plan fallback");
+  assert.equal(explicit.flags.protein_hit, false, "160g against a hand-set 200g target is a miss");
+
+  // And the facts object the voice model reads must agree with the flag.
+  const facts = jbBriefFacts({ dateKey: "2026-08-08", budgets: [], dietTargets: plan, streaks: {} });
+  assert.equal(facts.targets.protein_g, 162, "the brief and the closeout must read the same target");
+}
+
 console.log("jarvis-brief tests passed");

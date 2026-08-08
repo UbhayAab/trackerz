@@ -109,6 +109,19 @@ Two guards now exist, and both must keep working:
   `bootWithAuth` - an app too old to sign in is exactly the app that most needs
   the banner, and the auth-gated version never appeared at all.
 
+A third guard, added 2026-08-09: **the WebView must have a `DownloadListener`.**
+An Android WebView without one silently discards any navigation that turns out
+to be a download, and GitHub serves release assets as
+`Content-Disposition: attachment` - so inside the APK, tapping the download link
+or the update banner did nothing at all: no request, no error, no progress.
+Builds 1.0.46 and 1.0.47 have downloads against them (fetched from the browser,
+before he installed); 1.0.48, linked from the identical two places, has zero on
+both the versioned asset and the floating `trackerz.apk`.
+`MainActivity.handOffDownloadsToTheBrowser()` hands every download to the system
+browser, which has the notification and the "Open" button that install an APK.
+This is a different failure from the `target="_blank"` PWA custom-tab trap in
+`src/ui/apk-link.js`, and neither fix covers the other.
+
 `APP_VERSION` in `src/version.js` is a hand-typed string that read "v17" while CI
 was publishing build 45. Inside the APK the badge now shows the real build number
 instead, because a stamp that cannot change cannot tell you whether an update
