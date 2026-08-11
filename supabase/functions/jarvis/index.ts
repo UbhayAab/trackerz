@@ -1962,7 +1962,68 @@ async function upsertBriefing(admin: any, userId: string, kind: string, forDate:
 
 // Close one civil day: habit_days (+streak roll), closeout briefing, and on
 // Sundays the weekly_reviews row + weekly briefing.
-async function runCloseout(admin: any, profile: Profile, dateKey: string, force: boolean) {
+// JSON with object keys sorted at every depth, so two structurally identical
+// values always produce the same string. Arrays keep their order, which is real
+// information; object key order is not.
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_k, v) => {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      return Object.keys(v as Record<string, unknown>).sort().reduce((out: Record<string, unknown>, k) => {
+        out[k] = (v as Record<string, unknown>)[k];
+        return out;
+      }, {});
+    }
+    return v;
+  });
+}
+
+// How many days back the nightly close re-checks for late arrivals. A week is
+// well past the point where the owner is still remembering meals, and it is 7
+// cheap reads per profile per night.
+const CLOSEOUT_BACKFILL_DAYS = 7;
+
+// A CLOSED DAY IS NOT A FINISHED DAY.
+//
+// The close runs at 00:05 and writes habit_days.summary from the rows that exist
+// AT THAT MOMENT. Backdated rows keep arriving afterwards - which is not an edge
+// case here, it is how the owner logs: "yesterday I had two bricks of Maggi",
+// entered the next morning. Nothing ever reopened the day, so the summary stayed
+// frozen at whatever had been entered before midnight.
+//
+// It happened on 2026-08-09. The close ran at 00:05 on the 10th; the paneer meal
+// was entered at 02:25, four hours later. The stored day said 380 kcal, 56 g
+// protein, 1 meal, for a day that actually held 2,910 kcal, 176 g and 2 meals -
+// and the morning brief reads "Yesterday:" straight off that summary, so it
+// reported a fifth of the protein he had eaten. `protein_hit` was false on his
+// best protein day on record.
+//
+// So each night, after closing yesterday, re-close any of the last week whose
+// stored summary no longer matches its rows. Drift is detected by re-running the
+// same close and comparing, which cannot disagree with the real close because it
+// IS the real close. Delivery is suppressed on backfills: re-closing a Sunday
+// must not re-send the weekly review email, which is exactly what a manual
+// re-close of 2026-08-09 did.
+async function backfillClosedDays(admin: any, profile: Profile, throughDateKey: string) {
+  const touched: string[] = [];
+  for (let back = 1; back <= CLOSEOUT_BACKFILL_DAYS; back++) {
+    const dateKey = jbAddDays(throughDateKey, -back);
+    try {
+      const existing = await fetchHabitDay(admin, profile.id, dateKey);
+      // Never CREATE a day here. A day with no habit_days row was never closed,
+      // and inventing one now would fabricate a streak link that never existed.
+      if (!existing) continue;
+      const res = await runCloseout(admin, profile, dateKey, true, { quiet: true });
+      if (res && (res as any).changed) touched.push(dateKey);
+    } catch {
+      // One unreadable day must not stop the rest, and must never fail the
+      // night's real close - this whole pass is repair, not the main job.
+    }
+  }
+  return touched;
+}
+
+async function runCloseout(admin: any, profile: Profile, dateKey: string, force: boolean, opts: { quiet?: boolean } = {}) {
+  const quiet = Boolean(opts.quiet);
   const tz = profile.timezone || "Asia/Kolkata";
   const existing = await fetchHabitDay(admin, profile.id, dateKey);
   if (existing && !force) return { userId: profile.id, action: "closeout", forDate: dateKey, skipped: "exists" };
@@ -1979,6 +2040,19 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
   const prev = await fetchHabitDay(admin, profile.id, jbAddDays(dateKey, -1));
   const streaks = jbNextStreaks(prev?.streaks, day.flags);
 
+  // Did anything actually move? Compared BEFORE the upsert, so a quiet backfill
+  // can report honestly instead of claiming every day it looked at.
+  //
+  // KEY ORDER IS NOT A CHANGE. jsonb re-sorts object keys on the way in (by key
+  // length, then alphabetically), so what comes back out never matches the
+  // insertion order of the object we just built. A plain JSON.stringify compare
+  // therefore reported EVERY day as drifted - the first run of this backfill
+  // claimed all 7. Canonicalise both sides before comparing.
+  const changed = !existing
+    || stableJson(existing.summary) !== stableJson(day)
+    || stableJson(existing.flags) !== stableJson(day.flags)
+    || stableJson(existing.streaks) !== stableJson(streaks);
+
   const { error: hdErr } = await admin.from("habit_days").upsert(
     { user_id: profile.id, day: dateKey, flags: day.flags, streaks, summary: day },
     { onConflict: "user_id,day" },
@@ -1990,7 +2064,7 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
 
   const delivery: Record<string, unknown> = {};
   let weekly = null;
-  if (jbWeekdayFromKey(dateKey) === 7) {
+  if (jbWeekdayFromKey(dateKey) === 7 && !quiet) {
     const weekStart = jbAddDays(dateKey, -6);
     const { data: weekRows } = await admin.from("habit_days")
       .select("day, flags, streaks, summary")
@@ -2030,7 +2104,7 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
 
   // Off by default: this fires at 00:05 and is the least useful thing to be
   // emailed at midnight. Opt in per-kind in Settings.
-  delivery.email = await sendEmail(admin, profile.id, "closeout", {
+  delivery.email = quiet ? { sent: false, reason: "backfill" } : await sendEmail(admin, profile.id, "closeout", {
     body, forDate: dateKey, dateLabel: dateKey, profile,
     stats: [
       { label: "Spent", value: jbRupees(day.spend) },
@@ -2041,7 +2115,7 @@ async function runCloseout(admin: any, profile: Profile, dateKey: string, force:
   });
 
   await auditLog(admin, profile.id, "jarvis.closeout", { forDate: dateKey, briefingId, flags: day.flags, streaks, weekly: Boolean(weekly), delivery });
-  return { userId: profile.id, action: "closeout", forDate: dateKey, briefingId, flags: day.flags, streaks, weekly: Boolean(weekly), delivery };
+  return { userId: profile.id, action: "closeout", forDate: dateKey, briefingId, flags: day.flags, streaks, weekly: Boolean(weekly), changed, quiet, delivery };
 }
 
 // Morning brief: self-heal yesterday's closeout, build facts, narrate, deliver.
@@ -2809,7 +2883,12 @@ Deno.serve(async (req) => {
         const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(String(payload?.date || ""))
           ? String(payload.date)
           : jbAddDays(jbDateKeyInTz(now, tz), -1);
-        results.push(await runCloseout(admin, profile, dateKey, force));
+        const closed = await runCloseout(admin, profile, dateKey, force);
+        // Then repair anything the last week has learned since it was closed.
+        // Skipped when an explicit date was asked for: that is someone fixing one
+        // named day by hand, and it should do exactly what it says.
+        const backfilled = payload?.date ? [] : await backfillClosedDays(admin, profile, dateKey);
+        results.push(backfilled.length ? { ...closed, backfilled } : closed);
       } catch (err) {
         // A FAILED slot must stay retryable. Marking it done would mean one
         // transient Supabase blip permanently costs that day its brief, which is
