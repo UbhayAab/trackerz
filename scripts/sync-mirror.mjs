@@ -142,6 +142,14 @@ for (const [edgeFile, blocks] of byEdge) {
   if (!tableRx.test(edge)) throw new Error(`FOOD_TABLE literal not found in ${AGENT}`);
   edge = edge.replace(tableRx, `const FOOD_TABLE: any[] = [\n${rows}\n];`);
 
+  // Brand names masked before alias matching. Small enough to hand-copy, which
+  // is exactly why it would have been - and a brand missing from the edge is the
+  // copy that matters, since the server's totals override the model's.
+  const { BRAND_PHRASES } = await import("../lib/food-nutrition.mjs");
+  const brandRx = /^const FOOD_BRAND_PHRASES = \[[\s\S]*?\];$/m;
+  if (!brandRx.test(edge)) throw new Error(`FOOD_BRAND_PHRASES literal not found in ${AGENT}`);
+  edge = edge.replace(brandRx, `const FOOD_BRAND_PHRASES = ${JSON.stringify([...BRAND_PHRASES])};`);
+
   const stopRx = /^const FOOD_STOPWORDS = new Set<string>\(\[[\s\S]*?\]\);$/m;
   if (!stopRx.test(edge)) throw new Error(`FOOD_STOPWORDS literal not found in ${AGENT}`);
   edge = edge.replace(stopRx, `const FOOD_STOPWORDS = new Set<string>(${JSON.stringify([...STOPWORDS])});`);
