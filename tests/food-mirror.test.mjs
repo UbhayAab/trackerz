@@ -70,6 +70,18 @@ const CORPUS = [
   "", "fuel", "call the bank tomorrow", "walked 10000 steps", "spent 250 on lunch",
   // multi-line and punctuation shapes
   "maggi\ncurd\n2 eggs", "chips, namkeen and a coke", "bread + butter + jam",
+  // The 2026-08-14 chain-item capture. The brand mask lives in the PARSER, which
+  // sync-mirror does not regenerate - it is hand-written in both copies - so
+  // these are the phrases that prove the edge got it too.
+  "just ate at burger King burger, veg whopper, paneer wrap, and med fries",
+  "veg whopper, paneer wrap and med fries",
+  "burger king fries", "went to burger king", "burger king",
+  // A brand is masked; a plain burger is still a burger.
+  "veg burger", "aloo tikki burger", "2 burgers",
+  // Fries are size-graded and the bare word defaults to medium.
+  "fries", "med fries", "medium fries", "small fries", "regular fries", "large fries", "king fries",
+  // A wrap is not its filling - `paneer wrap` must not price as raw paneer.
+  "paneer wrap", "2 paneer wraps", "chicken wrap", "100g paneer", "paneer wrap and 100g paneer",
 ];
 
 for (const text of CORPUS) {
