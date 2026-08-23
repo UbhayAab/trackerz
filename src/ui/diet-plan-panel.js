@@ -34,6 +34,7 @@ import { refreshAfterWrite } from "./refresh.js";
 import { showToast } from "./toast.js";
 import {
   buildDayStrip, clampToToday, dayDotState, dayKeyOf, dayLabel, loggedDayKeys, parseDayKey,
+  stripScrollLeftFor,
 } from "../../lib/day-strip.mjs";
 
 const CONTAINER = "#dietPlan";
@@ -562,6 +563,27 @@ function loggedSection() {
   </div>`;
 }
 
+// Scroll the selected chip back into view inside the STRIP ONLY.
+//
+// Deliberately not `chip.scrollIntoView()`: that walks up and scrolls every
+// scrollable ancestor, so on a phone it jumps the whole page vertically to bring
+// a 58px chip into view. Setting scrollLeft on the strip touches nothing else.
+function keepSelectedChipInView(el) {
+  const strip = el.querySelector(".diet-strip");
+  const chip = strip?.querySelector(".diet-chip.is-selected") || strip?.querySelector(".diet-chip.is-today");
+  if (!strip || !chip) return;
+  const target = stripScrollLeftFor({
+    chipStart: chip.offsetLeft - strip.offsetLeft,
+    chipWidth: chip.offsetWidth,
+    scrollLeft: strip.scrollLeft,
+    viewportWidth: strip.clientWidth,
+    contentWidth: strip.scrollWidth,
+  });
+  // null = already visible, or the strip does not scroll at all. Leave it alone.
+  if (target == null) return;
+  strip.scrollLeft = target;
+}
+
 export function renderDietPlan(appState) {
   const el = document.querySelector(CONTAINER);
   if (!el) return;
@@ -624,6 +646,11 @@ export function renderDietPlan(appState) {
 
     ${prepSection(plan, state)}
   `;
+
+  // innerHTML above threw the strip away and rebuilt it, which resets scrollLeft
+  // to 0 - the selected day then scrolls off to the right and the strip shows a
+  // week that is not the one being viewed. Put it back before the browser paints.
+  keepSelectedChipInView(el);
 
   // When fresh app state arrives (e.g. a capture just landed) and we're on today,
   // reconcile that day's logs so new captures auto-tick their plan items.
