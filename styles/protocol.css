@@ -1,0 +1,108 @@
+/* ---------------------------------------------------------------------------
+   Home Protocol session (#workoutLog).
+
+   The structure is the protocol's - rotation dial, big day letter, zone chip,
+   ceiling gauge - and the colour is the app's, so the panel themes light and
+   dark with every other page instead of being a black rectangle dropped into a
+   light one.
+
+   The four zone hues are the only new colours here and they are semantic, not
+   decorative: heavy is the exposure that actually costs you recovery, so it is
+   the one that gets an alarming colour and the only one that gets a left rule.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --zone-heavy: #c0392b;
+  --zone-heavy-bg: rgba(192, 57, 43, 0.10);
+  --zone-med: #b26a00;
+  --zone-med-bg: rgba(178, 106, 0, 0.10);
+  --zone-pump: #2f6fb0;
+  --zone-pump-bg: rgba(47, 111, 176, 0.10);
+  --zone-core: #5f6a72;
+  --zone-core-bg: rgba(95, 106, 114, 0.12);
+}
+:root[data-theme="dark"] {
+  --zone-heavy: #f0806e;
+  --zone-heavy-bg: rgba(240, 128, 110, 0.15);
+  --zone-med: #e0a53d;
+  --zone-med-bg: rgba(224, 165, 61, 0.15);
+  --zone-pump: #7fb2f0;
+  --zone-pump-bg: rgba(127, 178, 240, 0.15);
+  --zone-core: #9aa5ad;
+  --zone-core-bg: rgba(154, 165, 173, 0.15);
+}
+
+/* Rotation dial: seven letters, today dotted, the one being trained filled. */
+#workoutLog .wl-dial { display: flex; gap: 5px; margin-bottom: 14px; }
+#workoutLog .wl-dial-btn {
+  flex: 1; padding: 9px 0; cursor: pointer;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--panel-2); color: var(--muted);
+  font-size: var(--fs-sm); font-weight: var(--weight-bold); letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+#workoutLog .wl-dial-btn.is-on { background: var(--charcoal); color: var(--paper); border-color: var(--charcoal); }
+#workoutLog .wl-dial-btn.is-today::after { content: ""; display: block; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin: 4px auto 0; }
+#workoutLog .wl-dial-btn.is-on.is-today::after { background: var(--paper); }
+
+/* Day header. The letter is the largest thing on the panel because it is the
+   one fact you check before you start. */
+#workoutLog .wl-dayhead { display: flex; align-items: flex-start; gap: 12px; }
+#workoutLog .wl-daychar { font-size: 3rem; font-weight: var(--weight-bold); line-height: .82; letter-spacing: -.04em; color: var(--ink); }
+#workoutLog .wl-daymeta { flex: 1; min-width: 0; }
+#workoutLog .wl-daymeta h2 { margin: 0; font-size: var(--fs-lg); line-height: var(--lh-tight); }
+#workoutLog .wl-focus { margin: 4px 0 0; font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+#workoutLog .wl-meter { height: 3px; border-radius: 999px; background: var(--line); margin: 12px 0 6px; overflow: hidden; }
+#workoutLog .wl-meter i { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width var(--dur-base) var(--ease-standard); }
+#workoutLog .wl-rules { margin: 0 0 10px; }
+
+/* Zone chip: the label and the rest gap together, because they are one decision. */
+.wl-zone { display: inline-flex; align-items: baseline; gap: 5px; font-size: .62rem; font-weight: var(--weight-bold); text-transform: uppercase; letter-spacing: .06em; padding: 3px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.wl-zone i { font-style: normal; font-weight: var(--weight-medium); opacity: .75; letter-spacing: 0; }
+.wl-zone-heavy { background: var(--zone-heavy-bg); color: var(--zone-heavy); }
+.wl-zone-med { background: var(--zone-med-bg); color: var(--zone-med); }
+.wl-zone-pump { background: var(--zone-pump-bg); color: var(--zone-pump); }
+.wl-zone-core { background: var(--zone-core-bg); color: var(--zone-core); }
+
+#workoutLog .wl-ex.wl-z-heavy { border-left: 3px solid var(--zone-heavy); }
+
+#workoutLog .wl-ex-row { align-items: flex-start; }
+#workoutLog .wl-ex-sub { flex-wrap: wrap; gap: 6px; }
+#workoutLog .wl-cue { margin: 6px 0 0; font-size: var(--fs-xs); color: var(--muted); line-height: 1.42; }
+#workoutLog .wl-bodyweight { margin-top: 7px; font-size: var(--fs-xs); color: var(--muted-soft); text-transform: uppercase; letter-spacing: .06em; }
+
+/* Load, and the 25 kg wall drawn as a gauge. */
+#workoutLog .wl-loadrow { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+#workoutLog .wl-load { width: 58px; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--panel-2); color: var(--ink); font: inherit; font-size: var(--fs-sm); text-align: center; font-variant-numeric: tabular-nums; }
+#workoutLog .wl-load:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+#workoutLog .wl-unit { font-size: var(--fs-xs); color: var(--muted); }
+#workoutLog .wl-gauge { flex: 1; min-width: 36px; height: 3px; border-radius: 999px; background: var(--line); overflow: hidden; }
+#workoutLog .wl-gauge i { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width var(--dur-fast) var(--ease-standard); }
+#workoutLog .wl-gauge.is-hot i { background: var(--zone-heavy); }
+#workoutLog .wl-ceiling { margin: 8px 0 0; padding: 7px 10px; border-left: 2px solid var(--zone-heavy); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--zone-heavy-bg); font-size: var(--fs-xs); line-height: 1.45; color: var(--ink-soft); }
+#workoutLog .wl-ceiling b { color: var(--zone-heavy); text-transform: uppercase; letter-spacing: .06em; margin-right: 4px; }
+
+/* The program itself, one tap away: the week, the ladder, the rules, the bank. */
+#workoutLog .wl-ref { margin-top: 10px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); }
+#workoutLog .wl-ref > summary { padding: 11px 13px; cursor: pointer; font-size: var(--fs-sm); font-weight: var(--weight-semibold); display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+#workoutLog .wl-ref[open] > summary { border-bottom: 1px solid var(--line); }
+#workoutLog .wl-week { list-style: none; margin: 0; padding: 4px 13px 12px; }
+#workoutLog .wl-week li { display: flex; gap: 12px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--line); }
+#workoutLog .wl-week li:first-child { border-top: none; }
+#workoutLog .wl-week b { flex: 0 0 16px; font-variant-numeric: tabular-nums; }
+#workoutLog .wl-week strong { display: block; font-size: var(--fs-sm); }
+#workoutLog .wl-week em { display: block; margin-top: 3px; font-style: normal; font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+#workoutLog .wl-ladder { margin: 0; padding: 8px 13px 12px 32px; }
+#workoutLog .wl-ladder li { padding: 5px 0; font-size: var(--fs-sm); }
+#workoutLog .wl-note-block { padding: 10px 13px; border-top: 1px solid var(--line); }
+#workoutLog .wl-note-block:first-of-type { border-top: none; }
+#workoutLog .wl-note-block h4 { margin: 0 0 6px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: var(--weight-medium); }
+#workoutLog .wl-note-block p { margin: 0 0 7px; font-size: var(--fs-sm); line-height: 1.5; }
+#workoutLog .wl-bank { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 13px 13px; }
+#workoutLog .wl-bank span { font-size: var(--fs-xs); padding: 4px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2); color: var(--ink-soft); }
+
+@media (max-width: 380px) {
+  #workoutLog .wl-dial-btn { font-size: var(--fs-xs); padding: 8px 0; }
+  #workoutLog .wl-daychar { font-size: 2.4rem; }
+}

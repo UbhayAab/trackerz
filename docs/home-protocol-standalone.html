@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Home Protocol — 6-Day Rotation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --iron:#0C0D0F;
+  --panel:#141619;
+  --panel-2:#191C20;
+  --rule:#24272C;
+  --chalk:#EDEAE4;
+  --steel:#7C818A;
+  --heavy:#FF4D2E;
+  --med:#F2A413;
+  --pump:#4DA6FF;
+  --ok:#3FBF7F;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Archivo',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--iron);
+  color:var(--chalk);
+  font-family:var(--sans);
+  font-size:15px;
+  line-height:1.45;
+  padding-bottom:120px;
+  overflow-x:hidden;
+}
+.wrap{max-width:620px;margin:0 auto;padding:0 16px}
+
+/* ---------- masthead ---------- */
+.mast{
+  border-bottom:1px solid var(--rule);
+  padding:22px 0 14px;
+  margin-bottom:18px;
+}
+.mast h1{
+  font-size:30px;font-weight:900;letter-spacing:-0.03em;
+  margin:0;line-height:0.95;text-transform:uppercase;
+}
+.mast .sub{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:0.16em;
+  color:var(--steel);text-transform:uppercase;margin-top:8px;
+}
+.spec-strip{
+  display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;
+  font-family:var(--mono);font-size:10px;letter-spacing:0.1em;color:var(--steel);
+}
+.spec-strip b{color:var(--chalk);font-weight:500}
+
+/* ---------- rotation dial ---------- */
+.dial{display:flex;gap:6px;margin:16px 0 20px}
+.dial button{
+  flex:1;background:var(--panel);border:1px solid var(--rule);color:var(--steel);
+  font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:0.05em;
+  padding:11px 0;cursor:pointer;transition:.15s;border-radius:2px;
+}
+.dial button.on{background:var(--chalk);color:var(--iron);border-color:var(--chalk)}
+.dial button.today::after{content:'';display:block;width:4px;height:4px;border-radius:50%;
+  background:var(--heavy);margin:4px auto 0}
+.dial button.on.today::after{background:var(--iron)}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;border-bottom:1px solid var(--rule);margin-bottom:20px}
+.tabs button{
+  background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--steel);font-family:var(--mono);font-size:11px;letter-spacing:0.14em;
+  text-transform:uppercase;padding:11px 14px 9px;cursor:pointer;margin-bottom:-1px;
+}
+.tabs button.on{color:var(--chalk);border-bottom-color:var(--heavy)}
+
+/* ---------- day header ---------- */
+.dayhead{display:flex;align-items:flex-start;gap:14px;margin-bottom:6px}
+.daychar{
+  font-size:58px;font-weight:900;line-height:0.8;letter-spacing:-0.05em;
+  font-family:var(--sans);
+}
+.daymeta{padding-top:3px}
+.daymeta .title{font-size:17px;font-weight:800;letter-spacing:-0.01em;text-transform:uppercase;line-height:1.15}
+.daymeta .focus{font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;color:var(--steel);margin-top:5px;text-transform:uppercase}
+
+.meterbar{height:2px;background:var(--rule);margin:16px 0 20px;position:relative;overflow:hidden}
+.meterbar i{position:absolute;left:0;top:0;bottom:0;background:var(--ok);width:0;transition:width .3s}
+
+/* ---------- exercise rows ---------- */
+.ex{
+  border-top:1px solid var(--rule);padding:14px 0;display:flex;gap:12px;align-items:flex-start;
+}
+.ex:last-of-type{border-bottom:1px solid var(--rule)}
+.tick{
+  flex:0 0 26px;height:26px;margin-top:2px;border:1px solid var(--rule);background:var(--panel);
+  border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:11px;color:var(--steel);transition:.15s;
+}
+.tick.on{background:var(--ok);border-color:var(--ok);color:var(--iron);font-weight:700}
+.exbody{flex:1;min-width:0}
+.exname{font-size:15px;font-weight:600;letter-spacing:-0.01em;line-height:1.25}
+.ex.done .exname{color:var(--steel);text-decoration:line-through;text-decoration-color:var(--rule)}
+.presc{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:0.03em;color:var(--chalk);
+  margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.zone{
+  font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:0.12em;
+  padding:2px 6px;border-radius:2px;text-transform:uppercase;
+}
+.z-heavy{background:rgba(255,77,46,.14);color:var(--heavy)}
+.z-med{background:rgba(242,164,19,.14);color:var(--med)}
+.z-pump{background:rgba(77,166,255,.14);color:var(--pump)}
+.z-core{background:rgba(124,129,138,.16);color:#A5AAB3}
+.cue{font-size:12.5px;color:var(--steel);margin-top:6px;line-height:1.4}
+
+/* ---------- load ceiling meter (signature) ---------- */
+.loadrow{display:flex;align-items:center;gap:8px;margin-top:9px}
+.loadrow input{
+  width:58px;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);
+  font-family:var(--mono);font-size:12px;padding:6px 7px;border-radius:2px;text-align:center;
+}
+.loadrow input:focus{outline:2px solid var(--pump);outline-offset:1px;border-color:transparent}
+.loadrow .u{font-family:var(--mono);font-size:10px;color:var(--steel);letter-spacing:0.08em}
+.gauge{flex:1;height:3px;background:var(--rule);position:relative;min-width:40px;border-radius:2px;overflow:hidden}
+.gauge i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--pump);transition:width .25s}
+.gauge.hot i{background:var(--heavy)}
+.ceiling{
+  margin-top:8px;padding:8px 10px;border-left:2px solid var(--heavy);background:rgba(255,77,46,.06);
+  font-family:var(--mono);font-size:10.5px;line-height:1.5;color:var(--chalk);letter-spacing:0.02em;
+}
+.ceiling b{color:var(--heavy);letter-spacing:0.1em}
+
+/* ---------- blocks / prose ---------- */
+.block{border:1px solid var(--rule);background:var(--panel);padding:16px;margin-bottom:14px;border-radius:2px}
+.block h3{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:0.16em;text-transform:uppercase;
+  color:var(--steel);margin:0 0 12px;font-weight:500;
+}
+.block p{margin:0 0 10px;font-size:14px;line-height:1.55}
+.block p:last-child{margin-bottom:0}
+.block strong{font-weight:700}
+.ladder{counter-reset:s;margin:0;padding:0;list-style:none}
+.ladder li{
+  counter-increment:s;padding:9px 0 9px 34px;position:relative;
+  border-top:1px solid var(--rule);font-size:14px;line-height:1.45;
+}
+.ladder li:first-child{border-top:none}
+.ladder li::before{
+  content:counter(s,decimal-leading-zero);position:absolute;left:0;top:10px;
+  font-family:var(--mono);font-size:10px;color:var(--heavy);letter-spacing:0.05em;
+}
+.bank{display:flex;flex-wrap:wrap;gap:6px}
+.bank span{
+  font-family:var(--mono);font-size:11px;padding:5px 8px;border:1px solid var(--rule);
+  background:var(--panel-2);border-radius:2px;color:var(--chalk);
+}
+.rotrow{border-top:1px solid var(--rule);padding:13px 0;display:flex;gap:12px;align-items:baseline}
+.rotrow:first-of-type{border-top:none}
+.rotrow .L{font-family:var(--mono);font-size:15px;font-weight:700;flex:0 0 20px}
+.rotrow .T{font-size:14px;font-weight:600;line-height:1.3}
+.rotrow .F{font-family:var(--mono);font-size:10.5px;color:var(--steel);letter-spacing:0.06em;margin-top:4px;text-transform:uppercase}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+
+/* ---------- footer action ---------- */
+.dock{
+  position:fixed;left:0;right:0;bottom:0;background:linear-gradient(to top,var(--iron) 62%,transparent);
+  padding:20px 16px calc(18px + env(safe-area-inset-bottom));
+}
+.dock .inner{max-width:620px;margin:0 auto;display:flex;gap:8px}
+.dock button{
+  flex:1;padding:14px;border-radius:2px;cursor:pointer;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:0.13em;text-transform:uppercase;font-weight:700;
+}
+.primary{background:var(--chalk);color:var(--iron);border:1px solid var(--chalk)}
+.primary:active{background:var(--steel)}
+.ghost{flex:0 0 auto;background:transparent;color:var(--steel);border:1px solid var(--rule);padding:14px 16px}
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:96px;background:var(--chalk);color:var(--iron);
+  font-family:var(--mono);font-size:11px;letter-spacing:0.08em;padding:9px 14px;border-radius:2px;
+  opacity:0;pointer-events:none;transition:opacity .25s;z-index:50;text-transform:uppercase;
+}
+.toast.show{opacity:1}
+.hide{display:none}
+button:focus-visible,.tick:focus-visible{outline:2px solid var(--pump);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="mast">
+    <h1>Home Protocol</h1>
+    <div class="sub">6-day rotation · full body daily · 25 kg ceiling</div>
+    <div class="spec-strip">
+      <span>KIT <b>DB ≤25kg · BENCH · BAR · BANDS · MAT</b></span>
+      <span>PHASE <b>CUT</b></span>
+    </div>
+  </div>
+
+  <div class="dial" id="dial"></div>
+
+  <div class="tabs">
+    <button data-tab="today" class="on">Session</button>
+    <button data-tab="rotation">Rotation</button>
+    <button data-tab="system">System</button>
+  </div>
+
+  <!-- SESSION -->
+  <div id="tab-today">
+    <div class="dayhead">
+      <div class="daychar" id="dchar">A</div>
+      <div class="daymeta">
+        <div class="title" id="dtitle"></div>
+        <div class="focus" id="dfocus"></div>
+      </div>
+    </div>
+    <div class="meterbar"><i id="prog"></i></div>
+    <div id="exlist"></div>
+    <div class="block" id="restblock" style="margin-top:18px"></div>
+  </div>
+
+  <!-- ROTATION -->
+  <div id="tab-rotation" class="hide">
+    <div class="legend">
+      <span class="zone z-heavy">Heavy</span>
+      <span class="zone z-med">Medium</span>
+      <span class="zone z-pump">Pump</span>
+      <span class="zone z-core">Core</span>
+    </div>
+    <div class="block">
+      <h3>The week</h3>
+      <div id="rotlist"></div>
+    </div>
+    <div class="block">
+      <h3>Why it's built this way</h3>
+      <p>Every muscle gets touched 4–6 times a week, but only <strong>one heavy exposure per movement pattern</strong>. The rest is medium and pump work. That's what makes daily training survivable — not the fact that the exercise names change.</p>
+      <p>Rotating exercises buys you joint variety, skill spread, and boredom insurance. It does not buy you recovery. Your pecs don't know whether you pressed flat or incline; they only know how much hard work landed on them.</p>
+    </div>
+  </div>
+
+  <!-- SYSTEM -->
+  <div id="tab-system" class="hide">
+    <div class="block">
+      <h3>Progression under a hard load cap</h3>
+      <p>Double progression: hit the <strong>top of the rep range on every set for two sessions running</strong>, then move up. When the dumbbells run out, you climb this ladder instead. Each rung is a real increase in stimulus at the same 25 kg.</p>
+      <ol class="ladder">
+        <li>Add reps within the prescribed range.</li>
+        <li>Add a set (cap: 5 working sets per exercise).</li>
+        <li>Slow the eccentric to 3–4 seconds.</li>
+        <li>Add a 1–2 second pause at the hardest position.</li>
+        <li>Cut rest by 15 seconds.</li>
+        <li>1.5 reps — full rep, then half rep, count as one.</li>
+        <li>Myo-reps: one hard set, rest 15s, do 3–5 more, repeat ×4.</li>
+        <li>Go unilateral — one arm or one leg carries the same load.</li>
+        <li>Extend the range — deficit push-ups, deep split squats, elevated heels.</li>
+        <li>Change leverage — decline → archer → pseudo-planche; pull-ups → archer → weighted.</li>
+      </ol>
+    </div>
+    <div class="block">
+      <h3>Legs are the real constraint</h3>
+      <p>50 kg total is heavy for pressing and light for squatting. Your legs will outgrow the dumbbells almost immediately, so leg work in this program is built on <strong>single-leg positions, slow tempo, pauses, and higher reps</strong> rather than load. Bulgarian split squats, single-leg RDLs, and step-ups will be your heavy leg work for the foreseeable future. That's not a compromise — done properly they're brutal.</p>
+    </div>
+    <div class="block">
+      <h3>Running it on a deficit</h3>
+      <p>You're eating under maintenance, so recovery is the scarce resource, not effort. Two rules: keep the heavy sets to <strong>1–2 reps in reserve, never grinding failure</strong> on the compounds, and take failure only on the pump work where the joints aren't loaded.</p>
+      <p>Every fourth week, cut all working sets by roughly a third and keep the loads the same. You'll come back stronger, not detrained.</p>
+      <p>If sleep is short or the day was brutal, run the session at medium intensity instead of skipping. A 60% session beats a missed one — that's the whole reason you moved training home.</p>
+    </div>
+    <div class="block">
+      <h3>Session mechanics</h3>
+      <p><strong>Rest.</strong> Heavy 150s · Medium 90s · Pump 45–60s · Core 45s.</p>
+      <p><strong>Warm-up, 6 minutes.</strong> 30 band pull-aparts, 20 bodyweight squats, 10 push-ups, 10 arm circles each way, then two ramp-up sets on the first exercise.</p>
+      <p><strong>Time.</strong> Days A–E run 50–60 minutes. Day F runs 35. If you're short on time, cut from the bottom of the list, never the top.</p>
+      <p><strong>Order is not decorative.</strong> The first two exercises are the ones that drive adaptation. Everything below is accessory.</p>
+    </div>
+    <div class="block">
+      <h3>Added to your list</h3>
+      <p style="color:var(--steel);font-size:13px">Movements worth having in the bank that weren't in your original set — mostly ways to make 25 kg feel heavier.</p>
+      <div class="bank" id="bank"></div>
+    </div>
+  </div>
+</div>
+
+<div class="dock">
+  <div class="inner">
+    <button class="primary" id="finish">Finish &amp; advance</button>
+    <button class="ghost" id="reset">Clear</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const H='heavy',M='med',P='pump',C='core';
+const DAYS=[
+{L:'A',title:'Press heavy / Pull heavy',focus:'Horizontal push · Vertical pull · Quad accessory',ex:[
+ {n:'Flat DB Bench Press',s:'4 × 6–8',z:H,c:'2 RIR. Elbows ~45°, touch the chest, no bounce.',load:1},
+ {n:'Pull-ups',s:'4 × 5–8',z:H,c:'Add a DB between the feet if you clear 8. Band-assist if you can\'t hit 5.',load:0},
+ {n:'Bulgarian Split Squat',s:'3 × 10–12 /leg',z:M,c:'Rear foot on the bench. 3s down. Front shin vertical.',load:1},
+ {n:'Incline DB Press',s:'3 × 10–12',z:M,c:'30–45° bench. Stop an inch short of lockout, keep tension.',load:1},
+ {n:'One-Arm DB Row',s:'3 × 10–12 /arm',z:M,c:'Knee on bench. Pull to the hip, 1s squeeze, 3s down.',load:1},
+ {n:'Standing DB Calf Raise',s:'3 × 15–20',z:P,c:'2s pause stretched at the bottom. Full extension at the top.',load:1},
+ {n:'Hanging Knee Raise',s:'3 × 12–15',z:C,c:'Curl the pelvis up. No swinging — control the drop.',load:0},
+ {n:'Band Pull-Aparts',s:'2 × 25',z:P,c:'Shoulder insurance. Do these every single day.',load:0}
+]},
+{L:'B',title:'Overhead heavy / Row heavy',focus:'Vertical push · Horizontal pull · Hinge accessory',ex:[
+ {n:'Seated DB Shoulder Press',s:'4 × 6–8',z:H,c:'Back supported. Ribs down, don\'t arch to cheat the press.',load:1},
+ {n:'Two-Arm Bent-Over Row',s:'4 × 8–10',z:H,c:'Dead-stop each rep on the floor. Torso ~45°, no jerking.',load:1},
+ {n:'DB Romanian Deadlift',s:'4 × 10–12',z:M,c:'3s eccentric. Push hips back, feel the hamstring, stop at mid-shin.',load:1},
+ {n:'Deficit Push-ups',s:'3 × AMRAP−1',z:M,c:'Hands on the dumbbells for extra depth. Leave one rep in the tank.',load:0},
+ {n:'Seal Row',s:'3 × 12–15',z:P,c:'Chest down on the flat bench. Zero body english — pure back.',load:1},
+ {n:'Lateral Raises',s:'3 × 15–20',z:P,c:'Light. Lead with the elbow, stop at shoulder height, 3s down.',load:1},
+ {n:'Plank',s:'3 × 45–60s',z:C,c:'Squeeze glutes, tuck the pelvis. Hard, not restful.',load:0},
+ {n:'Dead Bug',s:'2 × 10 /side',z:C,c:'Lower back stays glued to the mat the whole time.',load:0}
+]},
+{L:'C',title:'Quad heavy / Incline & arms',focus:'Squat pattern · Upper chest · Direct arms',ex:[
+ {n:'Heel-Elevated Goblet Squat',s:'4 × 12–15',z:H,c:'Heels on plates or a book. 3s down, 1s pause in the hole.',load:1},
+ {n:'Incline DB Press',s:'4 × 8–10',z:H,c:'Heavier than Day A\'s incline. 2 RIR.',load:1},
+ {n:'Chin-ups',s:'4 × 6–10',z:M,c:'Supinated grip. Chest to the bar, 3s negative.',load:0},
+ {n:'Reverse Lunges',s:'3 × 12 /leg',z:M,c:'Step back, drop the knee softly, drive through the front heel.',load:1},
+ {n:'Incline DB Fly',s:'3 × 12–15',z:P,c:'Soft elbows, wide arc, stretch at the bottom. Light weight.',load:1},
+ {n:'Hammer Curl',s:'3 × 10–12',z:M,c:'No swing. Brachialis work — this is what builds arm thickness.',load:1},
+ {n:'Overhead DB Extension',s:'3 × 10–12',z:M,c:'Both hands, one bell. Deep stretch behind the head.',load:1},
+ {n:'Russian Twists',s:'3 × 20 total',z:C,c:'Feet off the floor, rotate through the ribcage not the arms.',load:1}
+]},
+{L:'D',title:'Hinge heavy / Bodyweight',focus:'Posterior chain · Vertical pull · Bodyweight push',ex:[
+ {n:'Single-Leg RDL',s:'4 × 10–12 /leg',z:H,c:'DB in the opposite hand. Hips square, slow. Balance is part of the lift.',load:1},
+ {n:'Neutral-Grip Pull-ups',s:'4 × 6–10',z:M,c:'Easiest on the elbows. Full hang each rep.',load:0},
+ {n:'Decline Push-ups',s:'4 × AMRAP−1',z:M,c:'Feet on the bench. Wear a loaded backpack once you clear 20.',load:0},
+ {n:'DB Hip Thrust',s:'3 × 12–15',z:M,c:'Shoulders on the bench, DB across the hips, 2s squeeze at the top.',load:1},
+ {n:'Arnold Press',s:'3 × 10–12',z:M,c:'Rotate through the full range. Lighter than Day B — this is a control lift.',load:1},
+ {n:'Bent-Over Reverse Flyes',s:'3 × 15–20',z:P,c:'Chest on the incline bench. Tiny weights, huge squeeze.',load:1},
+ {n:'Single-Leg Calf Raise',s:'3 × 12–15 /leg',z:P,c:'Off a step or a book. Full stretch, full contraction.',load:1},
+ {n:'Side Plank',s:'3 × 30–45s /side',z:C,c:'Stack the hips, drive the bottom hip toward the ceiling.',load:0}
+]},
+{L:'E',title:'Arms & delts / Glute-ham',focus:'Isolation volume · Unilateral · Metabolic',ex:[
+ {n:'DB Floor Press',s:'4 × 10–12',z:M,c:'Pause where the triceps touch the floor. Shoulder-friendly pressing.',load:1},
+ {n:'Renegade Row',s:'3 × 8–10 /side',z:M,c:'Wide feet. Do not let the hips rotate — that\'s the whole exercise.',load:1},
+ {n:'DB Step-Ups',s:'3 × 12 /leg',z:M,c:'Onto the bench. Drive through the heel, lower under control.',load:1},
+ {n:'Leaning Lateral Raise',s:'3 × 12–15 /arm',z:P,c:'Hold the pull-up bar upright, lean away. Loads the delt at the bottom.',load:1},
+ {n:'Incline DB Curl',s:'3 × 10–12',z:M,c:'Bench at 45°, arms hanging behind. Longest stretch you can get on a bicep.',load:1},
+ {n:'Skull Crushers',s:'3 × 10–12',z:M,c:'Lower to the forehead or just behind. Elbows still.',load:1},
+ {n:'Band Face Pulls',s:'3 × 20',z:P,c:'Pull to the eyes, externally rotate at the end. Fixes desk posture.',load:0},
+ {n:'Leg Raises',s:'3 × 15',z:C,c:'On the mat or hanging. Lower slowly, don\'t drop.',load:0}
+]},
+{L:'F',title:'Circuit day',focus:'4 rounds · 60s between rounds · lighter loads',ex:[
+ {n:'DB Thrusters',s:'× 12',z:M,c:'Squat into an overhead press, one movement. Sets the tone.',load:1},
+ {n:'Inverted Row',s:'× 15',z:M,c:'Under the bar or bench, heels on the floor. Band rows if awkward.',load:0},
+ {n:'Goblet Squat',s:'× 15',z:M,c:'Moderate weight, smooth pace, full depth.',load:1},
+ {n:'Push-ups',s:'× AMRAP−3',z:P,c:'Stop three short of failure every round.',load:0},
+ {n:'DB Good Mornings',s:'× 15',z:P,c:'Bell on the upper back. Light — this is a hamstring pump, not a max.',load:1},
+ {n:'Suitcase March',s:'× 40s',z:C,c:'One heavy DB, walk or march in place. Anti-lateral core, loaded.',load:1},
+ {n:'Hollow Body Hold',s:'× 30s',z:C,c:'Lower back pressed flat. Bend the knees to regress.',load:0},
+ {n:'Zottman Curl',s:'2 × 15',z:P,c:'Finisher. Curl up supinated, rotate, lower pronated.',load:1}
+]},
+{L:'R',title:'Rest day',focus:'Recovery is a training variable',ex:[],rest:true}
+];
+
+const BANK=['DB Floor Press','Deficit Push-ups','Archer Push-ups','Pseudo-Planche Push-ups','DB Squeeze Press','Z-Press','Half-Kneeling Single-Arm Press','Leaning Lateral Raise','JM Press','Seal Row','Inverted Row','Dead-Stop Row','Scapular Pull-ups','Archer Pull-ups','Towel Pull-ups','Spider Curl','Drag Curl','Preacher Curl on Incline Bench','Heel-Elevated Goblet Squat','B-Stance RDL','Nordic Curl Negatives','Reverse Nordic','Cossack Squat','Sissy Squat','DB Sumo Deadlift','Copenhagen Plank','Pallof Press','Hollow Body Hold','Bird Dog','Suitcase March','Farmer\'s Carry','DB Thrusters','DB Clean & Press','Reverse Crunch'];
+
+const CEILING_TACTICS=['3s eccentric','add a 2s pause','1.5 reps','myo-reps','go unilateral','cut rest by 15s'];
+const KEY='ptl:v1';
+let S={day:0,done:{},loads:{}};
+
+/* storage: use the host bridge if the page is embedded, else localStorage */
+const STORE=(typeof window!=='undefined'&&window.storage&&window.storage.get)?window.storage:{
+  get:async(k)=>({value:localStorage.getItem(k)}),
+  set:async(k,v)=>{localStorage.setItem(k,v);}
+};
+
+const $=id=>document.getElementById(id);
+const toast=(t)=>{const el=$('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1600);};
+
+async function load(){
+  try{const r=await STORE.get(KEY);if(r&&r.value)S=Object.assign(S,JSON.parse(r.value));}
+  catch(e){/* first run, nothing stored */}
+  render();
+}
+async function save(){
+  try{await STORE.set(KEY,JSON.stringify(S));}
+  catch(e){toast('Save failed — logging locally');}
+}
+
+function buildDial(){
+  const d=$('dial');d.innerHTML='';
+  DAYS.forEach((x,i)=>{
+    const b=document.createElement('button');
+    b.textContent=x.L;
+    if(i===S.day)b.classList.add('on','today');
+    b.onclick=()=>{S.day=i;save();render();window.scrollTo({top:0,behavior:'smooth'});};
+    d.appendChild(b);
+  });
+}
+
+function render(){
+  buildDial();
+  const D=DAYS[S.day];
+  $('dchar').textContent=D.L;
+  $('dtitle').textContent=D.title;
+  $('dfocus').textContent=D.focus;
+
+  const list=$('exlist'),rest=$('restblock');
+  list.innerHTML='';
+  if(D.rest){
+    rest.innerHTML='<h3>Day R</h3><p>30–45 minutes of walking. Ten minutes on hips, thoracic spine and shoulders. Eat, sleep, and let the last six days actually turn into muscle.</p><p style="color:var(--steel);font-size:13px">If you feel fine and want to move, take an easy walk — not a session. The whole point of six hard days is that the seventh is genuinely off.</p>';
+    rest.classList.remove('hide');
+    $('prog').style.width='0%';
+    $('finish').textContent='Start day A';
+  }else{
+    rest.classList.add('hide');
+    $('finish').textContent='Finish & advance';
+    D.ex.forEach((e,i)=>{
+      const id=D.L+'-'+i;
+      const done=!!S.done[id];
+      const stored=S.loads[id]||'';
+      const pct=Math.min(100,(parseFloat(stored)||0)/25*100);
+      const hot=pct>=96;
+      const row=document.createElement('div');
+      row.className='ex'+(done?' done':'');
+      row.innerHTML=`
+        <div class="tick${done?' on':''}" role="checkbox" tabindex="0" aria-checked="${done}" data-id="${id}">${done?'✓':''}</div>
+        <div class="exbody">
+          <div class="exname">${e.n}</div>
+          <div class="presc">${e.s}<span class="zone z-${e.z}">${e.z==='core'?'core':e.z}</span></div>
+          <div class="cue">${e.c}</div>
+          ${e.load?`<div class="loadrow">
+            <input type="number" step="0.5" min="0" max="60" inputmode="decimal" placeholder="—" value="${stored}" data-load="${id}" aria-label="Load in kilograms">
+            <span class="u">KG</span>
+            <div class="gauge${hot?' hot':''}"><i style="width:${pct}%"></i></div>
+          </div>`:''}
+          ${e.load&&hot?`<div class="ceiling"><b>CEILING REACHED</b><br>Dumbbells are maxed on this lift. Stop adding weight — next block, ${CEILING_TACTICS[i%CEILING_TACTICS.length]}.</div>`:''}
+        </div>`;
+      list.appendChild(row);
+    });
+    list.querySelectorAll('.tick').forEach(t=>{
+      const go=()=>{const id=t.dataset.id;S.done[id]=!S.done[id];save();render();};
+      t.onclick=go;
+      t.onkeydown=(ev)=>{if(ev.key===' '||ev.key==='Enter'){ev.preventDefault();go();}};
+    });
+    list.querySelectorAll('input[data-load]').forEach(inp=>{
+      inp.onchange=()=>{S.loads[inp.dataset.load]=inp.value;save();render();};
+    });
+    const total=D.ex.length;
+    const n=D.ex.filter((e,i)=>S.done[D.L+'-'+i]).length;
+    $('prog').style.width=(n/total*100)+'%';
+  }
+}
+
+function buildRotation(){
+  const r=$('rotlist');
+  DAYS.forEach(d=>{
+    const el=document.createElement('div');
+    el.className='rotrow';
+    el.innerHTML=`<div class="L">${d.L}</div><div><div class="T">${d.title}</div><div class="F">${d.focus}</div></div>`;
+    r.appendChild(el);
+  });
+  const b=$('bank');
+  BANK.forEach(x=>{const s=document.createElement('span');s.textContent=x;b.appendChild(s);});
+}
+
+document.querySelectorAll('.tabs button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    ['today','rotation','system'].forEach(t=>$('tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
+    window.scrollTo({top:0,behavior:'smooth'});
+  };
+});
+
+$('finish').onclick=()=>{
+  const D=DAYS[S.day];
+  D.ex.forEach((e,i)=>{delete S.done[D.L+'-'+i];});
+  S.day=(S.day+1)%DAYS.length;
+  save();render();
+  window.scrollTo({top:0,behavior:'smooth'});
+  toast('Day '+DAYS[S.day].L+' queued');
+};
+$('reset').onclick=()=>{
+  const D=DAYS[S.day];
+  D.ex.forEach((e,i)=>{delete S.done[D.L+'-'+i];});
+  save();render();toast('Session cleared');
+};
+
+buildRotation();
+load();
+</script>
+</body>
+</html>

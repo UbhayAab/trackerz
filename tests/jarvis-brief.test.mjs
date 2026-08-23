@@ -36,15 +36,16 @@ assert.equal(jbInQuietHours(new Date("2026-07-06T01:00:00Z"), IST, quiet), true)
 assert.equal(jbInQuietHours(new Date(), IST, null), false);
 
 // --- planned workout ---------------------------------------------------------
-assert.deepEqual(jbPlannedWorkout(1, null), { name: "Workout A", kind: "gym" });
-assert.equal(jbPlannedWorkout(2, null).kind, "cardio");
+assert.deepEqual(jbPlannedWorkout(1, null), { name: "Day A - Press heavy / Pull heavy", kind: "gym" });
+assert.equal(jbPlannedWorkout(2, null).kind, "gym", "Tuesday is day B now, not a forgiven cardio day");
+assert.equal(jbPlannedWorkout(7, null).kind, "rest", "Sunday is the one planned rest day");
 assert.deepEqual(
   jbPlannedWorkout(1, { days: { Mon: { name: "Push day", kind: "gym" } } }),
   { name: "Push day", kind: "gym" },
 );
 assert.deepEqual(jbPlannedWorkout(3, { name: "Full body", kind: "gym" }), { name: "Full body", kind: "gym" });
 // A days-map payload without an entry for the weekday falls back to the scaffold.
-assert.deepEqual(jbPlannedWorkout(5, { days: { Mon: { name: "Push" } } }), { name: "Workout B", kind: "gym" });
+assert.deepEqual(jbPlannedWorkout(5, { days: { Mon: { name: "Push" } } }), { name: "Day E - Arms and delts / Glute-ham", kind: "gym" });
 
 // --- close-out math ----------------------------------------------------------
 const budgets = [
@@ -175,7 +176,7 @@ const facts = jbBriefFacts({
 });
 assert.equal(facts.weekday, "Monday");
 assert.equal(facts.diet_label, "Soybean day");
-assert.equal(facts.workout.name, "Workout A");
+assert.equal(facts.workout.name, "Day A - Press heavy / Pull heavy");
 assert.equal(facts.targets.protein_g, 150);
 assert.equal(facts.targets.spend_cap, 1000);
 assert.equal(facts.yesterday.workout_done, true);
@@ -201,7 +202,7 @@ assert.equal(noTargetFacts.money.hasBudget, false);
 // --- deterministic voices ----------------------------------------------------
 const morning = jbMorningFallback(facts);
 assert.ok(morning.includes("Good morning - Monday, Soybean day."));
-assert.ok(morning.includes("Workout A"));
+assert.ok(morning.includes("Day A - Press heavy / Pull heavy"));
 assert.ok(morning.includes("150g protein"));
 assert.ok(morning.includes("Netflix Rs 199 expected in 3d."));
 assert.ok(morning.includes("gym 5d"));

@@ -165,6 +165,43 @@ Everything in `lib/` is a pure module imported by both browser code and tests - 
 - `additions.mjs` - shapes recent domain rows into the Home feed's day-over-day "additions" list.
 - `aspiration-cascade.mjs` - maps a free-text goal note to budget/target changes plus the undo math.
 
+### The training program (Home Protocol)
+
+`lib/home-protocol.mjs` is the gym program: six full-body days (A-F) plus a rest
+day (R), Monday to Sunday, under a hard **25 kg per-dumbbell ceiling**. It
+replaced the inline gym scaffold in `lib/diet-scaffold.mjs` - Workout A / Workout
+B / a "forgiven cardio" day - which prescribed a treadmill, a leg press and a lat
+pulldown that the room training now happens in does not contain.
+
+Two ideas are encoded as data rather than prose, and both are load-bearing:
+
+- **Zones.** Every exercise carries `zone` (heavy / med / pump / core). Exactly
+  one heavy exposure per movement pattern per week is what makes six days
+  survivable; the zone sets the rest gap (`REST_BY_ZONE`) and how hard the set is
+  meant to be. `tests/plan-exercises.test.mjs` asserts no day stacks more than
+  two heavy lifts.
+- **The ceiling.** `LOAD_CEILING_KG` is 25 and it is a wall, not a target. The
+  weight steppers refuse to go past it, and at the wall the row names the next
+  move from `PROGRESSION_LADDER` (slow the eccentric, add a pause, go unilateral)
+  instead of offering more weight.
+
+`WORKOUTS` in `lib/diet-scaffold.mjs` is now `protocolWorkouts()`, which keeps the
+old shape (`id/name/kind/items/rules`) so plan-merge, the morning brief and the
+diet page need no change, and adds a structured `exercises` array that
+`prescribedExercises()` prefers. Free-text `items` parsing still runs for user
+plan overrides and one-off custom workouts, which is why a `replace_workout` /
+`add_exercise` delta produces a session with no zones or cues - correct, but a
+downgrade worth knowing about.
+
+`lib/jarvis-brief.mjs` mirrors the day NAMES only (`JB_WORKOUTS`), by hand, and
+that block is byte-identical inside the jarvis edge function - change one, run
+`node scripts/sync-mirror.mjs`.
+
+`docs/home-protocol-standalone.html` is the original self-contained artifact the
+program came from. It is a reference document, not an app page: it does not use
+the design tokens and it stores its own ticks in `localStorage` under `ptl:v1`.
+The app is the source of truth.
+
 ### The bank statement pipeline
 
 Statement import is its own four-stage pipeline in `lib/`, pure and
@@ -240,7 +277,7 @@ The test asserts these directories exist with modules in them - do not collapse 
 - `src/domain/{money,diet,wellness}/` - domain defaults.
 - `src/data/` - static mock data (dashboard, table, Nifty monthly closes).
 - `src/pages/` - page entry modules (one per HTML file).
-- `src/state/` - `app-state.js` + `sync.js`.
+- `src/state/` - `app-state.js`, `sync.js`, `gym-day.js` (which rotation day is being trained today).
 - `src/utils/` - `dom.js`, `formatters.js`.
 - `lib/` - pure shared primitives, must stay browser/Node-isomorphic.
 - `styles/` - layered CSS (tokens → base → layout → components → page-specific → tables → nav → responsive), imported by the single `styles.css` entry. Do not write to `styles.css` directly except to add imports.

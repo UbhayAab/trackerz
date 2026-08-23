@@ -1,20 +1,35 @@
-// Gym page: a SEAMLESS, one-tap workout logger that mirrors the diet hub's
-// check-off rhythm (which already feels good).
+// Gym page: the Home Protocol session, logged in one tap per exercise.
 //
-//   Each prescribed exercise shows: muscle · name · prescribed sets×reps, the
-//   weight PREFILLED from your last session, and big − / + steppers. You don't
-//   type - you nudge the weight if needed and tap ✓. That instantly logs the
-//   exercise (prescribed sets × reps at the shown weight) as a workout_logs row;
-//   un-tapping deletes it. Bodyweight + composition save on blur. No batch
-//   "Log session" button, no per-set forms.
+// Each row states the three things that decide how the set is performed - the
+// zone (heavy / medium / pump / core), the prescription, and the one cue that
+// matters - then takes the load and a ✓. Ticking logs the prescribed sets ×
+// reps at the shown weight as a workout_logs row; un-ticking deletes it.
+// Bodyweight and composition still save on blur.
+//
+// Two things here are not decoration:
+//
+//   THE ZONE CHIP is the program. One heavy exposure per movement pattern per
+//   week is what makes training six days a week survivable, so the row says out
+//   loud which kind of set this is, and what to rest, rather than leaving it in
+//   a document nobody opens mid-session.
+//
+//   THE CEILING GAUGE. The dumbbells stop at 25 kg (LOAD_CEILING_KG). The old
+//   panel offered an endless + stepper, which quietly implies more weight is the
+//   answer forever. This one fills a gauge as the load approaches the wall and,
+//   at the wall, names the specific next move - slow the eccentric, add a pause,
+//   go unilateral - from PROGRESSION_LADDER. The stepper will not go past it,
+//   because there is nothing past it in the room.
 
-import { planForDate, prescribedExercises, weeklyWorkoutCount } from "../domain/diet/plan.js";
+import { prescribedExercises } from "../domain/diet/plan.js";
 import { reconcileExercises } from "../domain/diet/reconcile.js";
+import { workoutForToday, setSelectedLetter, scheduledLetter, rotationIsMemoryOnly } from "../state/gym-day.js";
+import {
+  LOAD_CEILING_KG, REST_BY_ZONE, ZONE_LABEL, CEILING_TACTICS,
+  PROGRESSION_LADDER, SYSTEM_NOTES, MOVEMENT_BANK, PROTOCOL_DAYS,
+} from "../../lib/home-protocol.mjs";
 import { logWorkoutSession, logBodyMetric, deleteRow } from "../services/supabase-data.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
-import { hydrateStateFromSupabase } from "../state/sync.js";
 import { refreshAfterWrite } from "./refresh.js";
-import { goalDisplayValue } from "../domain/goals.js";
 
 const WORKOUT_HOST = "#workoutLog";
 const BODY_HOST = "#bodyComposition";
@@ -27,7 +42,6 @@ function canSync() { return Boolean(getCurrentSession()?.user?.id) && !isLocalSe
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 function round(n) { return Math.round(n * 10) / 10; }
 function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-function isSameDay(iso, d = new Date()) { if (!iso) return false; const x = new Date(iso); return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth() && x.getDate() === d.getDate(); }
 function shortDate(iso) { return new Date(iso).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short" }); }
 function dayKey(date = new Date()) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 function loadDay(key) { try { return JSON.parse(globalThis.localStorage?.getItem(STATE_PREFIX + key) || "{}"); } catch { return {}; } }
@@ -69,6 +83,14 @@ export function weeklyVolumeByMuscle(workoutLogs, now = new Date()) {
   return out;
 }
 
+// At or past the wall. Reported per exercise, because the answer ("stop adding
+// weight, do THIS instead") is per exercise.
+export function atCeiling(weightKg) { return num(weightKg) >= LOAD_CEILING_KG; }
+
+// Which ladder rung to suggest for a maxed lift. Indexed off the exercise's
+// position so two maxed lifts in one session do not both say "3s eccentric".
+export function ceilingTactic(index) { return CEILING_TACTICS[index % CEILING_TACTICS.length]; }
+
 function latestMetric(b, t) { const r = (b || []).filter((x) => x.metric_type === t); return r.length ? r[0] : null; }
 function metricTrend(b, t) { const r = (b || []).filter((x) => x.metric_type === t); return r.length < 2 ? null : round(num(r[0].value) - num(r[1].value)); }
 
@@ -79,28 +101,57 @@ function sourceBadge(source) {
   return "";
 }
 
-// One exercise card: prefilled weight + steppers + a single ✓ to log. `st` is the
-// resolved state (manual tap wins; else captured-workout auto/suggested match).
-function exerciseCard(ex, st, workoutLogs) {
+function prescriptionText(ex) {
+  const reps = ex.repsLabel || `${ex.reps}${ex.repsUnit === "sec" ? "s" : ""}`;
+  const sets = ex.sets ? `${ex.sets} x ` : "";
+  return `${sets}${reps}${ex.perSide ? " / side" : ""}`;
+}
+
+function zoneChip(zone) {
+  const label = ZONE_LABEL[zone] || zone;
+  const rest = REST_BY_ZONE[zone];
+  return `<span class="wl-zone wl-zone-${esc(zone)}" title="${esc(label)} - rest ${rest}s">${esc(label)}<i>${rest}s</i></span>`;
+}
+
+// The 25 kg wall, drawn. Below it: how much room is left. At it: the ladder rung
+// that replaces "add weight".
+function loadRow(ex, weight, index) {
+  if (!ex.load) return `<div class="wl-bodyweight">bodyweight</div>`;
+  const pct = Math.min(100, (num(weight) / LOAD_CEILING_KG) * 100);
+  const hot = atCeiling(weight);
+  return `
+    <div class="wl-loadrow">
+      <button type="button" class="wl-step" data-step="-1" data-ex="${ex.key}" aria-label="less weight">−</button>
+      <input class="wl-load" type="number" step="0.5" min="0" max="${LOAD_CEILING_KG}" inputmode="decimal"
+             value="${weight ? esc(weight) : ""}" placeholder="0" data-load="${ex.key}" aria-label="load for ${esc(ex.name)} in kg" />
+      <span class="wl-unit">kg</span>
+      <button type="button" class="wl-step" data-step="1" data-ex="${ex.key}" aria-label="more weight">+</button>
+      <div class="wl-gauge${hot ? " is-hot" : ""}" role="presentation"><i style="width:${pct}%"></i></div>
+    </div>
+    ${hot ? `<p class="wl-ceiling"><b>Ceiling reached</b> The dumbbells are maxed on this lift. Stop adding weight; next block, ${esc(ceilingTactic(index))}.</p>` : ""}`;
+}
+
+// One exercise card: zone, prescription, cue, load + a single ✓ to log.
+function exerciseCard(ex, st, workoutLogs, index) {
   const done = Boolean(st.done);
   const last = lastSetFor(workoutLogs, ex.name);
-  const isTimed = ex.repsUnit === "sec";
   const weight = st.weight != null ? st.weight : (last ? num(last.weight_kg) : 0);
-  const lastLabel = last ? `last ${last.weight_kg ?? "-"}kg×${last.reps ?? "-"}` : "first time";
-  const stepper = isTimed ? "" : `
-    <div class="wl-weight-ctl">
-      <button type="button" class="wl-step" data-step="-1" data-ex="${ex.key}" aria-label="less weight">−</button>
-      <span class="wl-wt"><b>${weight}</b> kg</span>
-      <button type="button" class="wl-step" data-step="1" data-ex="${ex.key}" aria-label="more weight">+</button>
-    </div>`;
-  return `<div class="wl-ex${done ? " is-done" : ""}${st.source === "suggested" ? " is-suggested" : ""}" data-ex="${ex.key}" data-name="${esc(ex.name)}" data-muscle="${esc(ex.muscle)}" data-sets="${ex.sets}" data-reps="${ex.reps}" data-unit="${ex.repsUnit}">
+  const lastLabel = last ? `last ${last.weight_kg ?? "-"}kg x ${last.reps ?? "-"}` : "first time";
+  return `<div class="wl-ex${done ? " is-done" : ""}${st.source === "suggested" ? " is-suggested" : ""} wl-z-${esc(ex.zone)}"
+       data-ex="${ex.key}" data-name="${esc(ex.name)}" data-muscle="${esc(ex.muscle)}" data-sets="${ex.sets}" data-reps="${ex.reps}" data-unit="${ex.repsUnit}">
     <div class="wl-ex-row">
       <button type="button" class="wl-check" data-ex="${ex.key}" aria-pressed="${done}" aria-label="log ${esc(ex.name)}">${done ? "✓" : ""}</button>
       <div class="wl-ex-main">
-        <div class="wl-ex-head"><span class="wl-muscle wl-muscle-${esc(ex.muscle)}">${esc(ex.muscle)}</span><strong>${esc(ex.name)}</strong>${sourceBadge(st.source)}</div>
-        <div class="wl-ex-sub"><span class="wl-prescribe">${ex.sets}×${ex.reps}${isTimed ? "s" : ""}</span><span class="wl-last">${esc(lastLabel)}</span></div>
+        <div class="wl-ex-head"><strong>${esc(ex.name)}</strong>${sourceBadge(st.source)}</div>
+        <div class="wl-ex-sub">
+          <span class="wl-prescribe">${esc(prescriptionText(ex))}</span>
+          ${zoneChip(ex.zone)}
+          <span class="wl-muscle wl-muscle-${esc(ex.muscle)}">${esc(ex.muscle)}</span>
+          <span class="wl-last">${esc(lastLabel)}</span>
+        </div>
+        ${ex.cue ? `<p class="wl-cue">${esc(ex.cue)}</p>` : ""}
+        ${loadRow(ex, weight, index)}
       </div>
-      ${stepper}
     </div>
   </div>`;
 }
@@ -109,8 +160,18 @@ function noteCard(ex, st) {
   const done = Boolean(st.done);
   return `<div class="wl-note${done ? " is-done" : ""}" data-ex="${ex.key}" data-name="${esc(ex.name)}" data-muscle="${esc(ex.muscle)}" data-note="1">
     <button type="button" class="wl-check" data-ex="${ex.key}" aria-pressed="${done}" aria-label="mark done">${done ? "✓" : ""}</button>
-    <span class="wl-muscle wl-muscle-${esc(ex.muscle)}">${esc(ex.muscle)}</span>
-    <span class="wl-note-txt">${esc(ex.name)}</span>${sourceBadge(st.source)}
+    <span class="wl-note-txt">${esc(ex.name)}</span>${ex.cue ? `<span class="muted small">${esc(ex.cue)}</span>` : ""}${sourceBadge(st.source)}
+  </div>`;
+}
+
+// The rotation dial. Today's letter carries a dot; the one being trained is
+// filled. Tapping another letter says "today I am doing that one" for THIS day
+// only - see state/gym-day.js for why it is not an advancing counter.
+function rotationDial(activeLetter) {
+  const today = scheduledLetter();
+  return `<div class="wl-dial" role="group" aria-label="Rotation day">
+    ${PROTOCOL_DAYS.map((d) => `<button type="button" class="wl-dial-btn${d.letter === activeLetter ? " is-on" : ""}${d.letter === today ? " is-today" : ""}"
+        data-letter="${d.letter}" aria-pressed="${d.letter === activeLetter}" title="${esc(d.name)}">${d.letter}</button>`).join("")}
   </div>`;
 }
 
@@ -139,38 +200,68 @@ function muscleSummary(workoutLogs) {
   return `<div class="wl-volume"><p class="diet-head">📊 This week by muscle</p>${bars}</div>`;
 }
 
+// The program itself, kept one tap away rather than in a document: the week, the
+// progression ladder for when 25 kg runs out, the rules that have to survive a
+// bad week, and the swap list.
+function protocolReference() {
+  const week = PROTOCOL_DAYS.map((d) => `<li><b>${d.letter}</b><span><strong>${esc(d.name.replace(/^Day .\s*-\s*/, ""))}</strong><em>${esc(d.focus)}</em></span></li>`).join("");
+  const ladder = PROGRESSION_LADDER.map((r) => `<li>${esc(r)}</li>`).join("");
+  const notes = SYSTEM_NOTES.map((n) => `<div class="wl-note-block"><h4>${esc(n.title)}</h4>${n.body.map((p) => `<p>${esc(p)}</p>`).join("")}</div>`).join("");
+  const bank = MOVEMENT_BANK.map((m) => `<span>${esc(m)}</span>`).join("");
+  return `
+    <details class="wl-ref">
+      <summary>The rotation <span class="muted small">six days, one heavy exposure per pattern</span></summary>
+      <ul class="wl-week">${week}</ul>
+    </details>
+    <details class="wl-ref">
+      <summary>When ${LOAD_CEILING_KG} kg runs out <span class="muted small">${PROGRESSION_LADDER.length} rungs, in order</span></summary>
+      <ol class="wl-ladder">${ladder}</ol>
+    </details>
+    <details class="wl-ref">
+      <summary>The system <span class="muted small">rest, deficit, deload, order</span></summary>
+      ${notes}
+    </details>
+    <details class="wl-ref">
+      <summary>Movement bank <span class="muted small">${MOVEMENT_BANK.length} swaps</span></summary>
+      <div class="wl-bank">${bank}</div>
+    </details>`;
+}
+
 export function renderWorkoutPanel(appState) {
   if (appState) _state = { workoutLogs: appState.workoutLogs || [], bodyMetrics: appState.bodyMetrics || [], budgets: appState.budgets || [] };
   const host = document.querySelector(WORKOUT_HOST);
   const bodyHost = document.querySelector(BODY_HOST);
   if (!host) return;
 
-  const plan = planForDate(new Date());
-  const exercises = prescribedExercises(plan.workout);
+  const { workout, letter, swapped } = workoutForToday();
+  const exercises = prescribedExercises(workout);
   const day = loadDay(dayKey());
   // Auto-check exercises from a captured workout (manual taps still win).
-  const recon = reconcileExercises(plan.workout, _state.workoutLogs, new Date());
+  const recon = reconcileExercises(workout, _state.workoutLogs, new Date());
   const view = {};
   for (const ex of exercises) view[ex.key] = resolveExState(ex.key, day, recon);
-  const doneCount = exercises.filter((e) => e.loggable && view[e.key].done).length;
-  const total = exercises.filter((e) => e.loggable).length;
-  const weeklyTarget = goalDisplayValue(_state.budgets, "weekly_workouts");
-  const weeklyDone = weeklyWorkoutCount(_state.workoutLogs);
+  const loggable = exercises.filter((e) => e.loggable);
+  const doneCount = loggable.filter((e) => view[e.key].done).length;
+  const total = loggable.length;
+  const pct = total ? Math.round((doneCount / total) * 100) : 0;
+  const title = workout.name.replace(/^Day .\s*-\s*/, "");
 
-  // No day/name heading and no weekly-goal line here any more: this panel now
-  // sits inside the collapsed "Log exercise by exercise" section on the Gym
-  // page, directly under #gymToday, which already states the weekday, the
-  // prescribed workout and the weekly count. Repeating them read as two panels
-  // disagreeing about the same day.
   host.innerHTML = `
-    <div class="panel-title-row">
-      <div><p class="eyebrow">${esc(plan.workout.name)}</p><h2>Per-exercise log</h2></div>
-      <span class="metric-badge">${total ? `${doneCount}/${total} done` : plan.workout.kind}</span>
+    ${rotationDial(letter)}
+    <div class="wl-dayhead">
+      <div class="wl-daychar" aria-hidden="true">${esc(letter || "?")}</div>
+      <div class="wl-daymeta">
+        <h2>${esc(title)}</h2>
+        <p class="wl-focus">${esc(workout.focus || "")}</p>
+      </div>
+      <span class="metric-badge">${total ? `${doneCount}/${total}` : (workout.rest ? "rest" : workout.kind)}</span>
     </div>
-    <p class="muted small">${esc(plan.workout.rules || "")} · nudge the weight, tap ✓ to log.</p>
+    <div class="wl-meter"><i style="width:${pct}%"></i></div>
+    <p class="muted small wl-rules">${esc(workout.rules || "")}${swapped ? (rotationIsMemoryOnly() ? " · swapped for this visit (storage is blocked, so it will not survive a reload)" : " · swapped for today only") : ""}</p>
     <div class="wl-exercises">
-      ${exercises.map((ex) => (ex.loggable ? exerciseCard(ex, view[ex.key], _state.workoutLogs) : noteCard(ex, view[ex.key]))).join("")}
+      ${exercises.map((ex, i) => (ex.loggable ? exerciseCard(ex, view[ex.key], _state.workoutLogs, i) : noteCard(ex, view[ex.key]))).join("")}
     </div>
+    ${protocolReference()}
     ${muscleSummary(_state.workoutLogs)}
     <div class="wl-recent"><p class="diet-head">🗓️ Recent sessions</p>${recentSessions(_state.workoutLogs)}</div>
   `;
@@ -213,7 +304,7 @@ async function logExercise(exKey) {
   const sets = Number(card.dataset.sets) || 1;
   const reps = Number(card.dataset.reps) || 0;
   const isNote = card.dataset.note === "1";
-  const weight = day[exKey]?.weight != null ? day[exKey].weight : num(card.querySelector(".wl-wt b")?.textContent);
+  const weight = day[exKey]?.weight != null ? day[exKey].weight : num(card.querySelector(".wl-load")?.value);
 
   day[exKey] = { ...day[exKey], done: true, weight };
   saveDay(key, day);
@@ -245,16 +336,33 @@ async function unlogExercise(exKey) {
   }
 }
 
-function adjustWeight(exKey, dir) {
+// Steppers stop at the ceiling. There is no 27.5 kg dumbbell in the room, and a
+// control that pretends otherwise is how you end up logging a number you never
+// lifted.
+function setWeight(exKey, value, { rerender = false } = {}) {
   const key = dayKey();
   const day = loadDay(key);
-  const card = document.querySelector(`.wl-ex[data-ex="${exKey}"]`);
-  const cur = day[exKey]?.weight != null ? day[exKey].weight : num(card?.querySelector(".wl-wt b")?.textContent);
-  const next = Math.max(0, round(cur + dir * STEP));
+  const next = Math.min(LOAD_CEILING_KG, Math.max(0, round(num(value))));
+  const was = day[exKey]?.weight;
   day[exKey] = { ...day[exKey], weight: next };
   saveDay(key, day);
-  const b = card?.querySelector(".wl-wt b");
-  if (b) b.textContent = String(next); // update in place (no full re-render while nudging)
+  const card = document.querySelector(`.wl-ex[data-ex="${exKey}"]`);
+  const input = card?.querySelector(".wl-load");
+  if (input && String(num(input.value)) !== String(next)) input.value = String(next);
+  // Crossing the ceiling changes what the row SAYS (the gauge turns and the
+  // tactic appears), so that transition is the one nudge worth re-rendering for.
+  if (rerender || atCeiling(next) !== atCeiling(was)) renderWorkoutPanel();
+  else {
+    const gauge = card?.querySelector(".wl-gauge i");
+    if (gauge) gauge.style.width = `${Math.min(100, (next / LOAD_CEILING_KG) * 100)}%`;
+  }
+}
+
+function adjustWeight(exKey, dir) {
+  const day = loadDay(dayKey());
+  const card = document.querySelector(`.wl-ex[data-ex="${exKey}"]`);
+  const cur = day[exKey]?.weight != null ? day[exKey].weight : num(card?.querySelector(".wl-load")?.value);
+  setWeight(exKey, cur + dir * STEP);
 }
 
 let bound = false;
@@ -262,6 +370,8 @@ export function bindWorkoutPanel() {
   if (bound) return;
   bound = true;
   document.addEventListener("click", (event) => {
+    const dial = event.target.closest(".wl-dial-btn");
+    if (dial) { setSelectedLetter(dial.dataset.letter); renderWorkoutPanel(); document.dispatchEvent(new CustomEvent("gym:rotation-changed")); return; }
     const step = event.target.closest(".wl-step");
     if (step) { adjustWeight(step.dataset.ex, Number(step.dataset.step)); return; }
     const check = event.target.closest(".wl-check");
@@ -271,8 +381,10 @@ export function bindWorkoutPanel() {
       if (pressed) unlogExercise(exKey); else logExercise(exKey);
     }
   });
-  // Body composition saves on blur.
   document.addEventListener("change", async (event) => {
+    const load = event.target.closest("input[data-load]");
+    if (load) { setWeight(load.dataset.load, load.value); return; }
+    // Body composition saves on blur.
     const inp = event.target.closest("#bodyComposition input[data-metric]");
     if (!inp) return;
     const value = num(inp.value);
