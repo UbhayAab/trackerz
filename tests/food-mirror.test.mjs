@@ -46,6 +46,10 @@ try {
 }
 
 const CORPUS = [
+  // The 2026-08-23 roll shop. New foods are exactly where lib and edge drift, and
+  // these are the ones the owner actually eats.
+  "2 pani rolls and 1 double egg roll", "1 triple egg roll, 1 potato roll and 1 pani roll",
+  "1 egg roll", "aloo roll", "tomato rice", "2 bricks of maggi", "1 roll",
   // the 2026-07-28 order manifest, the capture that exposed the drift
   "Coca Cola Zero Sugar Soft Drink Can (300 ml) × 3\nEat Better Co Ragi Chips, Achari Masti (55 g) × 1\nEat Better Co Ragi Chips, Thai Chilli Tadka (55 g) × 1",
   "Coca Cola Zero Sugar Soft Drink Can (300 ml) × 3",
