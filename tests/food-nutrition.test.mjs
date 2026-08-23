@@ -231,3 +231,103 @@ console.log("food-nutrition.test.mjs: all assertions passed");
   assert.equal(momos.recognized, false,
     "an unconvertible weight must not let the table override the model");
 }
+
+// --- the roll shop, and the composite that reported false confidence ---------
+//
+// Locks the 2026-08-23 backfill. Three days of the owner's meals were rolls, and
+// the table knew neither the word "roll" nor the fried paratha every roll is
+// wrapped in, so a dictated meal priced at less than half of itself.
+{
+  // The exact sentence, in the exact words voice capture produces. "pani roll"
+  // has to reach paneer: "pani" alone is the STOPWORD for water, so without the
+  // alias the paneer vanished silently and only a bare "roll" was left unknown.
+  for (const said of ["2 pani rolls and 1 double egg roll", "2 paneer rolls and 1 double egg roll"]) {
+    const r = estimateNutrition(said);
+    assert.equal(r.recognized, true, `"${said}" must be fully priced by the table`);
+    assert.deepEqual(
+      r.items.map((i) => `${i.key} x${i.qty}`).sort(),
+      ["double egg roll x1", "paneer roll x2"],
+      `"${said}" is two paneer rolls and ONE double-egg roll`,
+    );
+    // The regression in one number: this meal used to price at 602 kcal, because
+    // both wraps were missing and the filling was read as 200 g of loose paneer.
+    assert.ok(r.totals.calories > 1200,
+      `"${said}" must count both wraps, got ${r.totals.calories} kcal`);
+    assert.ok(r.totals.protein_g < 60,
+      `a roll holds ~60g paneer, not 200g - got ${r.totals.protein_g}g protein`);
+  }
+
+  // "double" and "triple" count the EGGS, not the rolls. One double egg roll is
+  // ONE wrap, so it must not price as two whole rolls.
+  const single = estimateNutrition("1 egg roll").totals.calories;
+  const dbl = estimateNutrition("1 double egg roll").totals.calories;
+  assert.ok(dbl > single && dbl < single * 2,
+    `a double egg roll is one wrap with an extra egg, got ${dbl} vs ${single}`);
+  assert.ok(estimateNutrition("1 triple egg roll").totals.calories > dbl,
+    "a triple egg roll carries more than a double");
+
+  // The one that matched nothing at all and priced at zero.
+  const aloo = estimateNutrition("1 potato roll");
+  assert.equal(aloo.recognized, true, "a potato roll is an aloo roll");
+  assert.ok(aloo.totals.calories > 300, `an aloo roll is not free, got ${aloo.totals.calories}`);
+
+  // TOMATO RICE - the worst shape of gap, because it reported full confidence.
+  // "tomato" + "rice" matched as two foods, so recognized came back TRUE and an
+  // authoritative 228 kcal overrode the model: plain boiled rice with a raw
+  // tomato beside it, every gram of the tempering's fat missing.
+  const tr = estimateNutrition("tomato rice");
+  assert.deepEqual(tr.items.map((i) => i.key), ["tomato rice"],
+    "tomato rice is one dish, not a tomato next to some rice");
+  assert.ok(tr.totals.fat_g >= 8,
+    `tomato rice is fried in oil, got ${tr.totals.fat_g}g fat`);
+
+  // No bare "roll": an unqualified roll is genuinely ambiguous, and the table's
+  // totals OVERRIDE the model, so guessing here would beat the model's guess.
+  assert.equal(estimateNutrition("1 roll").recognized, false,
+    "a roll with no filling named must be handed to the model, not priced");
+}
+
+// --- no two foods may claim the same alias -----------------------------------
+//
+// Two entries sharing an alias is decided by TABLE ORDER: ALIAS_INDEX sorts by
+// word count then length, and V8's sort is stable, so the entry written earlier
+// in the file silently wins. Reordering the file would then move a meal's macros
+// without anyone touching a number.
+//
+// This was not hypothetical. The 2026-08-14 Burger King entry claimed "paneer
+// roll" and "paneer kathi roll", and the 2026-08-23 roll shop claimed them too;
+// git merged the two additions cleanly because they are in different parts of the
+// file, and nothing at all would have reported the clash.
+{
+  // KNOWN, PRE-EXISTING, and deliberately not fixed here: `aloo bhujia` (gram-
+  // kind, 570 kcal/100 g) and `namkeen` (count-kind, 150 kcal/30 g serving) both
+  // claim these four. `aloo bhujia` is written first, so it wins, and a bare
+  // "namkeen" prices at 570 rather than 150 - a ~4x error. Deciding which of the
+  // two is the right reading changes how rows already in the DB were priced, so
+  // it needs an owner's call, not a silent edit inside an unrelated change.
+  const KNOWN = new Set(["namkeen", "mixture", "sev", "bhujia"]);
+
+  const owner = new Map();
+  const clashes = [];
+  for (const entry of FOOD_TABLE) {
+    for (const alias of entry.aliases) {
+      const key = String(alias).toLowerCase().trim();
+      if (owner.has(key)) clashes.push(`"${key}" claimed by both ${owner.get(key)} and ${entry.key}`);
+      else owner.set(key, entry.key);
+    }
+  }
+  const fresh = clashes.filter((c) => !KNOWN.has(c.split('"')[1]));
+  assert.deepEqual(fresh, [],
+    `two foods may not claim the same alias - table order would decide it silently:\n  ${fresh.join("\n  ")}`);
+
+  // The specific one this change resolved: the roll shop owns the roll names, the
+  // Burger King entry owns the wrap names.
+  assert.equal(owner.get("paneer roll"), "paneer roll", "a paneer roll is the street roll");
+  assert.equal(owner.get("paneer wrap"), "paneer wrap", "a paneer wrap is the BK wrap");
+  // And they really are different foods, so the distinction has to survive.
+  assert.notEqual(
+    estimateNutrition("1 paneer roll").totals.calories,
+    estimateNutrition("1 paneer wrap").totals.calories,
+    "the wrap and the roll must not collapse into one number",
+  );
+}
