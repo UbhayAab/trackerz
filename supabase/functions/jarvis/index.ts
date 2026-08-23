@@ -829,14 +829,20 @@ function jbInQuietHours(instant, timeZone, quiet) {
   return s < e ? (mins >= s && mins < e) : (mins >= s || mins < e);
 }
 
-// Standing scaffold names, mirrored from lib/diet-scaffold.mjs (labels only -
-// the brief needs the day's headline, not the meal list). Keep in sync by hand.
+// Standing scaffold names, mirrored from lib/home-protocol.mjs (labels only -
+// the brief needs the day's headline, not the exercise list). Keep in sync by
+// hand. Sunday (R) is the only planned rest day, which is what makes
+// workout_forgiven fire on exactly one day a week instead of three.
 var JB_WEEKDAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-var JB_WORKOUT_BY_WEEKDAY = { 1: "A", 2: "cardio", 3: "cardio", 4: "cardio", 5: "B", 6: "A", 7: "B" };
+var JB_WORKOUT_BY_WEEKDAY = { 1: "A", 2: "B", 3: "C", 4: "D", 5: "E", 6: "F", 7: "R" };
 var JB_WORKOUTS = {
-  A: { name: "Workout A", kind: "gym" },
-  B: { name: "Workout B", kind: "gym" },
-  cardio: { name: "Cardio - forgiven day", kind: "cardio" },
+  A: { name: "Day A - Press heavy / Pull heavy", kind: "gym" },
+  B: { name: "Day B - Overhead heavy / Row heavy", kind: "gym" },
+  C: { name: "Day C - Quad heavy / Incline and arms", kind: "gym" },
+  D: { name: "Day D - Hinge heavy / Bodyweight", kind: "gym" },
+  E: { name: "Day E - Arms and delts / Glute-ham", kind: "gym" },
+  F: { name: "Day F - Circuit day", kind: "circuit" },
+  R: { name: "Day R - Rest day", kind: "rest" },
 };
 
 function jbDietLabelForWeekday(wd) {

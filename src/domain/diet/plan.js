@@ -195,17 +195,23 @@ export function planForDate(date = new Date()) {
 // ---- Gym: structured exercises from the workout scaffold ----
 // Keyword rules map a free-text exercise name to its primary muscle group, so
 // plan items like "DB Romanian deadlift 2×10" resolve without an exact-name table.
+//
+// Order matters: the first rule that matches wins, so the specific names sit
+// above the general ones. The Home Protocol added the second group - a home
+// program names its movements differently from a machine floor, and every one
+// of these landed on "other" before it was listed.
 const MUSCLE_RULES = [
   [/treadmill|walk|run\b|running|cardio|cycle|cycling|steps|elliptical|cooldown|warm/i, "cardio"],
-  [/plank|dead\s*bug|crunch|core|\babs?\b|hollow|russian twist/i, "core"],
-  [/romanian|rdl|leg curl|hamstring/i, "hamstrings"],
-  [/leg press|squat|lunge|leg extension|quad/i, "quads"],
+  [/plank|dead\s*bug|crunch|core|\babs?\b|hollow|russian twist|leg raise|knee raise|suitcase|carry|\bmarch\b|bird dog|pallof/i, "core"],
+  [/pull[- ]?apart|face pull|reverse fl(y|ie)|rear delt/i, "shoulders"],
+  [/romanian|rdl|leg curl|hamstring|good morning|nordic/i, "hamstrings"],
+  [/leg press|squat|lunge|leg extension|quad|step[- ]?up|thruster/i, "quads"],
   [/calf|calves/i, "calves"],
   [/glute|hip thrust/i, "glutes"],
-  [/chest press|bench|incline.*press|push[- ]?up|pec|chest fly|\bfly\b/i, "chest"],
-  [/lat pulldown|pull[- ]?up|pull[- ]?down|\brow\b|cable row|\bback\b|deadlift/i, "back"],
-  [/shoulder press|overhead press|lateral raise|\bdelt|\bohp\b|shoulder/i, "shoulders"],
-  [/triceps|pushdown|\bdip/i, "triceps"],
+  [/chest press|bench|incline.*press|push[- ]?up|pec|chest fly|\bfly\b|floor press|squeeze press|\bjm press\b/i, "chest"],
+  [/lat pulldown|pull[- ]?up|pull[- ]?down|chin[- ]?up|\brow\b|cable row|\bback\b|deadlift/i, "back"],
+  [/shoulder press|overhead press|lateral raise|\bdelt|\bohp\b|shoulder|arnold press|z[- ]?press/i, "shoulders"],
+  [/triceps|pushdown|\bdip|skull ?crusher|overhead .*extension|kickback/i, "triceps"],
   [/\bcurl\b|biceps/i, "biceps"],
 ];
 
@@ -221,6 +227,31 @@ export function muscleFor(name) {
 // loggable exercises with `sets` prescribed rows; everything else (warmup,
 // cooldown, "either one counts") becomes a cardio/note row with no sets.
 export function prescribedExercises(workout) {
+  // The Home Protocol carries structured exercises (zone, cue, per-side, whether
+  // a dumbbell is involved). Prefer them: re-deriving reps from "3x10-12 /leg"
+  // when the program already stated 3 x 10-12 per leg loses the zone and the cue,
+  // and the zone is what tells you how hard the set is meant to be. The free-text
+  // parser below still runs for user overrides and one-off custom workouts.
+  const structured = Array.isArray(workout?.exercises) ? workout.exercises : null;
+  if (structured) {
+    return structured.map((e, i) => ({
+      key: `ex${i}`,
+      name: e.name,
+      raw: e.repsLabel ? `${e.name} ${e.sets}x${e.repsLabel}` : e.name,
+      kind: e.loggable === false ? "note" : "strength",
+      sets: e.sets || 0,
+      reps: e.reps || 0,
+      repsUnit: e.unit === "sec" ? "sec" : "reps",
+      repsLabel: e.repsLabel || "",
+      perSide: Boolean(e.perSide),
+      zone: e.zone || "med",
+      cue: e.cue || "",
+      load: e.load !== false,
+      muscle: e.muscle || muscleFor(e.name),
+      loggable: e.loggable !== false,
+    }));
+  }
+
   const items = Array.isArray(workout?.items) ? workout.items : [];
   return items.map((raw, i) => {
     const text = String(raw).trim();
@@ -232,11 +263,17 @@ export function prescribedExercises(workout) {
         key: `ex${i}`, name, raw: text,
         kind: muscle === "cardio" ? "cardio" : "strength",
         sets: Number(m[2]), reps: Number(m[3]), repsUnit: m[4] ? "sec" : "reps",
+        repsLabel: `${m[3]}${m[4] ? "s" : ""}`, perSide: /\/\s*(side|leg|arm)/i.test(text),
+        zone: "med", cue: "", load: muscle !== "cardio" && muscle !== "core",
         muscle,
         loggable: muscle !== "cardio",
       };
     }
-    return { key: `ex${i}`, name: text, raw: text, kind: "note", sets: 0, reps: 0, repsUnit: "", muscle: muscleFor(text), loggable: false };
+    return {
+      key: `ex${i}`, name: text, raw: text, kind: "note", sets: 0, reps: 0, repsUnit: "",
+      repsLabel: "", perSide: false, zone: "med", cue: "", load: false,
+      muscle: muscleFor(text), loggable: false,
+    };
   });
 }
 

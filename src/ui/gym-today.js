@@ -17,8 +17,8 @@ import { runCapture } from "../services/agent-runner.js";
 import { getCurrentSession, isLocalSession } from "../services/auth.js";
 import { hydrateStateFromSupabase } from "../state/sync.js";
 import { refreshAfterWrite } from "./refresh.js";
-import { planForDate } from "../domain/diet/plan.js";
 import { weeklyWorkoutCount } from "../domain/diet/plan.js";
+import { workoutForToday } from "../state/gym-day.js";
 import { goalDisplayValue } from "../domain/goals.js";
 import { showToast } from "./toast.js";
 import { createVoiceToggle, voiceButtonHtml } from "./voice-control.js";
@@ -50,14 +50,16 @@ export function renderGymToday(appState) {
   // it heard, and a re-render one tick later used to blank it.
   const said = document.querySelector("#gymTodayStatus")?.textContent || "";
 
-  const plan = planForDate(new Date());
+  // Same resolver as the checklist below, so the header cannot name one
+  // rotation day while the exercises under it belong to another.
+  const { workout, plan, swapped } = workoutForToday();
   const status = _today?.status || null;
   const target = goalDisplayValue(_state.budgets, "weekly_workouts");
   const done = weeklyWorkoutCount(_state.workoutLogs);
 
   host.innerHTML = `
     <div class="panel-title-row">
-      <div><p class="eyebrow">Today · ${esc(plan.weekdayName)}</p><h2>${esc(plan.workout.name)}</h2></div>
+      <div><p class="eyebrow">Today · ${esc(plan.weekdayName)}${swapped ? " · swapped" : ""}</p><h2>${esc(workout.name)}</h2></div>
       ${target ? `<span class="metric-badge">${done} / ${target} this week</span>` : ""}
     </div>
 
@@ -186,6 +188,9 @@ export function bindGymToday() {
     if (act === "log") return void logFreeText();
     if (act === "voice") return void dictate();
   });
+  // The rotation dial lives in the panel below; when it moves, this header has
+  // to move with it or the page names two different days at once.
+  document.addEventListener("gym:rotation-changed", () => renderGymToday());
   renderGymToday();
   refresh();
 }

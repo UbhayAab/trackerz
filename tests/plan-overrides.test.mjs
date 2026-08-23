@@ -145,9 +145,9 @@ assert.equal(gSwap.workout.kind, "cardio");
 
 setDatedPlanOverrides({ gym: { [monKey]: [{ op: "add_exercise", exercise: "Pull-ups 3×8" }] } });
 const gAdd = planForDate(MON);
-assert.equal(gAdd.customWorkout, true, "add_exercise folds onto the standing Workout A");
+assert.equal(gAdd.customWorkout, true, "add_exercise folds onto the standing rotation day");
 assert.ok(gAdd.workout.items.some((it) => it.includes("Pull-ups")));
-assert.equal(gAdd.workout.items.length, 10, "Workout A's 9 items + 1");
+assert.equal(gAdd.workout.items.length, 9, "day A has 8 rows, + 1 added");
 
 reset();
 console.log("plan-overrides tests passed");
